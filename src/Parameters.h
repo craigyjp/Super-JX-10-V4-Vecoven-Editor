@@ -132,6 +132,59 @@ int dco2_range_str;
 int dco2_tune;
 int dco2_fine;
 
+int dco1_level;
+int dco2_level;
+int dco2_mod;
+
+int vcf_hpf;
+int vcf_cutoff;
+int vcf_res;
+int vcf_kb;
+int vcf_env;
+int vcf_lfo1;
+int vcf_lfo2;
+
+int vca_mod;
+int at_vib;
+int at_lpf;
+int at_vol;
+int balance;
+
+int time1;
+int level1;
+int time2;
+int level2;
+int time3;
+int level3;
+int time4;
+int env5stage_mode;
+int env5stage_mode_str;
+
+int env_2time1;
+int env2_level1;
+int env2_time2;
+int env2_level2;
+int env2_time3;
+int env2_level3;
+int env2_time4;
+int env2_5stage_mode;
+
+int attack;
+int decay;
+int sustain;
+int release;
+int adsr_mode;
+int adsr_mode_str;
+
+int env4_attack;
+int env4_decay;
+int env4_sustain;
+int env4_release;
+int env4_adsr_mode;
+
+int ctla;
+int ctlb;
+
 
 // old hybrid params
 

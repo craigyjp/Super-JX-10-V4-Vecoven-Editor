@@ -381,11 +381,12 @@ void updateScreen() {
 
 void setupDisplay()
 {
-  tft.useFrameBuffer(true);
+  
   tft.initR(INITR_BLACKTAB);
+  tft.useFrameBuffer(true);
   tft.setRotation(3);
   tft.invertDisplay(true);
   renderBootUpPage();
   tft.updateScreen();
-  //threads.addThread(displayThread);
+  
 }

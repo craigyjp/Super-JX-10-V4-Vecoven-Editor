@@ -57,39 +57,39 @@ ADC *adc = new ADC();
 #define MUX2_SPARE_15 15
 
 //Mux 3 Connections
-#define MUX3_REVERB_MIX 0
-#define MUX3_REVERB_DAMP 1
-#define MUX3_REVERB_DECAY 2
-#define MUX3_DRIFT 3
-#define MUX3_VCA_VELOCITY 4
-#define MUX3_VCA_RELEASE 5
-#define MUX3_VCA_SUSTAIN 6
-#define MUX3_VCA_DECAY 7
-#define MUX3_VCF_SUSTAIN 8
-#define MUX3_CONTOUR_AMOUNT 9
-#define MUX3_VCF_RELEASE 10
-#define MUX3_KB_TRACK 11
-#define MUX3_MASTER_VOLUME 12
-#define MUX3_VCF_VELOCITY 13
-#define MUX3_MASTER_TUNE 14
+#define MUX3_DCO1_LEVEL 0
+#define MUX3_DCO2_LEVEL 1
+#define MUX3_DCO2_MOD 2
+#define MUX3_VCF_HPF 3
+#define MUX3_VCF_CUTOFF 4
+#define MUX3_VCF_RES 5
+#define MUX3_VCF_KB 6
+#define MUX3_VCF_ENV 7
+#define MUX3_VCF_LFO1 8
+#define MUX3_VCF_LFO2 9
+#define MUX3_VCA_MOD 10
+#define MUX3_AT_VIB 11
+#define MUX3_AT_LPF 12
+#define MUX3_AT_VOL 13
+#define MUX3_BALANCE 14
 #define MUX3_SPARE_15 15
 
 //Mux 4 Connections
-#define MUX4_REVERB_MIX 0
-#define MUX4_REVERB_DAMP 1
-#define MUX4_REVERB_DECAY 2
-#define MUX4_DRIFT 3
-#define MUX4_VCA_VELOCITY 4
-#define MUX4_VCA_RELEASE 5
-#define MUX4_VCA_SUSTAIN 6
-#define MUX4_VCA_DECAY 7
-#define MUX4_VCF_SUSTAIN 8
-#define MUX4_CONTOUR_AMOUNT 9
-#define MUX4_VCF_RELEASE 10
-#define MUX4_KB_TRACK 11
-#define MUX4_MASTER_VOLUME 12
-#define MUX4_VCF_VELOCITY 13
-#define MUX4_MASTER_TUNE 14
+#define MUX4_T1 0
+#define MUX4_L1 1
+#define MUX4_T2 2
+#define MUX4_L2 3
+#define MUX4_T3 4
+#define MUX4_L3 5
+#define MUX4_T4 6
+#define MUX4_5STAGE_MODE 7
+#define MUX4_ATTACK 8
+#define MUX4_DECAY 9
+#define MUX4_SUSTAIN 10
+#define MUX4_RELEASE 11
+#define MUX4_ADSR_MODE 12
+#define MUX4_CTLA 13
+#define MUX4_CTLB 14
 #define MUX4_SPARE_15 15
 
 
@@ -115,7 +115,7 @@ ADC *adc = new ADC();
 #define GPB6 14
 #define GPB7 15
 
-#define OSC1_OCT_BUTTON 0
+#define LFO1_SYNC_BUTTON 0
 #define OSC1_WAVE_BUTTON 1
 #define OSC1_SUB_BUTTON 2
 #define OSC2_WAVE_BUTTON 3
@@ -163,7 +163,7 @@ constexpr size_t NUM_MCP = sizeof(allMCPs) / sizeof(allMCPs[0]);
 constexpr int numMCPs = (int)(sizeof(allMCPs) / sizeof(*allMCPs));
 constexpr int numEncoders = (int)(sizeof(rotaryEncoders) / sizeof(*rotaryEncoders));
 
-Button osc1_oct_Button = Button(&mcp1, 8, OSC1_OCT_BUTTON, &mainButtonChanged);
+Button lfo1_sync_Button = Button(&mcp1, 0, LFO1_SYNC_BUTTON, &mainButtonChanged);
 Button osc1_wave_Button = Button(&mcp1, 9, OSC1_WAVE_BUTTON, &mainButtonChanged);
 Button osc1_sub_Button = Button(&mcp1, 10, OSC1_SUB_BUTTON, &mainButtonChanged);
 Button osc2_wave_Button = Button(&mcp2, 8, OSC2_WAVE_BUTTON, &mainButtonChanged);
@@ -184,12 +184,12 @@ Button vcf_vel_Button = Button(&mcp6, 6, VCF_VEL_SW, &mainButtonChanged);
 Button vca_vel_Button = Button(&mcp6, 14, VCA_VEL_SW, &mainButtonChanged);
 
 Button *mainButtons[] = {
-        &osc1_oct_Button, &osc1_wave_Button, &osc1_sub_Button, &osc2_wave_Button, &osc2_xmod_Button, &osc2_eg_Button, &lfo1_wave_Button, &lfo2_wave_Button, &lfo3_wave_Button, &env_sel_Button, &lfo_sel_Button,
+        &lfo1_sync_Button, &osc1_wave_Button, &osc1_sub_Button, &osc2_wave_Button, &osc2_xmod_Button, &osc2_eg_Button, &lfo1_wave_Button, &lfo2_wave_Button, &lfo3_wave_Button, &env_sel_Button, &lfo_sel_Button,
         &osc1_lev_Button, &osc2_det_Button, &osc2_lev_Button, &osc2_egd_Button, &vcf_eg_Button, &vcf_keyf_Button, &vcf_vel_Button, &vca_vel_Button,
 };
 
 Button *allButtons[] = {
-        &osc1_oct_Button, &osc1_wave_Button, &osc1_sub_Button, &osc2_wave_Button, &osc2_xmod_Button, &osc2_eg_Button,
+        &lfo1_sync_Button, &osc1_wave_Button, &osc1_sub_Button, &osc2_wave_Button, &osc2_xmod_Button, &osc2_eg_Button,
         &lfo1_wave_Button, &lfo2_wave_Button, &lfo3_wave_Button, &env_sel_Button, &lfo_sel_Button,
         &osc1_lev_Button, &osc2_det_Button, &osc2_lev_Button, &osc2_egd_Button, &vcf_eg_Button, &vcf_keyf_Button, &vcf_vel_Button, &vca_vel_Button
 };
@@ -199,9 +199,9 @@ std::vector<RotaryEncOverMCP*> encByMCP[NUM_MCP];
 
 // // GP1
 
-#define NOTE_PRIORITY_GREEN 7
+#define LFO1_SYNC_RED 1
+#define LFO1_SYNC_GREEN 2
 
-#define NOTE_PRIORITY_RED 15
 
 // // GP2
 
@@ -318,7 +318,7 @@ void setupHardware() {
 }
 
 void setupMCPoutputs() {
-  mcp1.pinMode(7, OUTPUT);   // pin 7 = GPA7 of MCP2301X
-  mcp1.pinMode(15, OUTPUT);  // pin 15 = GPB7 of MCP2301X
+  mcp1.pinMode(1, OUTPUT);   // pin 1 = GPA7 of MCP2301X
+  mcp1.pinMode(2, OUTPUT);  // pin 2 = GPA7 of MCP2301X
 
 }

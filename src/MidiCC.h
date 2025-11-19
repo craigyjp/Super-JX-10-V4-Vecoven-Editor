@@ -1,9 +1,7 @@
 //MIDI CC control numbers
 //These broadly follow standard CC assignments
-#define CCmodWheelinput 1 //pitch LFO amount - less from mod wheel
 
-// Encoders
-#define CCmasterVolume 7
+// NRPN values
 
 #define CCdco1_range      0x00
 #define CCdco1_wave       0x01
@@ -21,7 +19,8 @@
 
 #define CCdco1_mode     0x10
 #define CCdco2_fine     0x11
-
+#define CCvcf_hpf       0x12
+#define CCchorus_sw     0x13
 #define CCdco1_PW       0x14
 #define CCdco1_PWM_env  0x15
 #define CCdco1_PWM_lfo  0x16
@@ -30,6 +29,18 @@
 #define CCdco2_PWM_env  0x1B
 #define CCdco2_PWM_lfo  0x1C
 
+#define CCdco1_level    0x20
+#define CCdco2_level    0x21
+#define CCdco2_mod      0x22
+
+#define CCvcf_cutoff    0x25
+#define CCvcf_res       0x26
+#define CCvcf_lfo1      0x27
+#define CCvcf_lfo2      0x28
+#define CCvcf_env       0x29
+#define CCvcf_kb        0x2A
+
+#define CCvca_mod       0x2D
 
 
 #define CClfo1_wave   0x30
@@ -42,104 +53,44 @@
 #define CClfo2_rate   0x37
 #define CClfo2_lfo1   0x38
 
-// #define CCampLFODepth 10
-// #define CCMWDepth 11
-// #define CCPBDepth 12
-// #define CCATDepth 13
-// #define CCeffectPot1 14
-// #define CCeffectPot2 15
-// #define CCeffectPot3 16
-// #define CCLFO1Rate 17
-// #define CCLFO2Rate 18
-// #define CCLFO1Delay 19
+#define CCtime1          0x3A
+#define CClevel1         0x3B
+#define CCtime2          0x3C
+#define CClevel2         0x3D
+#define CCtime3          0x3E
+#define CClevel3         0x3F
+#define CCtime4          0x40
+#define CC5stage_mode    0x41
 
-// #define CCampAttack 20
-// #define CCampDecay 21
-// #define CCampSustain 22
-// #define CCampRelease 23
-// #define CCfilterAttack 24
-// #define CCfilterDecay 25
-// #define CCfilterSustain 26
-// #define CCfilterRelease 27
-// #define CCpitchAttack 28
-// #define CCpitchDecay 29
-// #define CCpitchSustain 30
-// #define CCpitchRelease 31
+#define CC2time1         0x42
+#define CC2level1        0x43
+#define CC2time2         0x44
+#define CC2level2        0x45
+#define CC2time3         0x46
+#define CC2level3        0x47
+#define CC2time4         0x48
+#define CC25stage_mode   0x49
 
-// #define CCfilterResonance 71
-// #define CCfilterKeyTrack 33
-// #define CCnoiseLevel 34
-// #define CCfilterCutoff 74
-// #define CCfilterEGDepth 36
-// #define CCvcoCFMDepth 37
-// #define CCvcoBDetune 38
-// #define CCvcoCDetune 39
-// #define CCfilterLFODepth 40
-// #define CCvcoAFMDepth 41
-// #define CCvcoBFMDepth 42
-// #define CCeffectsMix 43
-// #define CCvcoALevel 44
-// #define CCvcoBLevel 45
-// #define CCvcoCLevel 46
-// #define CCvcoAPW 47
-// #define CCvcoBPW 48
-// #define CCvcoCPW 49
-// #define CCvcoAPWM 50
-// #define CCvcoBPWM 51
-// #define CCvcoCPWM 52
-// #define CCvcoAWave 53
-// #define CCvcoBWave 54
-// #define CCvcoCWave 55
-// #define CCvcoAInterval 56
-// #define CCvcoBInterval 57
-// #define CCvcoCInterval 58
-// #define CCXModDepth 59
+#define CCattack         0x4A
+#define CCdecay          0x4B
+#define CCsustain        0x4C
+#define CCrelease        0x4D
+#define CCadsr_mode      0x4E
 
-// // Buttons
-// #define CCnoiseLevelSW 69
-// #define CCvcoAPWMsource 70
-// #define CCvcoBPWMsource 32
-// #define CCvcoCPWMsource 72
+#define CC4attack         0x4F
+#define CC4decay          0x50
+#define CC4sustain        0x51
+#define CC4release        0x52
+#define CC4adsr_mode      0x53
 
-// #define CCvcoAFMsource 73
-// #define CCvcoBFMsource 35
-// #define CCvcoCFMsource 75
+// Not defined as NRPN or sysex
 
-// #define CCLFO1Wave 76
-// #define CCLFO2Wave 77
-
-// #define CCfilterLFODepthSW 78
-// #define CCampLFODepthSW 79
-
-// #define CCfilterType 80
-// #define CCfilterPoleSW 81
-
-// #define CCvcoAOctave 82
-// #define CCvcoBOctave 83
-// #define CCvcoCOctave 84
-// #define CCfilterEGDepthSW 85
-// #define CCfilterKeyTrackSW 86
-// #define CCfilterVelocitySW 87
-// #define CCampVelocitySW 88
-
-// #define CCFMSyncSW 89
-// #define CCPWSyncSW 90
-// #define CCPWMSyncSW 91
-// #define CCmultiSW 92
-
-// #define CCeffects3SW 93
-
-// #define CCeffectNumSW 94
-// #define CCeffectBankSW 95
-// #define CCegInvertSW 96
-// #define CCfilterKeyTrackZeroSW 97
-
-// #define CCvcoATable 98
-// #define CCvcoBTable 99
-// #define CCvcoCTable 100
-// #define CCplayModeSW 101
-// #define CCnotePrioritySW 102
-// #define CCeffectsMixSW 103
+#define CCctla            0x54
+#define CCctlb            0x55
+#define CCbalance         0x56
+#define CCat_vib          0x57
+#define CCat_lpf          0x58
+#define CCat_vol          0x59
 
 
 #define CCallnotesoff 123//Panic button

@@ -10,7 +10,6 @@
 #include "Button.h"
 #include "HWControls.h"
 #include "EepromMgr.h"
-#include "Wavetables.h"
 
 #define PARAMETER 0      //The main page for displaying the current patch and control (parameter) changes
 #define RECALL 1         //Patches list
@@ -24,10 +23,6 @@
 #define SETTINGSVALUE 9  //Settings page
 
 unsigned int state = PARAMETER;
-
-EXTMEM int16_t wavetablePSRAM[BANKS][MAX_TABLES_PER_BANK][TABLE_SIZE];
-uint16_t stagingBuffer[TABLE_SIZE];  // stays in RAM
-uint16_t tablesInBank[BANKS];        // track how many tables per bank
 
 #include "ST7735Display.h"
 
@@ -52,6 +47,7 @@ void setup() {
   Serial.begin(115200);
 
   SPI.begin();
+  SPISettings settings(8000000, MSBFIRST, SPI_MODE0);  // 8 MHz to start
 
   setupDisplay();
   setUpSettings();
@@ -300,89 +296,157 @@ void myControlChange(byte channel, byte control, int value) {
       updatedco2_fine(1);
       break;
 
-      // case CCvcoCFMDepth:
-      //   vcoCFMDepth = map(value, 0, 127, 0, 255);
-      //   updatevcoCFMDepth(1);
-      //   break;
+    case CCdco1_level:
+      dco1_level = value;
+      updatedco1_level(1);
+      break;
 
-      // case CCvcoBDetune:
-      //   vcoBDetune = value;
-      //   updatevcoBDetune(1);
-      //   break;
+    case CCdco2_level:
+      dco2_level = value;
+      updatedco2_level(1);
+      break;
 
-      // case CCvcoCDetune:
-      //   vcoCDetune = value;
-      //   updatevcoCDetune(1);
-      //   break;
+    case CCdco2_mod:
+      dco2_mod = value;
+      updatedco2_mod(1);
+      break;
 
-      // case CCfilterLFODepth:
-      //   filterLFODepth = map(value, 0, 127, -127, 127);
-      //   updatefilterLFODepth(1);
-      //   break;
+    case CCvcf_hpf:
+      vcf_hpf = value;
+      updatevcf_hpf(1);
+      break;
 
-      // case CCeffectsMix:
-      //   effectsMix = map(value, 0, 127, -127, 127);
-      //   updateeffectsMix(1);
-      //   break;
+    case CCvcf_cutoff:
+      vcf_cutoff = value;
+      updatevcf_cutoff(1);
+      break;
 
-      // case CCvcoALevel:
-      //   vcoALevel = map(value, 0, 127, 0, 255);
-      //   updatevcoALevel(1);
-      //   break;
+    case CCvcf_res:
+      vcf_res = value;
+      updatevcf_res(1);
+      break;
 
-      // case CCvcoBLevel:
-      //   vcoBLevel = map(value, 0, 127, 0, 255);
-      //   updatevcoBLevel(1);
-      //   break;
+    case CCvcf_kb:
+      vcf_kb = value;
+      updatevcf_kb(1);
+      break;
 
-      // case CCvcoCLevel:
-      //   vcoCLevel = map(value, 0, 127, 0, 255);
-      //   updatevcoCLevel(1);
-      //   break;
+    case CCvcf_env:
+      vcf_env = value;
+      updatevcf_env(1);
+      break;
 
-      // case CCvcoAPW:
+    case CCvcf_lfo1:
+      vcf_lfo1 = value;
+      updatevcf_lfo1(1);
+      break;
 
-      //   break;
+    case CCvcf_lfo2:
+      vcf_lfo2 = value;
+      updatevcf_lfo2(1);
+      break;
 
-      // case CCvcoBPW:
+    case CCvca_mod:
+      vca_mod = value;
+      updatevca_mod(1);
+      break;
 
-      //   break;
+    case CCat_vib:
+      at_vib = value;
+      updateat_vib(1);
+      break;
 
-      // case CCvcoCPW:
+    case CCat_lpf:
+      at_lpf = value;
+      updateat_lpf(1);
+      break;
 
-      //   break;
+    case CCat_vol:
+      at_vol = value;
+      updateat_vol(1);
+      break;
 
-      // case CCvcoAWave:
+    case CCbalance:
+      balance = value;
+      updatebalance(1);
+      break;
 
-      //   break;
+    case CCtime1:
+      time1 = value;
+      updatetime1(1);
+      break;
 
-      // case CCvcoBWave:
+    case CClevel1:
+      level1 = value;
+      updatelevel1(1);
+      break;
 
-      //   break;
+    case CCtime2:
+      time2 = value;
+      updatetime2(1);
+      break;
 
-      // case CCvcoCWave:
+    case CClevel2:
+      level2 = value;
+      updatelevel2(1);
+      break;
 
-      //   break;
+    case CCtime3:
+      time3 = value;
+      updatetime3(1);
+      break;
 
-      // case CCvcoAInterval:
-      //   vcoAInterval = map(value, 0, 127, -12, 12);
-      //   updatevcoAInterval(1);
-      //   break;
+    case CClevel3:
+      level3 = value;
+      updatelevel3(1);
+      break;
 
-      // case CCvcoBInterval:
-      //   vcoBInterval = map(value, 0, 127, -12, 12);
-      //   updatevcoBInterval(1);
-      //   break;
+    case CCtime4:
+      time4 = value;
+      updatetime4(1);
+      break;
 
-      // case CCvcoCInterval:
-      //   vcoCInterval = map(value, 0, 127, -12, 12);
-      //   updatevcoCInterval(1);
-      //   break;
+    case CC5stage_mode:
+      env5stage_mode_str = map(value, 0, 127, 0, 7);
+      env5stage_mode = value;
+      updateenv5stage_mode(1);
+      break;
 
-      // case CCXModDepth:
-      //   XModDepth = map(value, 0, 127, 0, 255);
-      //   updateXModDepth(1);
-      //   break;
+    case CCattack:
+      attack = value;
+      updateattack(1);
+      break;
+
+    case CCdecay:
+      decay = value;
+      updatedecay(1);
+      break;
+
+    case CCsustain:
+      sustain = value;
+      updatesustain(1);
+      break;
+
+    case CCrelease:
+      release = value;
+      updaterelease(1);
+      break;
+
+    case CCadsr_mode:
+      adsr_mode_str = map(value, 0, 127, 0, 7);
+      adsr_mode = value;
+      updateadsr_mode(1);
+      break;
+
+    case CCctla:
+      ctla = value;
+      updatectla(1);
+      break;
+
+    case CCctlb:
+      ctlb = value;
+      updatectlb(1);
+      break;
 
       //   // Buttons
 
@@ -837,96 +901,309 @@ FLASHMEM void updatedco2_fine(bool announce) {
   midiCCOut(CCdco2_fine, dco2_fine);
 }
 
-// FLASHMEM void updatevcoBPWM(bool announce) {
-//   if (announce) {
-//     showCurrentParameterPage("VCO B PWM", vcoBPWM ? String(vcoBPWM) : "Off");
-//     startParameterDisplay();
-//   }
-// }
+FLASHMEM void updatedco1_level(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("DCO1 Level", String(dco1_level));
+    startParameterDisplay();
+  }
+  midiCCOut(CCdco1_level, dco1_level);
+}
 
-// FLASHMEM void updatevcoCPWM(bool announce) {
-//   if (announce) {
-//     showCurrentParameterPage("VCO C PWM", vcoCPWM ? String(vcoCPWM) : "Off");
-//     startParameterDisplay();
-//   }
-// }
+FLASHMEM void updatedco2_level(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("DCO2 Level", String(dco2_level));
+    startParameterDisplay();
+  }
+  midiCCOut(CCdco2_level, dco2_level);
+}
 
-// FLASHMEM void updateXModDepth(bool announce) {
-//   if (announce) {
-//     showCurrentParameterPage("XMOD Depth", XModDepth ? String(XModDepth) : "Off");
-//     startParameterDisplay();
-//   }
-// }
+FLASHMEM void updatedco2_mod(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("DCO Env Mod", String(dco2_mod));
+    startParameterDisplay();
+  }
+  midiCCOut(CCdco2_mod, dco2_mod);
+}
 
-// FLASHMEM void updatevcoAInterval(bool announce) {
-//   if (announce) {
-//     showCurrentParameterPage("VCO A Int", String(vcoAInterval));
-//     startParameterDisplay();
-//   }
-// }
+FLASHMEM void updatevcf_hpf(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("VCF HPF", String(vcf_hpf));
+    startParameterDisplay();
+  }
+  midiCCOut(CCvcf_hpf, vcf_hpf);
+}
 
-// FLASHMEM void updatevcoBInterval(bool announce) {
-//   if (announce) {
-//     showCurrentParameterPage("VCO B Int", String(vcoBInterval));
-//     startParameterDisplay();
-//   }
-// }
+FLASHMEM void updatevcf_cutoff(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("VCF Cutoff", String(vcf_cutoff));
+    startParameterDisplay();
+  }
+  midiCCOut(CCvcf_cutoff, vcf_cutoff);
+}
 
-// FLASHMEM void updatevcoCInterval(bool announce) {
-//   if (announce) {
-//     showCurrentParameterPage("VCO C Int", String(vcoCInterval));
-//     startParameterDisplay();
-//   }
-// }
+FLASHMEM void updatevcf_res(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("VCF Res", String(vcf_res));
+    startParameterDisplay();
+  }
+  midiCCOut(CCvcf_res, vcf_res);
+}
 
-// FLASHMEM void updatevcoAFMDepth(bool announce) {
-//   if (announce) {
-//     if (vcoAFMDepth == 0) {
-//       showCurrentParameterPage("A FM Depth", "Off");
-//     } else {
-//       showCurrentParameterPage("A FM Depth", String(vcoAFMDepth));
-//     }
-//     startParameterDisplay();
-//   }
-// }
+FLASHMEM void updatevcf_kb(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("VCF Track", String(vcf_kb));
+    startParameterDisplay();
+  }
+  midiCCOut(CCvcf_kb, vcf_kb);
+}
 
-// FLASHMEM void updatevcoBFMDepth(bool announce) {
-//   if (announce) {
-//     if (vcoBFMDepth == 0) {
-//       showCurrentParameterPage("B FM Depth", "Off");
-//     } else {
-//       showCurrentParameterPage("B FM Depth", String(vcoBFMDepth));
-//     }
-//     startParameterDisplay();
-//   }
-// }
+FLASHMEM void updatevcf_env(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("VCF Env", String(vcf_env));
+    startParameterDisplay();
+  }
+  midiCCOut(CCvcf_env, vcf_env);
+}
 
-// FLASHMEM void updatevcoCFMDepth(bool announce) {
-//   if (announce) {
-//     if (vcoCFMDepth == 0) {
-//       showCurrentParameterPage("C FM Depth", "Off");
-//     } else {
-//       showCurrentParameterPage("C FM Depth", String(vcoCFMDepth));
-//     }
-//     startParameterDisplay();
-//   }
-// }
+FLASHMEM void updatevcf_lfo1(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("VCF LFO1", String(vcf_lfo1));
+    startParameterDisplay();
+  }
+  midiCCOut(CCvcf_lfo1, vcf_lfo1);
+}
 
-// FLASHMEM void updatevcoBDetune(bool announce) {
-//   if (announce) {
-//     int displayVal = vcoBDetune - 64;  // Center at 0
-//     showCurrentParameterPage("VCO B Detune", String(displayVal));
-//     startParameterDisplay();
-//   }
-// }
+FLASHMEM void updatevcf_lfo2(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("VCF LFO2", String(vcf_lfo2));
+    startParameterDisplay();
+  }
+  midiCCOut(CCvcf_lfo2, vcf_lfo2);
+}
 
-// FLASHMEM void updatevcoCDetune(bool announce) {
-//   if (announce) {
-//     int displayVal = vcoCDetune - 64;  // Center at 0
-//     showCurrentParameterPage("VCO C Detune", String(displayVal));
-//     startParameterDisplay();
-//   }
-// }
+FLASHMEM void updatevca_mod(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("VCA Env", String(vca_mod));
+    startParameterDisplay();
+  }
+  midiCCOut(CCvca_mod, vca_mod);
+}
+
+FLASHMEM void updateat_vib(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("AT Vibrato", String(at_vib));
+    startParameterDisplay();
+  }
+  midiCCOut(CCat_vib, at_vib);
+}
+
+FLASHMEM void updateat_lpf(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("AT Filter", String(at_lpf));
+    startParameterDisplay();
+  }
+  midiCCOut(CCat_lpf, at_lpf);
+}
+
+FLASHMEM void updateat_vol(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("AT Volume", String(at_vol));
+    startParameterDisplay();
+  }
+  midiCCOut(CCat_vol, at_vol);
+}
+
+FLASHMEM void updatebalance(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("Balance", String(balance));
+    startParameterDisplay();
+  }
+  midiCCOut(CCbalance, balance);
+}
+
+FLASHMEM void updatetime1(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("Env1 T1", String(time1));
+    startParameterDisplay();
+  }
+  midiCCOut(CCtime1, time1);
+}
+
+FLASHMEM void updatelevel1(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("Env1 L1", String(level1));
+    startParameterDisplay();
+  }
+  midiCCOut(CClevel1, level1);
+}
+
+FLASHMEM void updatetime2(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("Env1 T2", String(time2));
+    startParameterDisplay();
+  }
+  midiCCOut(CCtime2, time2);
+}
+
+FLASHMEM void updatelevel2(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("Env1 L2", String(level2));
+    startParameterDisplay();
+  }
+  midiCCOut(CClevel2, level2);
+}
+
+FLASHMEM void updatetime3(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("Env1 T3", String(time3));
+    startParameterDisplay();
+  }
+  midiCCOut(CCtime3, time3);
+}
+
+FLASHMEM void updatelevel3(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("Env1 L3", String(level3));
+    startParameterDisplay();
+  }
+  midiCCOut(CClevel3, level3);
+}
+
+FLASHMEM void updatetime4(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("Env1 T4", String(time4));
+    startParameterDisplay();
+  }
+  midiCCOut(CCtime4, time4);
+}
+
+FLASHMEM void updateenv5stage_mode(bool announce) {
+  if (announce) {
+    switch (env5stage_mode_str) {
+      case 0:
+        showCurrentParameterPage("Env1 Key F.", "Off");
+        break;
+
+      case 1:
+        showCurrentParameterPage("Env1 Key F.", "Key 1");
+        break;
+
+      case 2:
+        showCurrentParameterPage("Env1 Key F.", "Key 2");
+        break;
+
+      case 3:
+        showCurrentParameterPage("Env1 Key F.", "Key 3");
+        break;
+
+      case 4:
+        showCurrentParameterPage("Env1 Key F.", "Loop 0");
+        break;
+
+      case 5:
+        showCurrentParameterPage("Env1 Key F.", "Loop 1");
+        break;
+
+      case 6:
+        showCurrentParameterPage("Env1 Key F.", "Loop 2");
+        break;
+
+      case 7:
+        showCurrentParameterPage("Env1 Key F.", "Loop 3");
+        break;
+    }
+    startParameterDisplay();
+  }
+  midiCCOut(CC5stage_mode, env5stage_mode);
+}
+
+FLASHMEM void updateattack(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("Env2 Attack", String(attack));
+    startParameterDisplay();
+  }
+  midiCCOut(CCattack, attack);
+}
+
+FLASHMEM void updatedecay(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("Env2 Decay", String(decay));
+    startParameterDisplay();
+  }
+  midiCCOut(CCdecay, decay);
+}
+
+FLASHMEM void updatesustain(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("Env2 Sustain", String(sustain));
+    startParameterDisplay();
+  }
+  midiCCOut(CCsustain, sustain);
+}
+
+FLASHMEM void updaterelease(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("Env2 Release", String(release));
+    startParameterDisplay();
+  }
+  midiCCOut(CCrelease, release);
+}
+
+FLASHMEM void updateadsr_mode(bool announce) {
+  if (announce) {
+    switch (adsr_mode_str) {
+      case 0:
+        showCurrentParameterPage("Env2 Key F.", "Off");
+        break;
+
+      case 1:
+        showCurrentParameterPage("Env2 Key F.", "Key 1");
+        break;
+
+      case 2:
+        showCurrentParameterPage("Env2 Key F.", "Key 2");
+        break;
+
+      case 3:
+        showCurrentParameterPage("Env2 Key F.", "Key 3");
+        break;
+
+      case 4:
+        showCurrentParameterPage("Env2 Key F.", "Loop 0");
+        break;
+
+      case 5:
+        showCurrentParameterPage("Env2 Key F.", "Loop 1");
+        break;
+
+      case 6:
+        showCurrentParameterPage("Env2 Key F.", "Loop 2");
+        break;
+
+      case 7:
+        showCurrentParameterPage("Env2 Key F.", "Loop 3");
+        break;
+    }
+    startParameterDisplay();
+  }
+  midiCCOut(CCadsr_mode, adsr_mode);
+}
+
+FLASHMEM void updatectla(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("Control A", String(ctla));
+    startParameterDisplay();
+  }
+  midiCCOut(CCctla, ctla);
+}
+
+FLASHMEM void updatectlb(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("Control B", String(ctlb));
+    startParameterDisplay();
+  }
+  midiCCOut(CCctlb, ctlb);
+}
 
 // FLASHMEM void updatevcoAWave(bool announce) {
 //   if (!vcoATable) {
@@ -3090,8 +3367,9 @@ void midiCCOut(int CC, int value) {
 void mainButtonChanged(Button *btn, bool released) {
 
   switch (btn->id) {
-    case OSC1_OCT_BUTTON:
-
+    case LFO1_SYNC_BUTTON:
+      if (!released) {
+      }
       break;
 
     case OSC1_WAVE_BUTTON:
@@ -3178,8 +3456,8 @@ void checkMux() {
 
   mux1Read = adc->adc0->analogRead(MUX1_S);
   mux2Read = adc->adc0->analogRead(MUX2_S);
-  mux3Read = adc->adc1->analogRead(MUX3_S);
-  mux4Read = adc->adc1->analogRead(MUX4_S);
+  mux3Read = adc->adc1->analogRead(MUX4_S);
+  mux4Read = adc->adc1->analogRead(MUX3_S);
 
   if (mux1Read > (mux1ValuesPrev[muxInput] + QUANTISE_FACTOR) || mux1Read < (mux1ValuesPrev[muxInput] - QUANTISE_FACTOR)) {
     mux1ValuesPrev[muxInput] = mux1Read;
@@ -3232,8 +3510,8 @@ void checkMux() {
     mux2ValuesPrev[muxInput] = mux2Read;
     mux2Read = (mux2Read >> resolutionFrig);  // Change range to 0-127
 
-     switch (muxInput) {
-       case MUX2_LFO2_WAVE:
+    switch (muxInput) {
+      case MUX2_LFO2_WAVE:
         myControlChange(midiChannel, CClfo2_wave, mux2Read);
         break;
       case MUX2_LFO2_RATE:
@@ -3272,116 +3550,113 @@ void checkMux() {
       case MUX2_DCO2_FINE:
         myControlChange(midiChannel, CCdco2_fine, mux2Read);
         break;
-     }
+    }
   }
 
   if (mux3Read > (mux3ValuesPrev[muxInput] + QUANTISE_FACTOR) || mux3Read < (mux3ValuesPrev[muxInput] - QUANTISE_FACTOR)) {
     mux3ValuesPrev[muxInput] = mux3Read;
     mux3Read = (mux3Read >> resolutionFrig);  // Change range to 0-127
 
-    // switch (muxInput) {
-    //   case MUX3_REVERB_MIX:
-    //     myControlChange(midiChannel, CCreverbLevel, mux3Read);
-    //     break;
-    //   case MUX3_REVERB_DAMP:
-    //     myControlChange(midiChannel, CCreverbDamp, mux3Read);
-    //     break;
-    //   case MUX3_REVERB_DECAY:
-    //     myControlChange(midiChannel, CCreverbDecay, mux3Read);
-    //     break;
-    //   case MUX3_DRIFT:
-    //     myControlChange(midiChannel, CCdriftAmount, mux3Read);
-    //     break;
-    //   case MUX3_VCA_VELOCITY:
-    //     myControlChange(midiChannel, CCvcaVelocity, mux3Read);
-    //     break;
-    //   case MUX3_VCA_RELEASE:
-    //     myControlChange(midiChannel, CCvcaRelease, mux3Read);
-    //     break;
-    //   case MUX3_VCA_SUSTAIN:
-    //     myControlChange(midiChannel, CCvcaSustain, mux3Read);
-    //     break;
-    //   case MUX3_VCA_DECAY:
-    //     myControlChange(midiChannel, CCvcaDecay, mux3Read);
-    //     break;
-    //   case MUX3_VCF_SUSTAIN:
-    //     myControlChange(midiChannel, CCvcfSustain, mux3Read);
-    //     break;
-    //   case MUX3_CONTOUR_AMOUNT:
-    //     myControlChange(midiChannel, CCvcfContourAmount, mux3Read);
-    //     break;
-    //   case MUX3_VCF_RELEASE:
-    //     myControlChange(midiChannel, CCvcfRelease, mux3Read);
-    //     break;
-    //   case MUX3_KB_TRACK:
-    //     myControlChange(midiChannel, CCkbTrack, mux3Read);
-    //     break;
-    //   case MUX3_MASTER_VOLUME:
-    //     myControlChange(midiChannel, CCmasterVolume, mux3Read);
-    //     break;
-    //   case MUX3_VCF_VELOCITY:
-    //     myControlChange(midiChannel, CCvcfVelocity, mux3Read);
-    //     break;
-    //   case MUX3_MASTER_TUNE:
-    //     myControlChange(midiChannel, CCmasterTune, mux3Read);
-    //     break;
-    // }
+    switch (muxInput) {
+      case MUX3_DCO1_LEVEL:
+        myControlChange(midiChannel, CCdco1_level, mux3Read);
+        break;
+      case MUX3_DCO2_LEVEL:
+        myControlChange(midiChannel, CCdco2_level, mux3Read);
+        break;
+      case MUX3_DCO2_MOD:
+        myControlChange(midiChannel, CCdco2_mod, mux3Read);
+        break;
+      case MUX3_VCF_HPF:
+        myControlChange(midiChannel, CCvcf_hpf, mux3Read);
+        break;
+      case MUX3_VCF_CUTOFF:
+        myControlChange(midiChannel, CCvcf_cutoff, mux3Read);
+        break;
+      case MUX3_VCF_RES:
+        myControlChange(midiChannel, CCvcf_res, mux3Read);
+        break;
+      case MUX3_VCF_KB:
+        myControlChange(midiChannel, CCvcf_kb, mux3Read);
+        break;
+      case MUX3_VCF_ENV:
+        myControlChange(midiChannel, CCvcf_env, mux3Read);
+        break;
+      case MUX3_VCF_LFO1:
+        myControlChange(midiChannel, CCvcf_lfo1, mux3Read);
+        break;
+      case MUX3_VCF_LFO2:
+        myControlChange(midiChannel, CCvcf_lfo2, mux3Read);
+        break;
+      case MUX3_VCA_MOD:
+        myControlChange(midiChannel, CCvca_mod, mux3Read);
+        break;
+      case MUX3_AT_VIB:
+        myControlChange(midiChannel, CCat_vib, mux3Read);
+        break;
+      case MUX3_AT_LPF:
+        myControlChange(midiChannel, CCat_lpf, mux3Read);
+        break;
+      case MUX3_AT_VOL:
+        myControlChange(midiChannel, CCat_vol, mux3Read);
+        break;
+      case MUX3_BALANCE:
+        myControlChange(midiChannel, CCbalance, mux3Read);
+        break;
+    }
   }
 
   if (mux4Read > (mux4ValuesPrev[muxInput] + QUANTISE_FACTOR) || mux4Read < (mux4ValuesPrev[muxInput] - QUANTISE_FACTOR)) {
     mux4ValuesPrev[muxInput] = mux4Read;
     mux4Read = (mux4Read >> resolutionFrig);  // Change range to 0-127
 
-    // switch (muxInput) {
-    //   case MUX1_GLIDE:
-    //     myControlChange(midiChannel, CCglide, mux1Read);
-    //     break;
-    //   case MUX1_UNISON_DETUNE:
-    //     myControlChange(midiChannel, CCuniDetune, mux1Read);
-    //     break;
-    //   case MUX1_BEND_DEPTH:
-    //     myControlChange(midiChannel, CCbendDepth, mux1Read);
-    //     break;
-    //   case MUX1_LFO_OSC3:
-    //     myControlChange(midiChannel, CClfoOsc3, mux1Read);
-    //     break;
-    //   case MUX1_LFO_FILTER_CONTOUR:
-    //     myControlChange(midiChannel, CClfoFilterContour, mux1Read);
-    //     break;
-    //   case MUX1_ARP_RATE:
-    //     myControlChange(midiChannel, CCarpSpeed, mux1Read);
-    //     break;
-    //   case MUX1_PHASER_RATE:
-    //     myControlChange(midiChannel, CCphaserSpeed, mux1Read);
-    //     break;
-    //   case MUX1_PHASER_DEPTH:
-    //     myControlChange(midiChannel, CCphaserDepth, mux1Read);
-    //     break;
-    //   case MUX1_LFO_INITIAL_AMOUNT:
-    //     myControlChange(midiChannel, CClfoInitialAmount, mux1Read);
-    //     break;
-    //   case MUX1_LFO_MOD_WHEEL_AMOUNT:
-    //     myControlChange(midiChannel, CCmodWheel, mux1Read);
-    //     break;
-    //   case MUX1_LFO_RATE:
-    //     myControlChange(midiChannel, CClfoSpeed, mux1Read);
-    //     break;
-    //   case MUX1_OSC2_FREQUENCY:
-    //     myControlChange(midiChannel, CCosc2Frequency, mux1Read);
-    //     break;
-    //   case MUX1_OSC2_PW:
-    //     myControlChange(midiChannel, CCosc2PW, mux1Read);
-    //     break;
-    //   case MUX1_OSC1_PW:
-    //     myControlChange(midiChannel, CCosc1PW, mux1Read);
-    //     break;
-    //   case MUX1_OSC3_FREQUENCY:
-    //     myControlChange(midiChannel, CCosc3Frequency, mux1Read);
-    //     break;
-    //   case MUX1_OSC3_PW:
-    //     myControlChange(midiChannel, CCosc3PW, mux1Read);
-    //     break;
-    // }
+    switch (muxInput) {
+      case MUX4_T1:
+        myControlChange(midiChannel, CCtime1, mux4Read);
+        break;
+      case MUX4_L1:
+        myControlChange(midiChannel, CClevel1, mux4Read);
+        break;
+      case MUX4_T2:
+        myControlChange(midiChannel, CCtime2, mux4Read);
+        break;
+      case MUX4_L2:
+        myControlChange(midiChannel, CClevel2, mux4Read);
+        break;
+      case MUX4_T3:
+        myControlChange(midiChannel, CCtime3, mux4Read);
+        break;
+      case MUX4_L3:
+        myControlChange(midiChannel, CClevel3, mux4Read);
+        break;
+      case MUX4_T4:
+        myControlChange(midiChannel, CCtime4, mux4Read);
+        break;
+      case MUX4_5STAGE_MODE:
+        myControlChange(midiChannel, CC5stage_mode, mux4Read);
+        break;
+      case MUX4_ATTACK:
+        myControlChange(midiChannel, CCattack, mux4Read);
+        break;
+      case MUX4_DECAY:
+        myControlChange(midiChannel, CCdecay, mux4Read);
+        break;
+      case MUX4_SUSTAIN:
+        myControlChange(midiChannel, CCsustain, mux4Read);
+        break;
+      case MUX4_RELEASE:
+        myControlChange(midiChannel, CCrelease, mux4Read);
+        break;
+      case MUX4_ADSR_MODE:
+        myControlChange(midiChannel, CCadsr_mode, mux4Read);
+        break;
+      case MUX4_CTLA:
+        myControlChange(midiChannel, CCctla, mux4Read);
+        break;
+      case MUX4_CTLB:
+        myControlChange(midiChannel, CCctlb, mux4Read);
+        break;
+    }
   }
 
   muxInput++;

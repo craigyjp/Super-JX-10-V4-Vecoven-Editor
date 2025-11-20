@@ -43,6 +43,8 @@
 #define CCdco1_level      0x20
 #define CCdco2_level      0x21
 #define CCdco2_mod        0x22
+#define CCdco_mix_dyn     0x23
+#define CCdco_mix_env_source 0x24
 
 #define CCvcf_cutoff    0x25
 #define CCvcf_res       0x26
@@ -50,8 +52,12 @@
 #define CCvcf_lfo2      0x28
 #define CCvcf_env       0x29
 #define CCvcf_kb        0x2A
+#define CCvcf_dyn       0x2B
+#define CCvcf_env_source  0x2C
 
 #define CCvca_mod       0x2D
+#define CCvca_env_source  0x2E
+#define CCvca_dyn       0x2F
 
 #define CClfo1_wave   0x30
 #define CClfo1_delay  0x31
@@ -103,9 +109,8 @@
 #define CCat_vib          0x57
 #define CCat_lpf          0x58
 #define CCat_vol          0x59
-#define CCdco1_PWM_env_polarity  0x5A
-#define CCdco2_PWM_env_polarity  0x5B
-#define CCdco1_pitch_env_polarity  0x5C
-#define CCdco2_pitch_env_polarity  0x5D
+#define CCenv5stage       0x5A
+#define CCadsr            0x5B
+#define CCplaymode        0x5E
 
 #define CCallnotesoff 123//Panic button

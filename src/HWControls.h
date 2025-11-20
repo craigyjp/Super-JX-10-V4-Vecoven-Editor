@@ -133,7 +133,20 @@ ADC *adc = new ADC();
 #define DCO2_PITCH_ENV_POLARITY_BUTTON 15
 #define DCO1_PITCH_ENV_SOURCE_BUTTON 16
 #define DCO2_PITCH_ENV_SOURCE_BUTTON 17
-#define VCA_VEL_SW 18
+
+#define DCO_MIX_ENV_POLARITY_BUTTON 18
+#define DCO_MIX_ENV_SOURCE_BUTTON 19
+#define VCF_ENV_POLARITY_BUTTON 20
+#define DCO_MIX_DYN_BUTTON 21
+#define ENV5STAGE_SELECT_BUTTON 22
+#define VCA_DYN_BUTTON 23
+#define VCA_ENV_SOURCE_BUTTON 24
+#define VCF_ENV_SOURCE_BUTTON 25
+#define VCF_DYN_BUTTON 26
+#define ADSR_SELECT_BUTTON 27
+#define LOWER_UPPER_BUTTON 28
+#define CHORUS_BUTTON 29
+
 
 //void RotaryEncoderChanged (bool clockwise, int id);
 
@@ -182,16 +195,33 @@ Button dco2_pitch_env_pol_Button = Button(&mcp3, 8, DCO2_PITCH_ENV_POLARITY_BUTT
 Button dco1_pitch_env_src_Button = Button(&mcp4, 12, DCO1_PITCH_ENV_SOURCE_BUTTON, &mainButtonChanged);
 Button dco2_pitch_env_src_Button = Button(&mcp3, 12, DCO2_PITCH_ENV_SOURCE_BUTTON, &mainButtonChanged);
 
+Button dco_mix_env_pol_Button = Button(&mcp4, 3, DCO_MIX_ENV_POLARITY_BUTTON, &mainButtonChanged);
+Button dco_mix_env_src_Button = Button(&mcp5, 8, DCO_MIX_ENV_SOURCE_BUTTON, &mainButtonChanged);
+Button vcf_env_pol_Button = Button(&mcp5, 2, VCF_ENV_POLARITY_BUTTON, &mainButtonChanged);
+Button dco_mix_dyn_Button = Button(&mcp5, 5, DCO_MIX_DYN_BUTTON, &mainButtonChanged);
+Button env5stage_select_Button = Button(&mcp5, 12, ENV5STAGE_SELECT_BUTTON, &mainButtonChanged);
+Button vca_dyn_Button = Button(&mcp6, 0, VCA_DYN_BUTTON, &mainButtonChanged);
+Button vca_env_src_Button = Button(&mcp6, 1, VCA_ENV_SOURCE_BUTTON, &mainButtonChanged);
+Button vcf_env_src_Button = Button(&mcp6, 4, VCF_ENV_SOURCE_BUTTON, &mainButtonChanged);
+Button vcf_dyn_Button = Button(&mcp6, 5, VCF_DYN_BUTTON, &mainButtonChanged);
+Button adsr_select_Button = Button(&mcp6, 8, ADSR_SELECT_BUTTON, &mainButtonChanged);
+Button lower_upper_Button = Button(&mcp1, 13, LOWER_UPPER_BUTTON, &mainButtonChanged);
+Button chorus_Button = Button(&mcp6, 13, CHORUS_BUTTON, &mainButtonChanged);
+
 Button *mainButtons[] = {
         &lfo1_sync_Button, &lfo2_sync_Button, &dco1_PWM_env_src_Button, &dco2_PWM_env_src_Button, &dco1_PWM_env_pol_Button, &dco2_PWM_env_pol_Button, &dco1_PWM_dyn_Button, &dco2_PWM_dyn_Button,
         &dco1_PWM_lfo_src_Button, &dco2_PWM_lfo_src_Button, &dco1_pitch_lfo_src_Button, &dco2_pitch_lfo_src_Button, &dco1_pitch_dyn_Button, &dco2_pitch_dyn_Button,
         &dco1_pitch_env_pol_Button, &dco2_pitch_env_pol_Button, &dco1_pitch_env_src_Button, &dco1_pitch_env_src_Button, &dco2_pitch_env_src_Button,
+        &dco_mix_env_pol_Button, &dco_mix_env_src_Button, &vcf_env_pol_Button, &dco_mix_dyn_Button, &env5stage_select_Button,
+        &vca_dyn_Button, &vca_env_src_Button, &vcf_env_src_Button, &vcf_dyn_Button, &adsr_select_Button, &lower_upper_Button, &chorus_Button,
 };
 
 Button *allButtons[] = {
         &lfo1_sync_Button, &lfo2_sync_Button, &dco1_PWM_env_src_Button, &dco2_PWM_env_src_Button, &dco1_PWM_env_pol_Button, &dco2_PWM_env_pol_Button, &dco1_PWM_dyn_Button, &dco2_PWM_dyn_Button,
         &dco1_PWM_lfo_src_Button, &dco2_PWM_lfo_src_Button, &dco1_pitch_lfo_src_Button, &dco2_pitch_lfo_src_Button, &dco1_pitch_dyn_Button, &dco2_pitch_dyn_Button,
-        &dco1_pitch_env_pol_Button, &dco2_pitch_env_pol_Button, &dco1_pitch_env_src_Button, &dco1_pitch_env_src_Button, &dco2_pitch_env_src_Button
+        &dco1_pitch_env_pol_Button, &dco2_pitch_env_pol_Button, &dco1_pitch_env_src_Button, &dco1_pitch_env_src_Button, &dco2_pitch_env_src_Button,
+        &dco_mix_env_pol_Button, &dco_mix_env_src_Button, &vcf_env_pol_Button, &dco_mix_dyn_Button, &env5stage_select_Button,
+        &vca_dyn_Button, &vca_env_src_Button, &vcf_env_src_Button, &vcf_dyn_Button, &adsr_select_Button, &lower_upper_Button, &chorus_Button
 };
 
 // an array of vectors to hold pointers to the encoders on each MCP
@@ -207,6 +237,9 @@ std::vector<RotaryEncOverMCP*> encByMCP[NUM_MCP];
 
 #define DCO1_PWM_ENV_SOURCE_RED 8
 #define DCO1_PWM_ENV_SOURCE_GREEN 9
+
+#define UPPER_SELECT 11
+#define LOWER_SELECT 12
 
 #define DCO1_ENV_POL_RED 14
 #define DCO1_ENV_POL_GREEN 15
@@ -259,19 +292,33 @@ std::vector<RotaryEncOverMCP*> encByMCP[NUM_MCP];
 
 // // GP5
 
-#define A_OCTAVE_GREEN 6
-#define A_OCTAVE_RED 7
+#define VCF_ENV_SOURCE_RED 0
+#define VCF_ENV_SOURCE_GREEN 1
+#define VCF_ENV_POL_RED 3
+#define VCF_ENV_POL_GREEN 4
+#define DCO_MIX_DYN_RED 6
+#define DCO_MIX_DYN_GREEN 7
 
-#define B_OCTAVE_GREEN 14
-#define B_OCTAVE_RED 15
+#define DCO_MIX_ENV_SOURCE_RED 9
+#define DCO_MIX_ENV_SOURCE_GREEN 10
+#define ENV5STAGE_SELECT_RED 11
+#define ENV5STAGE_SELECT_GREEN 13
+#define DCO_MIX_ENV_POL_RED 14
+#define DCO_MIX_ENV_POL_GREEN 15
 
 // // GP6
 
-#define FM_C_GREEN 6
-#define FM_C_RED 7
+#define VCA_ENV_SOURCE_RED 2
+#define VCA_ENV_SOURCE_GREEN 3
+#define VCF_DYN_RED 6
+#define VCF_DYN_GREEN 7
 
-#define FM_B_GREEN 14
-#define FM_B_RED 15
+#define ADSR_SELECT_RED 9
+#define ADSR_SELECT_GREEN 10
+#define VCA_DYN_RED 11
+#define VCA_DYN_GREEN 12
+#define CHORUS_SELECT_RED 14
+#define CHORUS_SELECT_GREEN 15
 
 //Teensy 4.1 Pins
 
@@ -355,53 +402,68 @@ void setupMCPoutputs() {
 
   mcp1.pinMode(1, OUTPUT);   // pin 1 = GPA7 of MCP2301X
   mcp1.pinMode(2, OUTPUT);   // pin 2 = GPA7 of MCP2301X
-
   mcp1.pinMode(6, OUTPUT);   // pin 6 = GPA7 of MCP2301X
   mcp1.pinMode(7, OUTPUT);   // pin 7 = GPA7 of MCP2301X
-
   mcp1.pinMode(8, OUTPUT);   // pin 6 = GPA7 of MCP2301X
   mcp1.pinMode(9, OUTPUT);   // pin 7 = GPA7 of MCP2301X
-
+  mcp1.pinMode(11, OUTPUT);   // pin 11 = GPA7 of MCP2301X
+  mcp1.pinMode(12, OUTPUT);   // pin 12 = GPA7 of MCP2301X
   mcp1.pinMode(14, OUTPUT);   // pin 14 = GPA7 of MCP2301X
   mcp1.pinMode(15, OUTPUT);   // pin 15 = GPA7 of MCP2301X
 
   mcp2.pinMode(1, OUTPUT);   // pin 1 = GPA7 of MCP2301X
   mcp2.pinMode(2, OUTPUT);   // pin 2 = GPA7 of MCP2301X
-
   mcp2.pinMode(6, OUTPUT);   // pin 6 = GPA7 of MCP2301X
   mcp2.pinMode(7, OUTPUT);   // pin 7 = GPA7 of MCP2301X
-
   mcp2.pinMode(8, OUTPUT);   // pin 8 = GPA7 of MCP2301X
   mcp2.pinMode(9, OUTPUT);   // pin 9 = GPA7 of MCP2301X
-
   mcp2.pinMode(14, OUTPUT);   // pin 14 = GPA7 of MCP2301X
   mcp2.pinMode(15, OUTPUT);   // pin 15 = GPA7 of MCP2301X
 
   mcp3.pinMode(1, OUTPUT);   // pin 1 = GPA7 of MCP2301X
   mcp3.pinMode(2, OUTPUT);   // pin 2 = GPA7 of MCP2301X
-
   mcp3.pinMode(6, OUTPUT);   // pin 6 = GPA7 of MCP2301X
   mcp3.pinMode(7, OUTPUT);   // pin 7 = GPA7 of MCP2301X
-
   mcp3.pinMode(9, OUTPUT);   // pin 9 = GPA7 of MCP2301X
   mcp3.pinMode(10, OUTPUT);   // pin 10 = GPA7 of MCP2301X
   mcp3.pinMode(11, OUTPUT);   // pin 11 = GPA7 of MCP2301X
-
   mcp3.pinMode(13, OUTPUT);   // pin 13 = GPA7 of MCP2301X
   mcp3.pinMode(14, OUTPUT);   // pin 14 = GPA7 of MCP2301X
   mcp3.pinMode(15, OUTPUT);   // pin 15 = GPA7 of MCP2301X
 
   mcp4.pinMode(1, OUTPUT);   // pin 1 = GPA7 of MCP2301X
   mcp4.pinMode(2, OUTPUT);   // pin 2 = GPA7 of MCP2301X
-
   mcp4.pinMode(6, OUTPUT);   // pin 6 = GPA7 of MCP2301X
   mcp4.pinMode(7, OUTPUT);   // pin 7 = GPA7 of MCP2301X
-
   mcp4.pinMode(9, OUTPUT);   // pin 9 = GPA7 of MCP2301X
   mcp4.pinMode(10, OUTPUT);   // pin 10 = GPA7 of MCP2301X
   mcp4.pinMode(11, OUTPUT);   // pin 11 = GPA7 of MCP2301X
-
   mcp4.pinMode(13, OUTPUT);   // pin 13 = GPA7 of MCP2301X
   mcp4.pinMode(14, OUTPUT);   // pin 14 = GPA7 of MCP2301X
   mcp4.pinMode(15, OUTPUT);   // pin 15 = GPA7 of MCP2301X
+
+  mcp5.pinMode(0, OUTPUT);   // pin 0 = GPA7 of MCP2301X
+  mcp5.pinMode(1, OUTPUT);   // pin 1 = GPA7 of MCP2301X
+  mcp5.pinMode(3, OUTPUT);   // pin 3 = GPA7 of MCP2301X
+  mcp5.pinMode(4, OUTPUT);   // pin 4 = GPA7 of MCP2301X
+  mcp5.pinMode(6, OUTPUT);   // pin 6 = GPA7 of MCP2301X
+  mcp5.pinMode(7, OUTPUT);   // pin 7 = GPA7 of MCP2301X
+  mcp5.pinMode(9, OUTPUT);   // pin 9 = GPA7 of MCP2301X
+  mcp5.pinMode(10, OUTPUT);   // pin 10 = GPA7 of MCP2301X
+  mcp5.pinMode(11, OUTPUT);   // pin 11 = GPA7 of MCP2301X
+  mcp5.pinMode(13, OUTPUT);   // pin 13 = GPA7 of MCP2301X
+  mcp5.pinMode(14, OUTPUT);   // pin 14 = GPA7 of MCP2301X
+  mcp5.pinMode(15, OUTPUT);   // pin 15 = GPA7 of MCP2301X
+
+  mcp6.pinMode(2, OUTPUT);   // pin 1 = GPA7 of MCP2301X
+  mcp6.pinMode(3, OUTPUT);   // pin 2 = GPA7 of MCP2301X
+  mcp6.pinMode(6, OUTPUT);   // pin 6 = GPA7 of MCP2301X
+  mcp6.pinMode(7, OUTPUT);   // pin 7 = GPA7 of MCP2301X
+  mcp6.pinMode(9, OUTPUT);   // pin 9 = GPA7 of MCP2301X
+  mcp6.pinMode(10, OUTPUT);   // pin 10 = GPA7 of MCP2301X
+  mcp6.pinMode(11, OUTPUT);   // pin 11 = GPA7 of MCP2301X
+  mcp6.pinMode(12, OUTPUT);   // pin 12 = GPA7 of MCP2301X
+  mcp6.pinMode(14, OUTPUT);   // pin 14 = GPA7 of MCP2301X
+  mcp6.pinMode(15, OUTPUT);   // pin 15 = GPA7 of MCP2301X
+
 }

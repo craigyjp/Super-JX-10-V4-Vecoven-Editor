@@ -474,14 +474,6 @@ void myControlChange(byte channel, byte control, int value) {
       updatedco2_PWM_env_source(1);
       break;
 
-    case CCdco1_PWM_env_polarity:
-      updatedco1_PWM_env_source(1);
-      break;
-
-    case CCdco2_PWM_env_polarity:
-      updatedco2_PWM_env_source(1);
-      break;
-
     case CCdco1_PWM_lfo_source:
       updatedco1_PWM_lfo_source(1);
       break;
@@ -514,72 +506,45 @@ void myControlChange(byte channel, byte control, int value) {
       updatedco2_pitch_env_source(1);
       break;
 
-    case CCdco1_pitch_env_polarity:
-      updatedco1_pitch_env_source(1);
+    case CCplaymode:
+      updateplaymode(1);
       break;
 
-    case CCdco2_pitch_env_polarity:
-      updatedco2_pitch_env_source(1);
+    case CCdco_mix_env_source:
+      updatedco_mix_env_source(1);
       break;
 
-      // case CCfilterKeyTrackZeroSW:
-      //   updatefilterKeyTrack(1);
-      //   break;
+    case CCdco_mix_dyn:
+      updatedco_mix_dyn(1);
+      break;
 
-      // case CCfilterType:
-      //   filterType = value;
-      //   updatefilterType(1);
-      //   break;
+    case CCvcf_env_source:
+      updatevcf_env_source(1);
+      break;
 
-      // case CCfilterPoleSW:
-      //   filterPoleSW = value;
-      //   updatefilterPoleSwitch(1);
-      //   break;
+    case CCvcf_dyn:
+      updatevcf_dyn(1);
+      break;
 
-      // case CCegInvertSW:
-      //   egInvertSW = value;
-      //   updateegInvertSwitch(1);
-      //   break;
+    case CCvca_env_source:
+      updatevca_env_source(1);
+      break;
 
-      // case CCfilterKeyTrackSW:
-      //   filterKeyTrackSW = value;
-      //   updatefilterKeyTrackSwitch(1);
-      //   break;
+    case CCvca_dyn:
+      updatevca_dyn(1);
+      break;
 
-      // case CCfilterVelocitySW:
-      //   filterVelocitySW = value;
-      //   updatefilterVelocitySwitch(1);
-      //   break;
+    case CCchorus_sw:
+      updatechorus(1);
+      break;
+    
+    case CCenv5stage:
+      updateenv5stage(1);
+      break;
 
-      // case CCampVelocitySW:
-      //   ampVelocitySW = value;
-      //   updateampVelocitySwitch(1);
-      //   break;
-
-      // case CCFMSyncSW:
-      //   updateFMSyncSwitch(1);
-      //   break;
-
-      // case CCPWSyncSW:
-      //   updatePWSyncSwitch(1);
-      //   break;
-
-      // case CCPWMSyncSW:
-      //   updatePWMSyncSwitch(1);
-      //   break;
-
-      // case CCmultiSW:
-      //   multiSW = value;
-      //   updatemultiSwitch(1);
-      //   break;
-
-      // case CCplayModeSW:
-      //   updateplayModeSW(1);
-      //   break;
-
-      // case CCnotePrioritySW:
-      //   updatenotePrioritySW(1);
-      //   break;
+    case CCadsr:
+      updateadsr(1);
+      break;
   }
 }
 
@@ -1289,16 +1254,16 @@ FLASHMEM void updatedco1_PWM_dyn(bool announce) {
   if (announce) {
     switch (dco1_PWM_dyn) {
       case 0:
-        showCurrentParameterPage("DCO1 PWM Dyn", "Off");
+        showCurrentParameterPage("DCO1 PWM", "Dynamics Off");
         break;
       case 1:
-        showCurrentParameterPage("DCO1 PWM Dyn", "Dyn 1");
+        showCurrentParameterPage("DCO1 PWM", "Dynamics 1");
         break;
       case 2:
-        showCurrentParameterPage("DCO1 PWM Dyn", "Dyn 2");
+        showCurrentParameterPage("DCO1 PWM", "Dynamics 2");
         break;
       case 3:
-        showCurrentParameterPage("DCO1 PWM Dyn", "Dyn 3");
+        showCurrentParameterPage("DCO1 PWM", "Dynamics 3");
         break;
     }
     startParameterDisplay();
@@ -1331,16 +1296,16 @@ FLASHMEM void updatedco2_PWM_dyn(bool announce) {
   if (announce) {
     switch (dco2_PWM_dyn) {
       case 0:
-        showCurrentParameterPage("DCO2 PWM Dyn", "Off");
+        showCurrentParameterPage("DCO2 PWM", "Dynamics Off");
         break;
       case 1:
-        showCurrentParameterPage("DCO2 PWM Dyn", "Dyn 1");
+        showCurrentParameterPage("DCO2 PWM", "Dynamics 1");
         break;
       case 2:
-        showCurrentParameterPage("DCO2 PWM Dyn", "Dyn 2");
+        showCurrentParameterPage("DCO2 PWM", "Dynamics 2");
         break;
       case 3:
-        showCurrentParameterPage("DCO2 PWM Dyn", "Dyn 3");
+        showCurrentParameterPage("DCO2 PWM", "Dynamics 3");
         break;
     }
     startParameterDisplay();
@@ -1373,28 +1338,28 @@ FLASHMEM void updatedco1_PWM_env_source(bool announce) {
   if (announce) {
     switch (dco1_PWM_env_source) {
       case 0:
-        showCurrentParameterPage("DCO1 PWM Env", "Env1 Negative");
+        showCurrentParameterPage("DCO1 PWM", "Env1 Negative");
         break;
       case 1:
-        showCurrentParameterPage("DCO1 PWM Env", "Env1 Positive");
+        showCurrentParameterPage("DCO1 PWM", "Env1 Positive");
         break;
       case 2:
-        showCurrentParameterPage("DCO1 PWM Env", "Env2 Negative");
+        showCurrentParameterPage("DCO1 PWM", "Env2 Negative");
         break;
       case 3:
-        showCurrentParameterPage("DCO1 PWM Env", "Env2 Positive");
+        showCurrentParameterPage("DCO1 PWM", "Env2 Positive");
         break;
       case 4:
-        showCurrentParameterPage("DCO1 PWM Env", "Env3 Negative");
+        showCurrentParameterPage("DCO1 PWM", "Env3 Negative");
         break;
       case 5:
-        showCurrentParameterPage("DCO1 PWM Env", "Env3 Positive");
+        showCurrentParameterPage("DCO1 PWM", "Env3 Positive");
         break;
       case 6:
-        showCurrentParameterPage("DCO1 PWM Env", "Env4 Negative");
+        showCurrentParameterPage("DCO1 PWM", "Env4 Negative");
         break;
       case 7:
-        showCurrentParameterPage("DCO1 PWM Env", "Env4 Positive");
+        showCurrentParameterPage("DCO1 PWM", "Env4 Positive");
         break;
     }
     startParameterDisplay();
@@ -1463,28 +1428,28 @@ FLASHMEM void updatedco2_PWM_env_source(bool announce) {
   if (announce) {
     switch (dco2_PWM_env_source) {
       case 0:
-        showCurrentParameterPage("DCO2 PWM Env", "Env1 Negative");
+        showCurrentParameterPage("DCO2 PWM", "Env1 Negative");
         break;
       case 1:
-        showCurrentParameterPage("DCO2 PWM Env", "Env1 Positive");
+        showCurrentParameterPage("DCO2 PWM", "Env1 Positive");
         break;
       case 2:
-        showCurrentParameterPage("DCO2 PWM Env", "Env2 Negative");
+        showCurrentParameterPage("DCO2 PWM", "Env2 Negative");
         break;
       case 3:
-        showCurrentParameterPage("DCO2 PWM Env", "Env2 Positive");
+        showCurrentParameterPage("DCO2 PWM", "Env2 Positive");
         break;
       case 4:
-        showCurrentParameterPage("DCO2 PWM Env", "Env3 Negative");
+        showCurrentParameterPage("DCO2 PWM", "Env3 Negative");
         break;
       case 5:
-        showCurrentParameterPage("DCO2 PWM Env", "Env3 Positive");
+        showCurrentParameterPage("DCO2 PWM", "Env3 Positive");
         break;
       case 6:
-        showCurrentParameterPage("DCO2 PWM Env", "Env4 Negative");
+        showCurrentParameterPage("DCO2 PWM", "Env4 Negative");
         break;
       case 7:
-        showCurrentParameterPage("DCO2 PWM Env", "Env4 Positive");
+        showCurrentParameterPage("DCO2 PWM", "Env4 Positive");
         break;
     }
     startParameterDisplay();
@@ -1730,7 +1695,7 @@ FLASHMEM void updatedco1_pitch_lfo_source(bool announce) {
         showCurrentParameterPage("DCO1 Pitch", "LFO2 Negative");
         break;
       case 3:
-        showCurrentParameterPage("DCO1 Pitch", "LFO1 Positive");
+        showCurrentParameterPage("DCO1 Pitch", "LFO2 Positive");
         break;
     }
     startParameterDisplay();
@@ -1772,7 +1737,7 @@ FLASHMEM void updatedco2_pitch_lfo_source(bool announce) {
         showCurrentParameterPage("DCO2 Pitch", "LFO2 Negative");
         break;
       case 3:
-        showCurrentParameterPage("DCO2 Pitch", "LFO1 Positive");
+        showCurrentParameterPage("DCO2 Pitch", "LFO2 Positive");
         break;
     }
     startParameterDisplay();
@@ -1981,495 +1946,469 @@ FLASHMEM void updatedco2_pitch_env_source(bool announce) {
   }
 }
 
-// FLASHMEM void updatevolumeLevel(bool announce) {
-//   if (announce) {
-//     showCurrentParameterPage("Volume", String(volumeLevel));
-//     startParameterDisplay();
-//   }
-// }
+FLASHMEM void updateplaymode(bool announce) {
+  if (announce) {
+    switch (playmode) {
+      case 0:
+        showCurrentParameterPage("Editing", "Lower");
+        break;
+      case 1:
+        showCurrentParameterPage("Editing", "Upper");
+        break;
+      case 2:
+        showCurrentParameterPage("Editing", "Both");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (playmode) {
+    case 0:
+      //midiCCOut(CCplaymode, 0x00);
+      mcp1.digitalWrite(LOWER_SELECT, HIGH);
+      mcp1.digitalWrite(UPPER_SELECT, LOW);
+      break;
+    case 1:
+      //midiCCOut(CCplaymode, 0x20);
+      mcp1.digitalWrite(LOWER_SELECT, LOW);
+      mcp1.digitalWrite(UPPER_SELECT, HIGH);
+      break;
+    case 2:
+      //midiCCOut(CCplaymode, 0x40);
+      mcp1.digitalWrite(LOWER_SELECT, HIGH);
+      mcp1.digitalWrite(UPPER_SELECT, HIGH);
+      break;
+  }
+}
 
-// FLASHMEM void updatenoiseLevel(bool announce) {
-//   if (announce) {
-//     if (noiseLevel == 0) {
-//       showCurrentParameterPage("Noise Level", "Off");
-//     } else if (noiseLevel < 0) {
-//       float positive_noiseLevel = abs(noiseLevel);
-//       showCurrentParameterPage("Pink Level", String(positive_noiseLevel));
-//     } else {
-//       showCurrentParameterPage("White Level", String(noiseLevel));
-//     }
-//     startParameterDisplay();
-//   }
-// }
+FLASHMEM void updatedco_mix_env_source(bool announce) {
+  if (announce) {
+    switch (dco_mix_env_source) {
+      case 0:
+        showCurrentParameterPage("DCO Mix", "Env1 Negative");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO Mix", "Env1 Positive");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO MIx", "Env2 Negative");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO Mix", "Env2 Positive");
+        break;
+      case 4:
+        showCurrentParameterPage("DCO Mix", "Env3 Negative");
+        break;
+      case 5:
+        showCurrentParameterPage("DCO Mix", "Env3 Positive");
+        break;
+      case 6:
+        showCurrentParameterPage("DCO Mix", "Env4 Negative");
+        break;
+      case 7:
+        showCurrentParameterPage("DCO Mix", "Env4 Positive");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (dco_mix_env_source) {
+    case 0:
+      midiCCOut(CCdco_mix_env_source, 0x00);
+      mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
+      mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
+      mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
+      mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
+      break;
+    case 1:
+      midiCCOut(CCdco_mix_env_source, 0x10);
+      mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
+      mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
+      mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
+      mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
+      break;
+    case 2:
+      midiCCOut(CCdco_mix_env_source, 0x20);
+      mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
+      mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
+      mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
+      mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
+      break;
+    case 3:
+      midiCCOut(CCdco_mix_env_source, 0x30);
+      mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
+      mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
+      mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
+      mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
+      break;
+    case 4:
+      midiCCOut(CCdco_mix_env_source, 0x40);
+      mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
+      mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
+      mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
+      mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
+      break;
+    case 5:
+      midiCCOut(CCdco_mix_env_source, 0x50);
+      mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
+      mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
+      mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
+      mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
+      break;
+    case 6:
+      midiCCOut(CCdco_mix_env_source, 0x60);
+      mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
+      mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
+      mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
+      mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
+      break;
+    case 7:
+      midiCCOut(CCdco_mix_env_source, 0x70);
+      mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
+      mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
+      mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
+      mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
+      break;
+  }
+}
 
-// FLASHMEM void updateampLFODepth(bool announce) {
-//   if (announce) {
-//     if (ampLFODepth == 0) {
-//       showCurrentParameterPage("LFO Depth", "Off");
-//     } else if (ampLFODepth < 0) {
-//       float positive_ampLFODepth = abs(ampLFODepth);
-//       showCurrentParameterPage("LFO1 Depth", String(positive_ampLFODepth));
-//     } else {
-//       showCurrentParameterPage("LFO2 Depth", String(ampLFODepth));
-//     }
-//     startParameterDisplay();
-//   }
-// }
+FLASHMEM void updatedco_mix_dyn(bool announce) {
+  if (announce) {
+    switch (dco_mix_dyn) {
+      case 0:
+        showCurrentParameterPage("DCO Mix", "Dynamics Off");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO Mix", "Dynamics 1");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO Mix", "Dynamics 2");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO Mix", "Dynamics 3");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (dco_mix_dyn) {
+    case 0:
+      midiCCOut(CCdco_mix_dyn, 0x00);
+      mcp5.digitalWrite(DCO_MIX_DYN_RED, LOW);
+      mcp5.digitalWrite(DCO_MIX_DYN_GREEN, LOW);
+      break;
+    case 1:
+      midiCCOut(CCdco_mix_dyn, 0x20);
+      mcp5.digitalWrite(DCO_MIX_DYN_RED, HIGH);
+      mcp5.digitalWrite(DCO_MIX_DYN_GREEN, LOW);
+      break;
+    case 2:
+      midiCCOut(CCdco_mix_dyn, 0x40);
+      mcp5.digitalWrite(DCO_MIX_DYN_RED, LOW);
+      mcp5.digitalWrite(DCO_MIX_DYN_GREEN, HIGH);
+      break;
+    case 3:
+      midiCCOut(CCdco_mix_dyn, 0x60);
+      mcp5.digitalWrite(DCO_MIX_DYN_RED, HIGH);
+      mcp5.digitalWrite(DCO_MIX_DYN_GREEN, HIGH);
+      break;
+  }
+}
 
-// FLASHMEM void updatefilterPoleSwitch(bool announce) {
-//   if (filterPoleSW == 1) {
-//     if (announce) {
-//       updatefilterType(1);
-//     }
-//     midiCCOut(CCfilterPoleSW, 127);
+FLASHMEM void updatevcf_env_source(bool announce) {
+  if (announce) {
+    switch (vcf_env_source) {
+      case 0:
+        showCurrentParameterPage("VCF EG", "Env1 Negative");
+        break;
+      case 1:
+        showCurrentParameterPage("VCF EG", "Env1 Positive");
+        break;
+      case 2:
+        showCurrentParameterPage("VCF EG", "Env2 Negative");
+        break;
+      case 3:
+        showCurrentParameterPage("VCF EG", "Env2 Positive");
+        break;
+      case 4:
+        showCurrentParameterPage("VCF EG", "Env3 Negative");
+        break;
+      case 5:
+        showCurrentParameterPage("VCF EG", "Env3 Positive");
+        break;
+      case 6:
+        showCurrentParameterPage("VCF EG", "Env4 Negative");
+        break;
+      case 7:
+        showCurrentParameterPage("VCF EG", "Env4 Positive");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (vcf_env_source) {
+    case 0:
+      midiCCOut(CCvcf_env_source, 0x00);
+      mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
+      mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
+      mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
+      mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
+      break;
+    case 1:
+      midiCCOut(CCvcf_env_source, 0x10);
+      mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
+      mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
+      mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
+      mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
+      break;
+    case 2:
+      midiCCOut(CCvcf_env_source, 0x20);
+      mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
+      mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
+      mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
+      mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
+      break;
+    case 3:
+      midiCCOut(CCvcf_env_source, 0x30);
+      mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
+      mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
+      mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
+      mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
+      break;
+    case 4:
+      midiCCOut(CCvcf_env_source, 0x40);
+      mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
+      mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
+      mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
+      mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
+      break;
+    case 5:
+      midiCCOut(CCvcf_env_source, 0x50);
+      mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
+      mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
+      mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
+      mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
+      break;
+    case 6:
+      midiCCOut(CCvcf_env_source, 0x60);
+      mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
+      mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
+      mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
+      mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
+      break;
+    case 7:
+      midiCCOut(CCvcf_env_source, 0x70);
+      mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
+      mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
+      mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
+      mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
+      break;
+  }
+}
 
-//   } else {
-//     if (announce) {
-//       updatefilterType(1);
-//     }
-//     midiCCOut(CCfilterPoleSW, 0);
-//   }
-// }
+FLASHMEM void updatevcf_dyn(bool announce) {
+  if (announce) {
+    switch (vcf_dyn) {
+      case 0:
+        showCurrentParameterPage("VCF Env", "Dynamics Off");
+        break;
+      case 1:
+        showCurrentParameterPage("VCF Env", "Dynamics 1");
+        break;
+      case 2:
+        showCurrentParameterPage("VCF Env", "Dynamics 2");
+        break;
+      case 3:
+        showCurrentParameterPage("VCF Env", "Dynamics 3");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (vcf_dyn) {
+    case 0:
+      midiCCOut(CCvcf_dyn, 0x00);
+      mcp6.digitalWrite(VCF_DYN_RED, LOW);
+      mcp6.digitalWrite(VCF_DYN_GREEN, LOW);
+      break;
+    case 1:
+      midiCCOut(CCvcf_dyn, 0x20);
+      mcp6.digitalWrite(VCF_DYN_RED, HIGH);
+      mcp6.digitalWrite(VCF_DYN_GREEN, LOW);
+      break;
+    case 2:
+      midiCCOut(CCvcf_dyn, 0x40);
+      mcp6.digitalWrite(VCF_DYN_RED, LOW);
+      mcp6.digitalWrite(VCF_DYN_GREEN, HIGH);
+      break;
+    case 3:
+      midiCCOut(CCvcf_dyn, 0x60);
+      mcp6.digitalWrite(VCF_DYN_RED, HIGH);
+      mcp6.digitalWrite(VCF_DYN_GREEN, HIGH);
+      break;
+  }
+}
 
-// FLASHMEM void updateegInvertSwitch(bool announce) {
-//   if (egInvertSW == 1) {
-//     if (announce) {
-//       showCurrentParameterPage("EG Type", "Negative");
-//       startParameterDisplay();
-//     }
-//     midiCCOut(CCegInvertSW, 127);
+FLASHMEM void updatevca_env_source(bool announce) {
+  if (announce) {
+    switch (vca_env_source) {
+      case 0:
+        showCurrentParameterPage("VCA EG", "Env1");
+        break;
+      case 1:
+        showCurrentParameterPage("VCA EG", "Env2");
+        break;
+      case 2:
+        showCurrentParameterPage("VCA EG", "Env3");
+        break;
+      case 3:
+        showCurrentParameterPage("VCA _EG", "Env4");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (vca_env_source) {
+    case 0:
+      midiCCOut(CCvca_env_source, 0x00);
+      mcp6.digitalWrite(VCA_ENV_SOURCE_RED, LOW);
+      mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, LOW);
+      break;
+    case 1:
+      midiCCOut(CCvca_env_source, 0x20);
+      mcp6.digitalWrite(VCA_ENV_SOURCE_RED, LOW);
+      mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, LOW);
+      break;
+    case 2:
+      midiCCOut(CCvca_env_source, 0x40);
+      mcp6.digitalWrite(VCA_ENV_SOURCE_RED, HIGH);
+      mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, LOW);
+      break;
+    case 3:
+      midiCCOut(CCvca_env_source, 0x60);
+      mcp6.digitalWrite(VCA_ENV_SOURCE_RED, HIGH);
+      mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, LOW);
+      break;
+  }
+}
 
-//   } else {
-//     if (announce) {
-//       showCurrentParameterPage("EG Type", "Positive");
-//       startParameterDisplay();
-//     }
-//     midiCCOut(CCegInvertSW, 0);
-//   }
-// }
+FLASHMEM void updatevca_dyn(bool announce) {
+  if (announce) {
+    switch (vca_dyn) {
+      case 0:
+        showCurrentParameterPage("VCA Env", "Dynamics Off");
+        break;
+      case 1:
+        showCurrentParameterPage("VCA Env", "Dynamics 1");
+        break;
+      case 2:
+        showCurrentParameterPage("VCA Env", "Dynamics 2");
+        break;
+      case 3:
+        showCurrentParameterPage("VCA Env", "Dynamics 3");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (vca_dyn) {
+    case 0:
+      midiCCOut(CCvca_dyn, 0x00);
+      mcp6.digitalWrite(VCA_DYN_RED, LOW);
+      mcp6.digitalWrite(VCA_DYN_GREEN, LOW);
+      break;
+    case 1:
+      midiCCOut(CCvca_dyn, 0x20);
+      mcp6.digitalWrite(VCA_DYN_RED, HIGH);
+      mcp6.digitalWrite(VCA_DYN_GREEN, LOW);
+      break;
+    case 2:
+      midiCCOut(CCvca_dyn, 0x40);
+      mcp6.digitalWrite(VCA_DYN_RED, LOW);
+      mcp6.digitalWrite(VCA_DYN_GREEN, HIGH);
+      break;
+    case 3:
+      midiCCOut(CCvca_dyn, 0x60);
+      mcp6.digitalWrite(VCA_DYN_RED, HIGH);
+      mcp6.digitalWrite(VCA_DYN_GREEN, HIGH);
+      break;
+  }
+}
 
-// FLASHMEM void updatefilterKeyTrackSwitch(bool announce) {
-//   if (filterKeyTrackSW == 1) {
-//     if (announce) {
-//       showCurrentParameterPage("Key Track", "On");
-//       startParameterDisplay();
-//     }
-//     midiCCOut(CCfilterKeyTrackSW, 127);
+FLASHMEM void updatechorus(bool announce) {
+  if (announce) {
+    switch (chorus) {
+      case 0:
+        showCurrentParameterPage("Chorus", "Off");
+        break;
+      case 1:
+        showCurrentParameterPage("Chorus", "Chorus 1");
+        break;
+      case 2:
+        showCurrentParameterPage("Chorus", "Chorus 2");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (chorus) {
+    case 0:
+      midiCCOut(CCchorus_sw, 0x00);
+      mcp6.digitalWrite(CHORUS_SELECT_RED, LOW);
+      mcp6.digitalWrite(CHORUS_SELECT_GREEN, LOW);
+      break;
+    case 1:
+      midiCCOut(CCchorus_sw, 0x20);
+      mcp6.digitalWrite(CHORUS_SELECT_RED, HIGH);
+      mcp6.digitalWrite(CHORUS_SELECT_GREEN, LOW);
+      break;
+    case 2:
+      midiCCOut(CCchorus_sw, 0x40);
+      mcp6.digitalWrite(CHORUS_SELECT_RED, LOW);
+      mcp6.digitalWrite(CHORUS_SELECT_GREEN, HIGH);
+      break;
+  }
+}
 
-//   } else {
-//     if (announce) {
-//       showCurrentParameterPage("Key Track", "Off");
-//       startParameterDisplay();
-//     }
-//     midiCCOut(CCfilterKeyTrackSW, 0);
-//   }
-// }
+FLASHMEM void updateenv5stage(bool announce) {
+  if (announce) {
+    switch (env5stage) {
+      case 0:
+        showCurrentParameterPage("5 Stage", "Envelope 1");
+        break;
+      case 1:
+        showCurrentParameterPage("5 Stage", "Envelope 2");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (env5stage) {
+    case 0:
+      mcp5.digitalWrite(ENV5STAGE_SELECT_RED, HIGH);
+      mcp5.digitalWrite(ENV5STAGE_SELECT_GREEN, LOW);
+      break;
+    case 1:
+      mcp5.digitalWrite(ENV5STAGE_SELECT_RED, LOW);
+      mcp5.digitalWrite(ENV5STAGE_SELECT_GREEN, HIGH);
+      break;
+  }
+}
 
-// FLASHMEM void updatefilterVelocitySwitch(bool announce) {
-//   if (filterVelocitySW == 1) {
-//     if (announce) {
-//       showCurrentParameterPage("VCF Velocity", "On");
-//       startParameterDisplay();
-//     }
-//     midiCCOut(CCfilterVelocitySW, 127);
-
-//   } else {
-//     if (announce) {
-//       showCurrentParameterPage("VCF Velocity", "Off");
-//       startParameterDisplay();
-//     }
-//     midiCCOut(CCfilterVelocitySW, 0);
-//   }
-// }
-
-// FLASHMEM void updateampVelocitySwitch(bool announce) {
-//   if (ampVelocitySW == 1) {
-//     if (announce) {
-//       showCurrentParameterPage("VCA Velocity", "On");
-//       startParameterDisplay();
-//     }
-//     midiCCOut(CCampVelocitySW, 127);
-//   } else {
-//     if (announce) {
-//       showCurrentParameterPage("VCA Velocity", "Off");
-//       startParameterDisplay();
-//     }
-//     midiCCOut(CCampVelocitySW, 0);
-//   }
-// }
-
-// FLASHMEM void updateFMSyncSwitch(bool announce) {
-//   if (FMSyncSW == 1) {
-//     showCurrentParameterPage("FM Group", "On");
-//   } else {
-//     showCurrentParameterPage("FM Group", "Off");
-//   }
-//   startParameterDisplay();
-// }
-
-// FLASHMEM void updatePWSyncSwitch(bool announce) {
-//   if (PWSyncSW == 1) {
-//     showCurrentParameterPage("PW Group", "On");
-//   } else {
-//     showCurrentParameterPage("PW Group", "Off");
-//   }
-//   startParameterDisplay();
-// }
-
-// FLASHMEM void updatePWMSyncSwitch(bool announce) {
-//   if (PWMSyncSW == 1) {
-//     showCurrentParameterPage("PWM Group", "On");
-//   } else {
-//     showCurrentParameterPage("PWM Group", "Off");
-//   }
-//   startParameterDisplay();
-// }
-
-// FLASHMEM void updatemultiSwitch(bool announce) {
-//   if (multiSW == 1) {
-//     if (announce) {
-//       showCurrentParameterPage("Retrigger", "On");
-//       startParameterDisplay();
-//     }
-//   } else {
-//     if (announce) {
-//       showCurrentParameterPage("Retrigger", "Off");
-//       startParameterDisplay();
-//     }
-//   }
-// }
-
-// FLASHMEM void updatefilterType(bool announce) {
-//   switch (filterType) {
-//     case 0:
-//       if (filterPoleSW == 1) {
-//         if (announce) {
-//           showCurrentParameterPage("Filter Type", "3P LowPass");
-//         }
-//       } else {
-//         if (announce) {
-//           showCurrentParameterPage("Filter Type", "4P LowPass");
-//         }
-//       }
-//       startParameterDisplay();
-//       midiCCOut(CCfilterType, 0);
-//       break;
-
-//     case 1:
-//       if (filterPoleSW == 1) {
-//         if (announce) {
-//           showCurrentParameterPage("Filter Type", "1P LowPass");
-//         }
-//       } else {
-//         if (announce) {
-//           showCurrentParameterPage("Filter Type", "2P LowPass");
-//         }
-//       }
-//       startParameterDisplay();
-//       midiCCOut(CCfilterType, 1);
-//       break;
-
-//     case 2:
-//       if (filterPoleSW == 1) {
-//         if (announce) {
-//           showCurrentParameterPage("Filter Type", "3P HP + 1P LP");
-//         }
-//       } else {
-//         if (announce) {
-//           showCurrentParameterPage("Filter Type", "4P HighPass");
-//         }
-//       }
-//       startParameterDisplay();
-//       midiCCOut(CCfilterType, 2);
-//       break;
-
-//     case 3:
-//       if (filterPoleSW == 1) {
-//         if (announce) {
-//           showCurrentParameterPage("Filter Type", "1P HP + 1P LP");
-//         }
-//       } else {
-//         if (announce) {
-//           showCurrentParameterPage("Filter Type", "2P HighPass");
-//         }
-//       }
-//       startParameterDisplay();
-//       midiCCOut(CCfilterType, 3);
-//       break;
-
-//     case 4:
-//       if (filterPoleSW == 1) {
-//         if (announce) {
-//           showCurrentParameterPage("Filter Type", "2P HP + 1P LP");
-//         }
-//       } else {
-//         if (announce) {
-//           showCurrentParameterPage("Filter Type", "4P BandPass");
-//         }
-//       }
-//       startParameterDisplay();
-//       midiCCOut(CCfilterType, 4);
-//       break;
-
-//     case 5:
-//       if (filterPoleSW == 1) {
-//         if (announce) {
-//           showCurrentParameterPage("Filter Type", "2P BP + 1P LP");
-//         }
-//       } else {
-//         if (announce) {
-//           showCurrentParameterPage("Filter Type", "2P BandPass");
-//         }
-//       }
-//       startParameterDisplay();
-//       midiCCOut(CCfilterType, 5);
-//       break;
-
-//     case 6:
-//       if (filterPoleSW == 1) {
-//         if (announce) {
-//           showCurrentParameterPage("Filter Type", "3P AP + 1P LP");
-//         }
-//       } else {
-//         if (announce) {
-//           showCurrentParameterPage("Filter Type", "3P AllPass");
-//         }
-//       }
-//       startParameterDisplay();
-//       midiCCOut(CCfilterType, 6);
-//       break;
-
-//     case 7:
-//       if (filterPoleSW == 1) {
-//         if (announce) {
-//           showCurrentParameterPage("Filter Type", "2P Notch + LP");
-//         }
-//       } else {
-//         if (announce) {
-//           showCurrentParameterPage("Filter Type", "Notch");
-//         }
-//       }
-//       startParameterDisplay();
-//       midiCCOut(CCfilterType, 7);
-//       break;
-//   }
-// }
-
-// FLASHMEM void updatevcoAOctave(bool announce) {
-//   if (announce) {
-//     switch (vcoAOctave) {
-//       case 0:
-//         showCurrentParameterPage("VCOA Octave", "16 Foot");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("VCOA Octave", "8 Foot");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("VCOA Octave", "4 Foot");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (vcoAOctave) {
-//     case 0:
-//       octave = 0.5;
-
-//       break;
-//     case 1:
-//       octave = 1.0;
-
-//       break;
-//     case 2:
-//       octave = 2.0;
-
-//       break;
-//   }
-//   pitchDirty = true;
-// }
-
-// FLASHMEM void updatevcoBOctave(bool announce) {
-//   if (announce) {
-//     switch (vcoBOctave) {
-//       case 0:
-//         showCurrentParameterPage("VCOB Octave", "16 Foot");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("VCOB Octave", "8 Foot");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("VCOB Octave", "4 Foot");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (vcoBOctave) {
-//     case 0:
-//       octaveB = 0.5;
-
-//       break;
-//     case 1:
-//       octaveB = 1.0;
-
-//       break;
-//     case 2:
-//       octaveB = 2.0;
-
-//       break;
-//   }
-//   pitchDirty = true;
-// }
-
-// FLASHMEM void updatevcoCOctave(bool announce) {
-//   if (announce) {
-//     switch (vcoCOctave) {
-//       case 0:
-//         showCurrentParameterPage("VCOC Octave", "16 Foot");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("VCOC Octave", "8 Foot");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("VCOC Octave", "4 Foot");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (vcoCOctave) {
-//     case 0:
-//       octaveC = 0.5;
-
-//       break;
-//     case 1:
-//       octaveC = 1.0;
-
-//       break;
-//     case 2:
-//       octaveC = 2.0;
-
-//       break;
-//   }
-//   pitchDirty = true;
-// }
-
-// FLASHMEM void updateplayModeSW(bool announce) {
-//   if (announce) {
-//     switch (playModeSW) {
-//       case 0:
-//         showCurrentParameterPage("Play Mode", "Polyphonic");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("Play Mode", "Monophonic");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("Play Mode", "Unison");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (playModeSW) {
-//     case 0:
-
-//       allNotesOff();
-//       break;
-//     case 1:
-
-//       allNotesOff();
-//       break;
-//     case 2:
-
-//       allNotesOff();
-//       break;
-//   }
-//   updatenotePrioritySW(0);
-// }
-
-// FLASHMEM void updatenotePrioritySW(bool announce) {
-//   if (playModeSW != 0) {
-//     if (announce) {
-//       switch (notePrioritySW) {
-//         case 0:
-//           showCurrentParameterPage("Note Priority", "Bottom");
-//           break;
-//         case 1:
-//           showCurrentParameterPage("Note Priority", "Top");
-//           break;
-//         case 2:
-//           showCurrentParameterPage("Note Priority", "Last");
-//           break;
-//       }
-//       startParameterDisplay();
-//     }
-//     switch (notePrioritySW) {
-//       case 0:
-
-//         break;
-//       case 1:
-
-//         break;
-//       case 2:
-
-//         break;
-//     }
-//   }
-// }
-
-// FLASHMEM void updateLFO1Wave(bool announce) {
-//   if (announce) {
-//     switch (LFO1Wave) {
-//       case 0:
-//         showCurrentParameterPage("LFO1 Wave", "Sine");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("LFO1 Wave", "Saw");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("LFO1 Wave", "Reverse Saw");
-//         break;
-//       case 3:
-//         showCurrentParameterPage("LFO1 Wave", "Square");
-//         break;
-//       case 4:
-//         showCurrentParameterPage("LFO1 Wave", "Triangle");
-//         break;
-//       case 5:
-//         showCurrentParameterPage("LFO1 Wave", "Pulse");
-//         break;
-//       case 6:
-//         showCurrentParameterPage("LFO1 Wave", "S & H");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-// }
-
-// FLASHMEM void updateLFO2Wave(bool announce) {
-//   if (announce) {
-//     switch (LFO2Wave) {
-//       case 0:
-//         showCurrentParameterPage("LFO2 Wave", "Sine");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("LFO2 Wave", "Saw");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("LFO2 Wave", "Reverse Saw");
-//         break;
-//       case 3:
-//         showCurrentParameterPage("LFO2 Wave", "Square");
-//         break;
-//       case 4:
-//         showCurrentParameterPage("LFO2 Wave", "Triangle");
-//         break;
-//       case 5:
-//         showCurrentParameterPage("LFO2 Wave", "Pulse");
-//         break;
-//       case 6:
-//         showCurrentParameterPage("LFO2 Wave", "S & H");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-// }
+FLASHMEM void updateadsr(bool announce) {
+  if (announce) {
+    switch (adsr) {
+      case 0:
+        showCurrentParameterPage("ADSR", "Envelope 3");
+        break;
+      case 1:
+        showCurrentParameterPage("ADSR", "Envelope 4");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (adsr) {
+    case 0:
+      mcp6.digitalWrite(ADSR_SELECT_RED, HIGH);
+      mcp6.digitalWrite(ADSR_SELECT_GREEN, LOW);
+      break;
+    case 1:
+      mcp6.digitalWrite(ADSR_SELECT_RED, LOW);
+      mcp6.digitalWrite(ADSR_SELECT_GREEN, HIGH);
+      break;
+  }
+}
 
 // void RotaryEncoderChanged(bool clockwise, int id) {
 
@@ -2483,391 +2422,6 @@ FLASHMEM void updatedco2_pitch_env_source(bool announce) {
 //     speed = -speed;
 //   }
 
-//   switch (id) {
-
-//     case 1:
-//       ampLFODepth = (ampLFODepth + speed);
-//       ampLFODepth = constrain(ampLFODepth, -127, 127);
-//       updateampLFODepth(1);
-//       break;
-
-//     case 2:
-//       volumeLevel = (volumeLevel + speed);
-//       volumeLevel = constrain(volumeLevel, 0, 255);
-//       updatevolumeLevel(1);
-//       break;
-
-//     case 3:
-//       MWDepth = (MWDepth + speed);
-//       MWDepth = constrain(MWDepth, 0, 127);
-//       updateMWDepth(1);
-//       break;
-
-
-//     case 7:
-//       if (!clockwise) {
-//         PBDepth--;
-//       } else {
-//         PBDepth++;
-//       }
-//       PBDepth = constrain(PBDepth, 0, 12);
-//       updatePBDepth(1);
-//       break;
-
-//     case 8:
-//       LFO1Rate = (LFO1Rate + speed);
-//       LFO1Rate = constrain(LFO1Rate, 0, 127);
-//       updateLFO1Rate(1);
-//       break;
-
-//     case 9:
-//       LFO2Rate = (LFO2Rate + speed);
-//       LFO2Rate = constrain(LFO2Rate, 0, 127);
-//       updateLFO2Rate(1);
-//       break;
-
-//     case 10:
-//       LFO1Delay = (LFO1Delay + speed);
-//       LFO1Delay = constrain(LFO1Delay, 0, 127);
-//       updateLFO1Delay(1);
-//       break;
-
-//     case 11:
-//       ampAttack = (ampAttack + speed);
-//       ampAttack = constrain(ampAttack, 0, 127);
-//       updateampAttack(1);
-//       break;
-
-//     case 12:
-//       ampDecay = (ampDecay + speed);
-//       ampDecay = constrain(ampDecay, 0, 127);
-//       updateampDecay(1);
-//       break;
-
-//     case 13:
-//       ampSustain = (ampSustain + speed);
-//       ampSustain = constrain(ampSustain, 0, 100);
-//       updateampSustain(1);
-//       break;
-
-//     case 14:
-//       ATDepth = (ATDepth + speed);
-//       ATDepth = constrain(ATDepth, 0, 127);
-//       updateATDepth(1);
-//       break;
-
-//     case 15:
-//       ampRelease = (ampRelease + speed);
-//       ampRelease = constrain(ampRelease, 0, 127);
-//       updateampRelease(1);
-//       break;
-
-//     case 16:
-//       filterAttack = (filterAttack + speed);
-//       filterAttack = constrain(filterAttack, 0, 127);
-//       updatefilterAttack(1);
-//       break;
-
-//     case 17:
-//       filterDecay = (filterDecay + speed);
-//       filterDecay = constrain(filterDecay, 0, 127);
-//       updatefilterDecay(1);
-//       break;
-
-//     case 18:
-//       filterSustain = (filterSustain + speed);
-//       filterSustain = constrain(filterSustain, 0, 100);
-//       updatefilterSustain(1);
-//       break;
-
-//     case 19:
-//       filterRelease = (filterRelease + speed);
-//       filterRelease = constrain(filterRelease, 0, 127);
-//       updatefilterRelease(1);
-//       break;
-
-//     case 20:
-//       pitchAttack = (pitchAttack + speed);
-//       pitchAttack = constrain(pitchAttack, 0, 127);
-//       updatepitchAttack(1);
-//       break;
-
-//     case 21:
-//       filterResonance = (filterResonance + speed);
-//       filterResonance = constrain(filterResonance, 0, 255);
-//       updatefilterResonance(1);
-//       break;
-
-//     case 22:
-//       filterKeyTrack = (filterKeyTrack + speed);
-//       filterKeyTrack = constrain(filterKeyTrack, -127, 127);
-//       updatefilterKeyTrack(1);
-//       break;
-
-//     case 23:
-//       noiseLevel = (noiseLevel + speed);
-//       noiseLevel = constrain(noiseLevel, -127, 127);
-//       updatenoiseLevel(1);
-//       break;
-
-//     case 24:
-//       pitchDecay = (pitchDecay + speed);
-//       pitchDecay = constrain(pitchDecay, 0, 127);
-//       updatepitchDecay(1);
-//       break;
-
-//     case 25:
-//       pitchSustain = (pitchSustain + speed);
-//       pitchSustain = constrain(pitchSustain, 0, 100);
-//       updatepitchSustain(1);
-//       break;
-
-//     case 26:
-//       pitchRelease = (pitchRelease + speed);
-//       pitchRelease = constrain(pitchRelease, 0, 127);
-//       updatepitchRelease(1);
-//       break;
-
-//     case 27:
-//       filterCutoff = (filterCutoff + speed);
-//       filterCutoff = constrain(filterCutoff, 0, 255);
-//       updatefilterCutoff(1);
-//       break;
-
-//     case 28:
-//       filterEGDepth = (filterEGDepth + speed);
-//       filterEGDepth = constrain(filterEGDepth, 0, 255);
-//       updatefilterEGDepth(1);
-//       break;
-
-//     case 29:
-//       vcoCFMDepth = (vcoCFMDepth + speed);
-//       vcoCFMDepth = constrain(vcoCFMDepth, 0, 255);
-//       updatevcoCFMDepth(1);
-//       break;
-
-//     case 30:
-//       vcoBDetune = (vcoBDetune + speed);
-//       vcoBDetune = constrain(vcoBDetune, 0, 127);
-//       updatevcoBDetune(1);
-//       break;
-
-//     case 31:
-//       vcoCDetune = (vcoCDetune + speed);
-//       vcoCDetune = constrain(vcoCDetune, 0, 127);
-//       updatevcoCDetune(1);
-//       break;
-
-//     case 32:
-//       filterLFODepth = (filterLFODepth + speed);
-//       filterLFODepth = constrain(filterLFODepth, -127, 127);
-//       updatefilterLFODepth(1);
-//       break;
-
-//     case 33:
-//       vcoAFMDepth = (vcoAFMDepth + speed);
-//       vcoAFMDepth = constrain(vcoAFMDepth, 0, 255);
-//       updatevcoAFMDepth(1);
-//       break;
-
-//     case 34:
-//       vcoBFMDepth = (vcoBFMDepth + speed);
-//       vcoBFMDepth = constrain(vcoBFMDepth, 0, 255);
-//       updatevcoBFMDepth(1);
-//       break;
-
-//     case 35:
-//       effectsMix = (effectsMix + speed);
-//       effectsMix = constrain(effectsMix, -127, 127);
-//       updateeffectsMix(1);
-//       break;
-
-//     case 36:
-//       vcoALevel = (vcoALevel + speed);
-//       vcoALevel = constrain(vcoALevel, 0, 255);
-//       updatevcoALevel(1);
-//       break;
-
-//     case 37:
-//       vcoBLevel = (vcoBLevel + speed);
-//       vcoBLevel = constrain(vcoBLevel, 0, 255);
-//       updatevcoBLevel(1);
-//       break;
-
-//     case 38:
-//       vcoCLevel = (vcoCLevel + speed);
-//       vcoCLevel = constrain(vcoCLevel, 0, 255);
-//       updatevcoCLevel(1);
-//       break;
-
-//     case 39:
-//       if (!vcoATable) {
-//         vcoAPW = (vcoAPW + speed);
-//         vcoAPW = constrain(vcoAPW, 0, 255);
-//         updatevcoAPW(1);
-//       } else {
-//         if (!clockwise) {
-//           vcoAWaveBank--;
-//         } else {
-//           vcoAWaveBank++;
-//         }
-//         vcoAWaveBank = constrain(vcoAWaveBank, 1, BANKS);
-//         vcoAWaveNumber = 1;
-//         showCurrentParameterPage("OscA Bank", String(Tablenames[vcoAWaveBank - 1]));
-//         startParameterDisplay();
-//         updatevcoAWave(0);
-//       }
-//       break;
-
-//     case 40:
-//       if (!vcoBTable) {
-//         vcoBPW = (vcoBPW + speed);
-//         vcoBPW = constrain(vcoBPW, 0, 255);
-//         updatevcoBPW(1);
-//       } else {
-//         if (!clockwise) {
-//           vcoBWaveBank--;
-//         } else {
-//           vcoBWaveBank++;
-//         }
-//         vcoBWaveBank = constrain(vcoBWaveBank, 1, BANKS);
-//         vcoBWaveNumber = 1;
-//         showCurrentParameterPage("OscB Bank", String(Tablenames[vcoBWaveBank - 1]));
-//         startParameterDisplay();
-//         updatevcoBWave(1);
-//       }
-//       break;
-
-//     case 41:
-//       if (!vcoCTable) {
-//         vcoCPW = (vcoCPW + speed);
-//         vcoCPW = constrain(vcoCPW, 0, 255);
-//         updatevcoCPW(1);
-//       } else {
-//         if (!clockwise) {
-//           vcoCWaveBank--;
-//         } else {
-//           vcoCWaveBank++;
-//         }
-//         vcoCWaveBank = constrain(vcoCWaveBank, 1, BANKS);
-//         vcoCWaveNumber = 1;
-//         showCurrentParameterPage("OscC Bank", String(Tablenames[vcoCWaveBank - 1]));
-//         startParameterDisplay();
-//         updatevcoCWave(1);
-//       }
-//       break;
-
-//     case 42:
-//       vcoAPWM = (vcoAPWM + speed);
-//       vcoAPWM = constrain(vcoAPWM, 0, 255);
-//       updatevcoAPWM(1);
-//       break;
-
-//     case 43:
-//       vcoBPWM = (vcoBPWM + speed);
-//       vcoBPWM = constrain(vcoBPWM, 0, 255);
-//       updatevcoBPWM(1);
-//       break;
-
-//     case 44:
-//       vcoCPWM = (vcoCPWM + speed);
-//       vcoCPWM = constrain(vcoCPWM, 0, 255);
-//       updatevcoCPWM(1);
-//       break;
-
-//     case 45:
-//       if (!vcoATable) {
-//         if (!clockwise) {
-//           vcoAWave--;
-//         } else {
-//           vcoAWave++;
-//         }
-//         vcoAWave = constrain(vcoAWave, 0, 6);
-//         updatevcoAWave(1);
-//       } else {
-//         vcoAWaveNumber = (vcoAWaveNumber + speed);
-//         int bankIndex = vcoAWaveBank - 1;  // If your banks start at 1 instead
-//         int maxWaves = tablesInBank[bankIndex];
-//         vcoAWaveNumber = constrain(vcoAWaveNumber, 1, maxWaves);
-//         updatevcoAWave(1);
-//       }
-//       break;
-
-//     case 46:
-//       if (!vcoBTable) {
-//         if (!clockwise) {
-//           vcoBWave--;
-//         } else {
-//           vcoBWave++;
-//         }
-//         vcoBWave = constrain(vcoBWave, 0, 6);
-//         updatevcoBWave(1);
-//       } else {
-//         vcoBWaveNumber = (vcoBWaveNumber + speed);
-//         int bankIndex = vcoBWaveBank - 1;  // If your banks start at 1 instead
-//         int maxWaves = tablesInBank[bankIndex];
-//         vcoBWaveNumber = constrain(vcoBWaveNumber, 1, maxWaves);
-//         updatevcoBWave(1);
-//       }
-//       break;
-
-//     case 47:
-//       if (!vcoCTable) {
-//         if (!clockwise) {
-//           vcoCWave--;
-//         } else {
-//           vcoCWave++;
-//         }
-//         vcoCWave = constrain(vcoCWave, 0, 6);
-//         updatevcoCWave(1);
-//       } else {
-//         vcoCWaveNumber = (vcoCWaveNumber + speed);
-//         int bankIndex = vcoCWaveBank - 1;  // If your banks start at 1 instead
-//         int maxWaves = tablesInBank[bankIndex];
-//         vcoCWaveNumber = constrain(vcoCWaveNumber, 1, maxWaves);
-//         updatevcoCWave(1);
-//       }
-//       break;
-
-//     case 48:
-//       if (!clockwise) {
-//         vcoAInterval--;
-//       } else {
-//         vcoAInterval++;
-//       }
-//       vcoAInterval = constrain(vcoAInterval, -12, 12);
-//       updatevcoAInterval(1);
-//       break;
-
-//     case 49:
-//       if (!clockwise) {
-//         vcoBInterval--;
-//       } else {
-//         vcoBInterval++;
-//       }
-//       vcoBInterval = constrain(vcoBInterval, -12, 12);
-//       updatevcoBInterval(1);
-//       break;
-
-//     case 50:
-//       if (!clockwise) {
-//         vcoCInterval--;
-//       } else {
-//         vcoCInterval++;
-//       }
-//       vcoCInterval = constrain(vcoCInterval, -12, 12);
-//       updatevcoCInterval(1);
-//       break;
-
-//     case 51:
-//       XModDepth = (XModDepth + speed);
-//       XModDepth = constrain(XModDepth, 0, 255);
-//       updateXModDepth(1);
-//       break;
-
-//     default:
-//       break;
-//   }
 
 
 //   //rotaryEncoderChanged(id, clockwise, speed);
@@ -3567,65 +3121,12 @@ void setCurrentPatchData(String data[]) {
   unidetune = data[83].toInt();
   uniNotes = data[84].toInt();
 
+
+
+  updateplaymode(0);
+
   //Patchname
   updatePatchname();
-
-  // updatevcoAWave(0);
-  // updatevcoBWave(0);
-  // updatevcoCWave(0);
-  // updatevcoAPW(0);
-  // updatevcoBPW(0);
-  // updatevcoCPW(0);
-  // updatevcoBDetune(0);
-  // updatevcoCDetune(0);
-  // updatevcoALevel(0);
-  // updatevcoBLevel(0);
-  // updatevcoCLevel(0);
-  // updatevcoAInterval(0);
-  // updatevcoBInterval(0);
-  // updatevcoCInterval(0);
-  // updatevcoAOctave(0);
-  // updatevcoBOctave(0);
-  // updatevcoCOctave(0);
-  // updatefilterCutoff(0);
-  // updatefilterResonance(0);
-  // updatefilterEGDepth(0);
-  // updatefilterKeyTrack(0);
-  // updatefilterKeyTrackSwitch(0);
-  // updatefilterVelocitySwitch(0);
-  // updateampVelocitySwitch(0);
-  // updatefilterLFODepth(0);
-  // updatefilterPoleSwitch(0);
-  // updatefilterType(0);
-  // updateampLFODepth(0);
-  // updatepitchAttack(0);
-  // updatepitchDecay(0);
-  // updatepitchSustain(0);
-  // updatepitchRelease(0);
-  // updateampAttack(0);
-  // updateampDecay(0);
-  // updateampSustain(0);
-  // updateampRelease(0);
-  // updatefilterAttack(0);
-  // updatefilterDecay(0);
-  // updatefilterSustain(0);
-  // updatefilterRelease(0);
-  // updateLFO1Wave(0);
-  // updateLFO2Wave(0);
-  // updateLFO1Rate(0);
-  // updateLFO1Delay(0);
-  // updateLFO2Rate(0);
-  // updateXModDepth(0);
-  // updatenoiseLevel(0);
-  // updateeffectsMix(0);
-  // updatevolumeLevel(0);
-  // updateMWDepth(0);
-  // updatePBDepth(0);
-  // updateATDepth(0);
-
-  // updatemultiSwitch(0);
-  // updateegInvertSwitch(0);
-  // updateplayModeSW(0);
 
   Serial.print("Set Patch: ");
   Serial.println(patchName);
@@ -4112,7 +3613,7 @@ void mainButtonChanged(Button *btn, bool released) {
         if (!dco1_pitch_env_pol) {
           dco1_pitch_env_source--;
         }
-        myControlChange(midiChannel, CCdco1_pitch_env_polarity, dco1_pitch_env_pol);
+        myControlChange(midiChannel, CCdco1_pitch_env_source, dco1_pitch_env_pol);
       }
       break;
 
@@ -4125,7 +3626,130 @@ void mainButtonChanged(Button *btn, bool released) {
         if (!dco2_pitch_env_pol) {
           dco2_pitch_env_source--;
         }
-        myControlChange(midiChannel, CCdco2_pitch_env_polarity, dco2_pitch_env_pol);
+        myControlChange(midiChannel, CCdco2_pitch_env_source, dco2_pitch_env_pol);
+      }
+      break;
+
+    case LOWER_UPPER_BUTTON:
+      if (!released) {
+        playmode = playmode + 1;
+        if (playmode > 2) {
+          playmode = 0;
+        }
+        myControlChange(midiChannel, CCplaymode, playmode);
+      }
+      break;
+
+    case DCO_MIX_ENV_SOURCE_BUTTON:
+      if (!released) {
+        dco_mix_env_source = dco_mix_env_source + 2;
+        if (dco_mix_env_source > 7) {
+          dco_mix_env_source = 0;
+          dco_mix_env_pol = 0;
+        }
+        myControlChange(midiChannel, CCdco_mix_env_source, dco_mix_env_source);
+      }
+      break;
+
+    case DCO_MIX_ENV_POLARITY_BUTTON:
+      if (!released) {
+        dco_mix_env_pol = !dco_mix_env_pol;
+        if (dco_mix_env_pol) {
+          dco_mix_env_source++;
+        }
+        if (!dco_mix_env_pol) {
+          dco_mix_env_source--;
+        }
+        myControlChange(midiChannel, CCdco_mix_env_source, dco_mix_env_source);
+      }
+      break;
+
+    case DCO_MIX_DYN_BUTTON:
+      if (!released) {
+        dco_mix_dyn = dco_mix_dyn + 1;
+        if (dco_mix_dyn > 3) {
+          dco_mix_dyn = 0;
+        }
+        myControlChange(midiChannel, CCdco_mix_dyn, dco_mix_dyn);
+      }
+      break;
+
+    case VCF_ENV_SOURCE_BUTTON:
+      if (!released) {
+        vcf_env_source = vcf_env_source + 2;
+        if (vcf_env_source > 7) {
+          vcf_env_source = 0;
+          vcf_env_pol = 0;
+        }
+        myControlChange(midiChannel, CCvcf_env_source, vcf_env_source);
+      }
+      break;
+
+    case VCF_ENV_POLARITY_BUTTON:
+      if (!released) {
+        vcf_env_pol = !vcf_env_pol;
+        if (vcf_env_pol) {
+          vcf_env_source++;
+        }
+        if (!vcf_env_pol) {
+          vcf_env_source--;
+        }
+        myControlChange(midiChannel, CCvcf_env_source, vcf_env_source);
+      }
+      break;
+
+    case VCF_DYN_BUTTON:
+      if (!released) {
+        vcf_dyn = vcf_dyn + 1;
+        if (vcf_dyn > 3) {
+          vcf_dyn = 0;
+        }
+        myControlChange(midiChannel, CCvcf_dyn, vcf_dyn);
+      }
+      break;
+
+    case VCA_ENV_SOURCE_BUTTON:
+      if (!released) {
+        vca_env_source = vca_env_source + 1;
+        if (vca_env_source > 3) {
+          vca_env_source = 0;
+
+        }
+        myControlChange(midiChannel, CCvca_env_source, vca_env_source);
+      }
+      break;
+
+    case VCA_DYN_BUTTON:
+      if (!released) {
+        vca_dyn = vca_dyn + 1;
+        if (vca_dyn > 3) {
+          vca_dyn = 0;
+        }
+        myControlChange(midiChannel, CCvca_dyn, vca_dyn);
+      }
+      break;
+
+    case CHORUS_BUTTON:
+      if (!released) {
+        chorus = chorus + 1;
+        if (chorus > 2) {
+          chorus = 0;
+        }
+        myControlChange(midiChannel, CCchorus_sw, chorus);
+      }
+      break;
+
+    case ENV5STAGE_SELECT_BUTTON:
+      if (!released) {
+        env5stage = !env5stage;
+        myControlChange(midiChannel, CCenv5stage, env5stage);
+      }
+      break;
+
+    case ADSR_SELECT_BUTTON:
+      if (!released) {
+        adsr = !adsr;
+        myControlChange(midiChannel, CCadsr, adsr);
       }
       break;
   }

@@ -153,6 +153,9 @@ int dco2_fine;
 int dco1_level;
 int dco2_level;
 int dco2_mod;
+int dco_mix_env_pol = 0;
+int dco_mix_env_source = 0;
+int dco_mix_dyn;
 
 int vcf_hpf;
 int vcf_cutoff;
@@ -161,8 +164,14 @@ int vcf_kb;
 int vcf_env;
 int vcf_lfo1;
 int vcf_lfo2;
+int vcf_env_source = 0;
+int vcf_env_pol = 0;
+int vcf_dyn;
 
 int vca_mod;
+int vca_env_source = 0;
+int vca_dyn;
+
 int at_vib;
 int at_lpf;
 int at_vol;
@@ -200,8 +209,13 @@ int env4_sustain;
 int env4_release;
 int env4_adsr_mode;
 
+int chorus;
+
 int ctla;
 int ctlb;
+int playmode = 0;
+int adsr = 0;
+int env5stage = 0;
 
 
 // old hybrid params

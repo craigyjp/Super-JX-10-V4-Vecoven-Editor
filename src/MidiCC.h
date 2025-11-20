@@ -7,31 +7,42 @@
 #define CCdco1_wave       0x01
 #define CCdco1_tune       0x02
 #define CCdco1_pitch_lfo  0x03
+#define CCdco1_pitch_lfo_source 0x04
+#define CCdco1_pitch_env  0x05
+#define CCdco1_pitch_dyn  0x06
+#define CCdco1_pitch_env_source 0x07
 
-#define CCdco1_pitch_env 0x05
+#define CCdco2_range      0x08
+#define CCdco2_wave       0x09
+#define CCdco2_tune       0x0A
+#define CCdco2_pitch_lfo  0x0B
+#define CCdco2_pitch_lfo_source  0x0C
+#define CCdco2_pitch_env  0x0D
+#define CCdco2_pitch_dyn  0x0E
+#define CCdco2_pitch_env_source  0x0F
 
-#define CCdco2_range    0x08
-#define CCdco2_wave     0x09
-#define CCdco2_tune     0x0A
-#define CCdco2_pitch_lfo 0x0B
+#define CCdco1_mode       0x10
+#define CCdco2_fine       0x11
+#define CCvcf_hpf         0x12
+#define CCchorus_sw       0x13
 
-#define CCdco2_pitch_env 0x0D
+#define CCdco1_PW         0x14
+#define CCdco1_PWM_env    0x15
+#define CCdco1_PWM_lfo    0x16
+#define CCdco1_PWM_lfo_source  0x17
+#define CCdco1_PWM_dyn    0x18
+#define CCdco1_PWM_env_source  0x19
 
-#define CCdco1_mode     0x10
-#define CCdco2_fine     0x11
-#define CCvcf_hpf       0x12
-#define CCchorus_sw     0x13
-#define CCdco1_PW       0x14
-#define CCdco1_PWM_env  0x15
-#define CCdco1_PWM_lfo  0x16
+#define CCdco2_PW         0x1A
+#define CCdco2_PWM_env    0x1B
+#define CCdco2_PWM_lfo    0x1C
+#define CCdco2_PWM_lfo_source  0x1D
+#define CCdco2_PWM_dyn    0x1E
+#define CCdco2_PWM_env_source  0x1F
 
-#define CCdco2_PW       0x1A
-#define CCdco2_PWM_env  0x1B
-#define CCdco2_PWM_lfo  0x1C
-
-#define CCdco1_level    0x20
-#define CCdco2_level    0x21
-#define CCdco2_mod      0x22
+#define CCdco1_level      0x20
+#define CCdco2_level      0x21
+#define CCdco2_mod        0x22
 
 #define CCvcf_cutoff    0x25
 #define CCvcf_res       0x26
@@ -42,16 +53,17 @@
 
 #define CCvca_mod       0x2D
 
-
 #define CClfo1_wave   0x30
 #define CClfo1_delay  0x31
 #define CClfo1_rate   0x32
 #define CClfo1_lfo2   0x33
+#define CClfo1_sync   0x34
 
 #define CClfo2_wave   0x35
 #define CClfo2_delay  0x36
 #define CClfo2_rate   0x37
 #define CClfo2_lfo1   0x38
+#define CClfo2_sync   0x39
 
 #define CCtime1          0x3A
 #define CClevel1         0x3B
@@ -91,6 +103,9 @@
 #define CCat_vib          0x57
 #define CCat_lpf          0x58
 #define CCat_vol          0x59
-
+#define CCdco1_PWM_env_polarity  0x5A
+#define CCdco2_PWM_env_polarity  0x5B
+#define CCdco1_pitch_env_polarity  0x5C
+#define CCdco2_pitch_env_polarity  0x5D
 
 #define CCallnotesoff 123//Panic button

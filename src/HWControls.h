@@ -116,23 +116,23 @@ ADC *adc = new ADC();
 #define GPB7 15
 
 #define LFO1_SYNC_BUTTON 0
-#define OSC1_WAVE_BUTTON 1
-#define OSC1_SUB_BUTTON 2
-#define OSC2_WAVE_BUTTON 3
-#define OSC2_XMOD_BUTTON 4
-#define OSC2_EG_BUTTON 5
-#define LFO1_WAVE_BUTTON 6
-#define LFO2_WAVE_BUTTON 7
-#define LFO3_WAVE_BUTTON 8
-#define ENV_SEL_BUTTON 9
-#define LFO_SEL_BUTTON 10
-#define OSC1_LEV_SW 11
-#define OSC2_DET_SW 12
-#define OSC2_LEV_SW 13
-#define OSC2_EG_SW 14
-#define VCF_EG_SW 15
-#define VCF_KEYF_SW 16
-#define VCF_VEL_SW 17
+#define LFO2_SYNC_BUTTON 1
+#define DCO1_PWM_ENV_SOURCE_BUTTON 2
+#define DCO2_PWM_ENV_SOURCE_BUTTON 3
+#define DCO1_PWM_ENV_POLARITY_BUTTON 4
+#define DCO2_PWM_ENV_POLARITY_BUTTON 5
+#define DCO1_PWM_DYN_BUTTON 6
+#define DCO2_PWM_DYN_BUTTON 7
+#define DCO1_PWM_LFO_SOURCE_BUTTON 8
+#define DCO2_PWM_LFO_SOURCE_BUTTON 9
+#define DCO1_PITCH_LFO_SOURCE_BUTTON 10
+#define DCO2_PITCH_LFO_SOURCE_BUTTON 11
+#define DCO1_PITCH_DYN_BUTTON 12
+#define DCO2_PITCH_DYN_BUTTON 13
+#define DCO1_PITCH_ENV_POLARITY_BUTTON 14
+#define DCO2_PITCH_ENV_POLARITY_BUTTON 15
+#define DCO1_PITCH_ENV_SOURCE_BUTTON 16
+#define DCO2_PITCH_ENV_SOURCE_BUTTON 17
 #define VCA_VEL_SW 18
 
 //void RotaryEncoderChanged (bool clockwise, int id);
@@ -147,7 +147,6 @@ Adafruit_MCP23017 mcp3;
 Adafruit_MCP23017 mcp4;
 Adafruit_MCP23017 mcp5;
 Adafruit_MCP23017 mcp6;
-
 
 //Array of pointers of all MCPs
 Adafruit_MCP23017 *allMCPs[] = {&mcp1, &mcp2, &mcp3, &mcp4, &mcp5, &mcp6};
@@ -164,34 +163,35 @@ constexpr int numMCPs = (int)(sizeof(allMCPs) / sizeof(*allMCPs));
 constexpr int numEncoders = (int)(sizeof(rotaryEncoders) / sizeof(*rotaryEncoders));
 
 Button lfo1_sync_Button = Button(&mcp1, 0, LFO1_SYNC_BUTTON, &mainButtonChanged);
-Button osc1_wave_Button = Button(&mcp1, 9, OSC1_WAVE_BUTTON, &mainButtonChanged);
-Button osc1_sub_Button = Button(&mcp1, 10, OSC1_SUB_BUTTON, &mainButtonChanged);
-Button osc2_wave_Button = Button(&mcp2, 8, OSC2_WAVE_BUTTON, &mainButtonChanged);
-Button osc2_xmod_Button = Button(&mcp2, 9, OSC2_XMOD_BUTTON, &mainButtonChanged);
-Button osc2_eg_Button = Button(&mcp2, 10, OSC2_EG_BUTTON, &mainButtonChanged);
-Button lfo1_wave_Button = Button(&mcp4, 4, LFO1_WAVE_BUTTON, &mainButtonChanged);
-Button lfo2_wave_Button = Button(&mcp4, 5, LFO2_WAVE_BUTTON, &mainButtonChanged);
-Button lfo3_wave_Button = Button(&mcp4, 12, LFO3_WAVE_BUTTON, &mainButtonChanged);
-Button env_sel_Button = Button(&mcp5, 12, ENV_SEL_BUTTON, &mainButtonChanged);
-Button lfo_sel_Button = Button(&mcp5, 13, LFO_SEL_BUTTON, &mainButtonChanged);
-Button osc1_lev_Button = Button(&mcp3, 6, OSC1_LEV_SW, &mainButtonChanged);
-Button osc2_det_Button = Button(&mcp3, 14, OSC2_DET_SW, &mainButtonChanged);
-Button osc2_lev_Button = Button(&mcp4, 13, OSC2_LEV_SW, &mainButtonChanged);
-Button osc2_egd_Button = Button(&mcp5, 4, OSC2_EG_SW, &mainButtonChanged);
-Button vcf_eg_Button = Button(&mcp5, 5, VCF_EG_SW, &mainButtonChanged);
-Button vcf_keyf_Button = Button(&mcp5, 6, VCF_KEYF_SW, &mainButtonChanged);
-Button vcf_vel_Button = Button(&mcp6, 6, VCF_VEL_SW, &mainButtonChanged);
-Button vca_vel_Button = Button(&mcp6, 14, VCA_VEL_SW, &mainButtonChanged);
+Button lfo2_sync_Button = Button(&mcp2, 0, LFO2_SYNC_BUTTON, &mainButtonChanged);
+Button dco1_PWM_env_pol_Button = Button(&mcp1, 3, DCO1_PWM_ENV_POLARITY_BUTTON, &mainButtonChanged);
+Button dco2_PWM_env_pol_Button = Button(&mcp2, 3, DCO2_PWM_ENV_POLARITY_BUTTON, &mainButtonChanged);
+Button dco1_PWM_env_src_Button = Button(&mcp1, 4, DCO1_PWM_ENV_SOURCE_BUTTON, &mainButtonChanged);
+Button dco2_PWM_env_src_Button = Button(&mcp2, 4, DCO2_PWM_ENV_SOURCE_BUTTON, &mainButtonChanged);
+Button dco1_PWM_dyn_Button = Button(&mcp1, 5, DCO1_PWM_DYN_BUTTON, &mainButtonChanged);
+Button dco2_PWM_dyn_Button = Button(&mcp2, 5, DCO2_PWM_DYN_BUTTON, &mainButtonChanged);
+
+Button dco1_PWM_lfo_src_Button = Button(&mcp4, 0, DCO1_PWM_LFO_SOURCE_BUTTON, &mainButtonChanged);
+Button dco2_PWM_lfo_src_Button = Button(&mcp3, 0, DCO2_PWM_LFO_SOURCE_BUTTON, &mainButtonChanged);
+Button dco1_pitch_lfo_src_Button = Button(&mcp4, 4, DCO1_PITCH_LFO_SOURCE_BUTTON, &mainButtonChanged);
+Button dco2_pitch_lfo_src_Button = Button(&mcp3, 4, DCO2_PITCH_LFO_SOURCE_BUTTON, &mainButtonChanged);
+Button dco1_pitch_dyn_Button = Button(&mcp4, 5, DCO1_PITCH_DYN_BUTTON, &mainButtonChanged);
+Button dco2_pitch_dyn_Button = Button(&mcp3, 5, DCO2_PITCH_DYN_BUTTON, &mainButtonChanged);
+Button dco1_pitch_env_pol_Button = Button(&mcp4, 8, DCO1_PITCH_ENV_POLARITY_BUTTON, &mainButtonChanged);
+Button dco2_pitch_env_pol_Button = Button(&mcp3, 8, DCO2_PITCH_ENV_POLARITY_BUTTON, &mainButtonChanged);
+Button dco1_pitch_env_src_Button = Button(&mcp4, 12, DCO1_PITCH_ENV_SOURCE_BUTTON, &mainButtonChanged);
+Button dco2_pitch_env_src_Button = Button(&mcp3, 12, DCO2_PITCH_ENV_SOURCE_BUTTON, &mainButtonChanged);
 
 Button *mainButtons[] = {
-        &lfo1_sync_Button, &osc1_wave_Button, &osc1_sub_Button, &osc2_wave_Button, &osc2_xmod_Button, &osc2_eg_Button, &lfo1_wave_Button, &lfo2_wave_Button, &lfo3_wave_Button, &env_sel_Button, &lfo_sel_Button,
-        &osc1_lev_Button, &osc2_det_Button, &osc2_lev_Button, &osc2_egd_Button, &vcf_eg_Button, &vcf_keyf_Button, &vcf_vel_Button, &vca_vel_Button,
+        &lfo1_sync_Button, &lfo2_sync_Button, &dco1_PWM_env_src_Button, &dco2_PWM_env_src_Button, &dco1_PWM_env_pol_Button, &dco2_PWM_env_pol_Button, &dco1_PWM_dyn_Button, &dco2_PWM_dyn_Button,
+        &dco1_PWM_lfo_src_Button, &dco2_PWM_lfo_src_Button, &dco1_pitch_lfo_src_Button, &dco2_pitch_lfo_src_Button, &dco1_pitch_dyn_Button, &dco2_pitch_dyn_Button,
+        &dco1_pitch_env_pol_Button, &dco2_pitch_env_pol_Button, &dco1_pitch_env_src_Button, &dco1_pitch_env_src_Button, &dco2_pitch_env_src_Button,
 };
 
 Button *allButtons[] = {
-        &lfo1_sync_Button, &osc1_wave_Button, &osc1_sub_Button, &osc2_wave_Button, &osc2_xmod_Button, &osc2_eg_Button,
-        &lfo1_wave_Button, &lfo2_wave_Button, &lfo3_wave_Button, &env_sel_Button, &lfo_sel_Button,
-        &osc1_lev_Button, &osc2_det_Button, &osc2_lev_Button, &osc2_egd_Button, &vcf_eg_Button, &vcf_keyf_Button, &vcf_vel_Button, &vca_vel_Button
+        &lfo1_sync_Button, &lfo2_sync_Button, &dco1_PWM_env_src_Button, &dco2_PWM_env_src_Button, &dco1_PWM_env_pol_Button, &dco2_PWM_env_pol_Button, &dco1_PWM_dyn_Button, &dco2_PWM_dyn_Button,
+        &dco1_PWM_lfo_src_Button, &dco2_PWM_lfo_src_Button, &dco1_pitch_lfo_src_Button, &dco2_pitch_lfo_src_Button, &dco1_pitch_dyn_Button, &dco2_pitch_dyn_Button,
+        &dco1_pitch_env_pol_Button, &dco2_pitch_env_pol_Button, &dco1_pitch_env_src_Button, &dco1_pitch_env_src_Button, &dco2_pitch_env_src_Button
 };
 
 // an array of vectors to hold pointers to the encoders on each MCP
@@ -202,26 +202,60 @@ std::vector<RotaryEncOverMCP*> encByMCP[NUM_MCP];
 #define LFO1_SYNC_RED 1
 #define LFO1_SYNC_GREEN 2
 
+#define DCO1_PWM_DYN_RED 6
+#define DCO1_PWM_DYN_GREEN 7
+
+#define DCO1_PWM_ENV_SOURCE_RED 8
+#define DCO1_PWM_ENV_SOURCE_GREEN 9
+
+#define DCO1_ENV_POL_RED 14
+#define DCO1_ENV_POL_GREEN 15
 
 // // GP2
 
-#define PLAY_MODE_GREEN 7
+#define LFO2_SYNC_RED 1
+#define LFO2_SYNC_GREEN 2
 
-#define PLAY_MODE_RED 15
+#define DCO2_PWM_DYN_RED 6
+#define DCO2_PWM_DYN_GREEN 7
+
+#define DCO2_PWM_ENV_SOURCE_RED 8
+#define DCO2_PWM_ENV_SOURCE_GREEN 9
+
+#define DCO2_ENV_POL_RED 14
+#define DCO2_ENV_POL_GREEN 15
 
 // // GP3
 
-#define FILTER_VELOCITY_RED 7
+#define DCO2_PWM_LFO_SEL_RED 1
+#define DCO2_PWM_LFO_SEL_GREEN 2
 
-#define EG_INVERT_LED 15
+#define DCO2_PITCH_DYN_RED 6
+#define DCO2_PITCH_DYN_GREEN 7
+
+#define DCO2_PITCH_ENV_POL_RED 9
+#define DCO2_PITCH_ENV_POL_GREEN 10
+#define DCO2_PITCH_ENV_SOURCE_RED 11
+
+#define DCO2_PITCH_ENV_SOURCE_GREEN 13
+#define DCO2_PITCH_LFO_SEL_RED 14
+#define DCO2_PITCH_LFO_SEL_GREEN 15
 
 // // GP4
 
-#define C_OCTAVE_GREEN 6
-#define C_OCTAVE_RED 7
+#define DCO1_PWM_LFO_SEL_RED 1
+#define DCO1_PWM_LFO_SEL_GREEN 2
 
-#define FILTER_POLE_RED 14
-#define KEYTRACK_RED 15
+#define DCO1_PITCH_DYN_RED 6
+#define DCO1_PITCH_DYN_GREEN 7
+
+#define DCO1_PITCH_ENV_POL_RED 9
+#define DCO1_PITCH_ENV_POL_GREEN 10
+#define DCO1_PITCH_ENV_SOURCE_RED 11
+
+#define DCO1_PITCH_ENV_SOURCE_GREEN 13
+#define DCO1_PITCH_LFO_SEL_RED 14
+#define DCO1_PITCH_LFO_SEL_GREEN 15
 
 // // GP5
 
@@ -318,7 +352,56 @@ void setupHardware() {
 }
 
 void setupMCPoutputs() {
-  mcp1.pinMode(1, OUTPUT);   // pin 1 = GPA7 of MCP2301X
-  mcp1.pinMode(2, OUTPUT);  // pin 2 = GPA7 of MCP2301X
 
+  mcp1.pinMode(1, OUTPUT);   // pin 1 = GPA7 of MCP2301X
+  mcp1.pinMode(2, OUTPUT);   // pin 2 = GPA7 of MCP2301X
+
+  mcp1.pinMode(6, OUTPUT);   // pin 6 = GPA7 of MCP2301X
+  mcp1.pinMode(7, OUTPUT);   // pin 7 = GPA7 of MCP2301X
+
+  mcp1.pinMode(8, OUTPUT);   // pin 6 = GPA7 of MCP2301X
+  mcp1.pinMode(9, OUTPUT);   // pin 7 = GPA7 of MCP2301X
+
+  mcp1.pinMode(14, OUTPUT);   // pin 14 = GPA7 of MCP2301X
+  mcp1.pinMode(15, OUTPUT);   // pin 15 = GPA7 of MCP2301X
+
+  mcp2.pinMode(1, OUTPUT);   // pin 1 = GPA7 of MCP2301X
+  mcp2.pinMode(2, OUTPUT);   // pin 2 = GPA7 of MCP2301X
+
+  mcp2.pinMode(6, OUTPUT);   // pin 6 = GPA7 of MCP2301X
+  mcp2.pinMode(7, OUTPUT);   // pin 7 = GPA7 of MCP2301X
+
+  mcp2.pinMode(8, OUTPUT);   // pin 8 = GPA7 of MCP2301X
+  mcp2.pinMode(9, OUTPUT);   // pin 9 = GPA7 of MCP2301X
+
+  mcp2.pinMode(14, OUTPUT);   // pin 14 = GPA7 of MCP2301X
+  mcp2.pinMode(15, OUTPUT);   // pin 15 = GPA7 of MCP2301X
+
+  mcp3.pinMode(1, OUTPUT);   // pin 1 = GPA7 of MCP2301X
+  mcp3.pinMode(2, OUTPUT);   // pin 2 = GPA7 of MCP2301X
+
+  mcp3.pinMode(6, OUTPUT);   // pin 6 = GPA7 of MCP2301X
+  mcp3.pinMode(7, OUTPUT);   // pin 7 = GPA7 of MCP2301X
+
+  mcp3.pinMode(9, OUTPUT);   // pin 9 = GPA7 of MCP2301X
+  mcp3.pinMode(10, OUTPUT);   // pin 10 = GPA7 of MCP2301X
+  mcp3.pinMode(11, OUTPUT);   // pin 11 = GPA7 of MCP2301X
+
+  mcp3.pinMode(13, OUTPUT);   // pin 13 = GPA7 of MCP2301X
+  mcp3.pinMode(14, OUTPUT);   // pin 14 = GPA7 of MCP2301X
+  mcp3.pinMode(15, OUTPUT);   // pin 15 = GPA7 of MCP2301X
+
+  mcp4.pinMode(1, OUTPUT);   // pin 1 = GPA7 of MCP2301X
+  mcp4.pinMode(2, OUTPUT);   // pin 2 = GPA7 of MCP2301X
+
+  mcp4.pinMode(6, OUTPUT);   // pin 6 = GPA7 of MCP2301X
+  mcp4.pinMode(7, OUTPUT);   // pin 7 = GPA7 of MCP2301X
+
+  mcp4.pinMode(9, OUTPUT);   // pin 9 = GPA7 of MCP2301X
+  mcp4.pinMode(10, OUTPUT);   // pin 10 = GPA7 of MCP2301X
+  mcp4.pinMode(11, OUTPUT);   // pin 11 = GPA7 of MCP2301X
+
+  mcp4.pinMode(13, OUTPUT);   // pin 13 = GPA7 of MCP2301X
+  mcp4.pinMode(14, OUTPUT);   // pin 14 = GPA7 of MCP2301X
+  mcp4.pinMode(15, OUTPUT);   // pin 15 = GPA7 of MCP2301X
 }

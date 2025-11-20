@@ -448,69 +448,79 @@ void myControlChange(byte channel, byte control, int value) {
       updatectlb(1);
       break;
 
-      //   // Buttons
+// Buttons
 
-      // case CCvcoATable:
-      //   updatevcoAWave(1);
-      //   break;
+    case CClfo1_sync:
+      updatelfo1_sync(1);
+      break;
 
-      // case CCvcoBTable:
-      //   updatevcoBWave(1);
-      //   break;
+    case CClfo2_sync:
+      updatelfo2_sync(1);
+      break;
 
-      // case CCvcoCTable:
-      //   updatevcoCWave(1);
-      //   break;
+    case CCdco1_PWM_dyn:
+      updatedco1_PWM_dyn(1);
+      break;
 
-      // case CCvcoAOctave:
-      //   vcoAOctave = value;
-      //   updatevcoAOctave(1);
-      //   break;
+    case CCdco2_PWM_dyn:
+      updatedco2_PWM_dyn(1);
+      break;
 
-      // case CCvcoBOctave:
-      //   vcoBOctave = value;
-      //   updatevcoBOctave(1);
-      //   break;
+    case CCdco1_PWM_env_source:
+      updatedco1_PWM_env_source(1);
+      break;
 
-      // case CCvcoCOctave:
-      //   vcoCOctave = value;
-      //   updatevcoCOctave(1);
-      //   break;
+    case CCdco2_PWM_env_source:
+      updatedco2_PWM_env_source(1);
+      break;
 
-      // case CCLFO1Wave:
-      //   LFO1Wave = value;
-      //   updateLFO1Wave(1);
-      //   break;
+    case CCdco1_PWM_env_polarity:
+      updatedco1_PWM_env_source(1);
+      break;
 
-      // case CCLFO2Wave:
-      //   LFO2Wave = value;
-      //   updateLFO2Wave(1);
-      //   break;
+    case CCdco2_PWM_env_polarity:
+      updatedco2_PWM_env_source(1);
+      break;
 
-      // case CCfilterLFODepthSW:
-      //   updatefilterLFODepth(1);
-      //   break;
+    case CCdco1_PWM_lfo_source:
+      updatedco1_PWM_lfo_source(1);
+      break;
 
-      // case CCampLFODepthSW:
-      //   updateampLFODepth(1);
-      //   break;
+    case CCdco2_PWM_lfo_source:
+      updatedco2_PWM_lfo_source(1);
+      break;
 
-      // case CCfilterEGDepthSW:
-      //   updatefilterEGDepth(1);
-      //   break;
+    case CCdco1_pitch_dyn:
+      updatedco1_pitch_dyn(1);
+      break;
 
-      // case CCnoiseLevelSW:
-      //   updatenoiseLevel(1);
-      //   break;
+    case CCdco2_pitch_dyn:
+      updatedco2_pitch_dyn(1);
+      break;
 
-      // case CCeffectsMixSW:
-      //   updateeffectsMix(1);
-      //   break;
+    case CCdco1_pitch_lfo_source:
+      updatedco1_pitch_lfo_source(1);
+      break;
 
-      // case CCeffects3SW:
-      //   effectsPot3SW = map(value, 0, 127, 0, 1);
-      //   updateeffectsPot3SW(1);
-      //   break;
+    case CCdco2_pitch_lfo_source:
+      updatedco2_pitch_lfo_source(1);
+      break;
+
+    case CCdco1_pitch_env_source:
+      updatedco1_pitch_env_source(1);
+      break;
+
+    case CCdco2_pitch_env_source:
+      updatedco2_pitch_env_source(1);
+      break;
+
+    case CCdco1_pitch_env_polarity:
+      updatedco1_pitch_env_source(1);
+      break;
+
+    case CCdco2_pitch_env_polarity:
+      updatedco2_pitch_env_source(1);
+      break;
 
       // case CCfilterKeyTrackZeroSW:
       //   updatefilterKeyTrack(1);
@@ -1205,215 +1215,771 @@ FLASHMEM void updatectlb(bool announce) {
   midiCCOut(CCctlb, ctlb);
 }
 
-// FLASHMEM void updatevcoAWave(bool announce) {
-//   if (!vcoATable) {
-//     if (announce) {
-//       switch (vcoAWave) {
-//         case 0:
-//           showCurrentParameterPage("VCO A Wave", "Sine");
-//           break;
-//         case 1:
-//           showCurrentParameterPage("VCO A Wave", "Saw");
-//           break;
-//         case 2:
-//           showCurrentParameterPage("VCO A Wave", "Reverse Saw");
-//           break;
-//         case 3:
-//           showCurrentParameterPage("VCO A Wave", "Square");
-//           break;
-//         case 4:
-//           showCurrentParameterPage("VCO A Wave", "Triangle");
-//           break;
-//         case 5:
-//           showCurrentParameterPage("VCO A Wave", "Pulse");
-//           break;
-//         case 6:
-//           showCurrentParameterPage("VCO A Wave", "S & H");
-//           break;
-//       }
-//       startParameterDisplay();
-//     }
-//   }
-// }
+// Buttons
 
-// FLASHMEM void updatevcoBWave(bool announce) {
-//   if (!vcoBTable) {
-//     if (announce) {
-//       switch (vcoBWave) {
-//         case 0:
-//           showCurrentParameterPage("VCO B Wave", "Sine");
-//           break;
-//         case 1:
-//           showCurrentParameterPage("VCO B Wave", "Saw");
-//           break;
-//         case 2:
-//           showCurrentParameterPage("VCO B Wave", "Reverse Saw");
-//           break;
-//         case 3:
-//           showCurrentParameterPage("VCO B Wave", "Square");
-//           break;
-//         case 4:
-//           showCurrentParameterPage("VCO B Wave", "Triangle");
-//           break;
-//         case 5:
-//           showCurrentParameterPage("VCO B Wave", "Pulse");
-//           break;
-//         case 6:
-//           showCurrentParameterPage("VCO B Wave", "S & H");
-//           break;
-//       }
-//       startParameterDisplay();
-//     }
-//   }
-// }
+FLASHMEM void updatelfo1_sync(bool announce) {
+  if (announce) {
+    switch (lfo1_sync) {
+      case 0:
+        showCurrentParameterPage("LFO1 Sync", "Off");
+        break;
+      case 1:
+        showCurrentParameterPage("LFO1 Sync", "On");
+        break;
+      case 2:
+        showCurrentParameterPage("LFO1 Sync", "Key");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (lfo1_sync) {
+    case 0:
+      midiCCOut(CClfo1_sync, 0x00);
+      mcp1.digitalWrite(LFO1_SYNC_RED, LOW);
+      mcp1.digitalWrite(LFO1_SYNC_GREEN, LOW);
+      break;
+    case 1:
+      midiCCOut(CClfo1_sync, 0x20);
+      mcp1.digitalWrite(LFO1_SYNC_RED, HIGH);
+      mcp1.digitalWrite(LFO1_SYNC_GREEN, LOW);
+      break;
+    case 2:
+      midiCCOut(CClfo1_sync, 0x40);
+      mcp1.digitalWrite(LFO1_SYNC_RED, LOW);
+      mcp1.digitalWrite(LFO1_SYNC_GREEN, HIGH);
+      break;
+  }
+}
 
-// FLASHMEM void updatevcoCWave(bool announce) {
-//   if (!vcoCTable) {
-//     if (announce) {
-//       switch (vcoCWave) {
-//         case 0:
-//           showCurrentParameterPage("VCO C Wave", "Sine");
-//           break;
-//         case 1:
-//           showCurrentParameterPage("VCO C Wave", "Saw");
-//           break;
-//         case 2:
-//           showCurrentParameterPage("VCO C Wave", "Reverse Saw");
-//           break;
-//         case 3:
-//           showCurrentParameterPage("VCO C Wave", "Square");
-//           break;
-//         case 4:
-//           showCurrentParameterPage("VCO C Wave", "Triangle");
-//           break;
-//         case 5:
-//           showCurrentParameterPage("VCO C Wave", "Pulse");
-//           break;
-//         case 6:
-//           showCurrentParameterPage("VCO C Wave", "S & H");
-//           break;
-//       }
-//       startParameterDisplay();
-//     }
-//   }
-// }
+FLASHMEM void updatelfo2_sync(bool announce) {
+  if (announce) {
+    switch (lfo2_sync) {
+      case 0:
+        showCurrentParameterPage("LFO2 Sync", "Off");
+        break;
+      case 1:
+        showCurrentParameterPage("LFO2 Sync", "On");
+        break;
+      case 2:
+        showCurrentParameterPage("LFO2 Sync", "Key");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (lfo2_sync) {
+    case 0:
+      midiCCOut(CClfo2_sync, 0x00);
+      mcp2.digitalWrite(LFO2_SYNC_RED, LOW);
+      mcp2.digitalWrite(LFO2_SYNC_GREEN, LOW);
+      break;
+    case 1:
+      midiCCOut(CClfo2_sync, 0x20);
+      mcp2.digitalWrite(LFO2_SYNC_RED, HIGH);
+      mcp2.digitalWrite(LFO2_SYNC_GREEN, LOW);
+      break;
+    case 2:
+      midiCCOut(CClfo2_sync, 0x40);
+      mcp2.digitalWrite(LFO2_SYNC_RED, LOW);
+      mcp2.digitalWrite(LFO2_SYNC_GREEN, HIGH);
+      break;
+  }
+}
 
-// FLASHMEM void updatefilterCutoff(bool announce) {
-//   if (announce) {
-//     showCurrentParameterPage("VCF Cutoff", String(filterCutoff));
-//     startParameterDisplay();
-//   }
-// }
+FLASHMEM void updatedco1_PWM_dyn(bool announce) {
+  if (announce) {
+    switch (dco1_PWM_dyn) {
+      case 0:
+        showCurrentParameterPage("DCO1 PWM Dyn", "Off");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO1 PWM Dyn", "Dyn 1");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO1 PWM Dyn", "Dyn 2");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO1 PWM Dyn", "Dyn 3");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (dco1_PWM_dyn) {
+    case 0:
+      midiCCOut(CCdco1_PWM_dyn, 0x00);
+      mcp1.digitalWrite(DCO1_PWM_DYN_RED, LOW);
+      mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, LOW);
+      break;
+    case 1:
+      midiCCOut(CCdco1_PWM_dyn, 0x20);
+      mcp1.digitalWrite(DCO1_PWM_DYN_RED, HIGH);
+      mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, LOW);
+      break;
+    case 2:
+      midiCCOut(CCdco1_PWM_dyn, 0x40);
+      mcp1.digitalWrite(DCO1_PWM_DYN_RED, LOW);
+      mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, HIGH);
+      break;
+    case 3:
+      midiCCOut(CCdco1_PWM_dyn, 0x60);
+      mcp1.digitalWrite(DCO1_PWM_DYN_RED, HIGH);
+      mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, HIGH);
+      break;
+  }
+}
 
-// FLASHMEM void updatefilterResonance(bool announce) {
-//   if (announce) {
-//     showCurrentParameterPage("VCF Res", String(filterResonance));
-//     startParameterDisplay();
-//   }
-// }
+FLASHMEM void updatedco2_PWM_dyn(bool announce) {
+  if (announce) {
+    switch (dco2_PWM_dyn) {
+      case 0:
+        showCurrentParameterPage("DCO2 PWM Dyn", "Off");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO2 PWM Dyn", "Dyn 1");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO2 PWM Dyn", "Dyn 2");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO2 PWM Dyn", "Dyn 3");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (dco2_PWM_dyn) {
+    case 0:
+      midiCCOut(CCdco2_PWM_dyn, 0x00);
+      mcp2.digitalWrite(DCO2_PWM_DYN_RED, LOW);
+      mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, LOW);
+      break;
+    case 1:
+      midiCCOut(CCdco2_PWM_dyn, 0x20);
+      mcp2.digitalWrite(DCO2_PWM_DYN_RED, HIGH);
+      mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, LOW);
+      break;
+    case 2:
+      midiCCOut(CCdco2_PWM_dyn, 0x40);
+      mcp2.digitalWrite(DCO2_PWM_DYN_RED, LOW);
+      mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, HIGH);
+      break;
+    case 3:
+      midiCCOut(CCdco2_PWM_dyn, 0x60);
+      mcp2.digitalWrite(DCO2_PWM_DYN_RED, HIGH);
+      mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, HIGH);
+      break;
+  }
+}
 
-// FLASHMEM void updatefilterEGDepth(bool announce) {
-//   if (announce) {
-//     showCurrentParameterPage("VCF EG Depth", String(filterEGDepth));
-//     startParameterDisplay();
-//   }
-// }
+FLASHMEM void updatedco1_PWM_env_source(bool announce) {
+  if (announce) {
+    switch (dco1_PWM_env_source) {
+      case 0:
+        showCurrentParameterPage("DCO1 PWM Env", "Env1 Negative");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO1 PWM Env", "Env1 Positive");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO1 PWM Env", "Env2 Negative");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO1 PWM Env", "Env2 Positive");
+        break;
+      case 4:
+        showCurrentParameterPage("DCO1 PWM Env", "Env3 Negative");
+        break;
+      case 5:
+        showCurrentParameterPage("DCO1 PWM Env", "Env3 Positive");
+        break;
+      case 6:
+        showCurrentParameterPage("DCO1 PWM Env", "Env4 Negative");
+        break;
+      case 7:
+        showCurrentParameterPage("DCO1 PWM Env", "Env4 Positive");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (dco1_PWM_env_source) {
+    case 0:
+      midiCCOut(CCdco1_PWM_env_source, 0x00);
+      mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
+      mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
+      mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
+      mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
+      break;
+    case 1:
+      midiCCOut(CCdco1_PWM_env_source, 0x10);
+      mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
+      mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
+      mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
+      mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
+      break;
+    case 2:
+      midiCCOut(CCdco1_PWM_env_source, 0x20);
+      mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
+      mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
+      mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
+      mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
+      break;
+    case 3:
+      midiCCOut(CCdco1_PWM_env_source, 0x30);
+      mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
+      mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
+      mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
+      mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
+      break;
+    case 4:
+      midiCCOut(CCdco1_PWM_env_source, 0x40);
+      mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
+      mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
+      mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
+      mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
+      break;
+    case 5:
+      midiCCOut(CCdco1_PWM_env_source, 0x50);
+      mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
+      mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
+      mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
+      mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
+      break;
+    case 6:
+      midiCCOut(CCdco1_PWM_env_source, 0x60);
+      mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
+      mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
+      mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
+      mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
+      break;
+    case 7:
+      midiCCOut(CCdco1_PWM_env_source, 0x70);
+      mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
+      mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
+      mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
+      mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
+      break;
+  }
+}
 
-// FLASHMEM void updatefilterKeyTrack(bool announce) {
-//   if (announce) {
-//     if (filterKeyTrack == 0) {
-//       showCurrentParameterPage("Filter Keytrack", "Off");
-//     } else if (filterKeyTrack < 0) {
-//       float positive_filterKeyTrack = abs(filterKeyTrack);
-//       showCurrentParameterPage("Filter Keytrack", "- " + String(positive_filterKeyTrack));
-//     } else {
-//       showCurrentParameterPage("Filter Keytrack", "+ " + String(filterKeyTrack));
-//     }
-//     startParameterDisplay();
-//   }
-// }
+FLASHMEM void updatedco2_PWM_env_source(bool announce) {
+  if (announce) {
+    switch (dco2_PWM_env_source) {
+      case 0:
+        showCurrentParameterPage("DCO2 PWM Env", "Env1 Negative");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO2 PWM Env", "Env1 Positive");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO2 PWM Env", "Env2 Negative");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO2 PWM Env", "Env2 Positive");
+        break;
+      case 4:
+        showCurrentParameterPage("DCO2 PWM Env", "Env3 Negative");
+        break;
+      case 5:
+        showCurrentParameterPage("DCO2 PWM Env", "Env3 Positive");
+        break;
+      case 6:
+        showCurrentParameterPage("DCO2 PWM Env", "Env4 Negative");
+        break;
+      case 7:
+        showCurrentParameterPage("DCO2 PWM Env", "Env4 Positive");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (dco2_PWM_env_source) {
+    case 0:
+      midiCCOut(CCdco2_PWM_env_source, 0x00);
+      mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
+      mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
+      mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
+      mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
+      break;
+    case 1:
+      midiCCOut(CCdco2_PWM_env_source, 0x10);
+      mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
+      mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
+      mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
+      mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
+      break;
+    case 2:
+      midiCCOut(CCdco2_PWM_env_source, 0x20);
+      mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
+      mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
+      mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
+      mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
+      break;
+    case 3:
+      midiCCOut(CCdco2_PWM_env_source, 0x30);
+      mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
+      mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
+      mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
+      mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
+      break;
+    case 4:
+      midiCCOut(CCdco1_PWM_env_source, 0x40);
+      mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
+      mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
+      mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
+      mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
+      break;
+    case 5:
+      midiCCOut(CCdco2_PWM_env_source, 0x50);
+      mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
+      mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
+      mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
+      mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
+      break;
+    case 6:
+      midiCCOut(CCdco2_PWM_env_source, 0x60);
+      mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
+      mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
+      mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
+      mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
+      break;
+    case 7:
+      midiCCOut(CCdco2_PWM_env_source, 0x70);
+      mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
+      mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
+      mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
+      mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
+      break;
+  }
+}
 
-// FLASHMEM void updatefilterLFODepth(bool announce) {
-//   if (announce) {
-//     if (filterLFODepth == 0) {
-//       showCurrentParameterPage("LFO Depth", "Off");
-//     } else if (filterLFODepth < 0) {
-//       float positive_filterLFODepth = abs(filterLFODepth);
-//       showCurrentParameterPage("LFO1 Depth", String(positive_filterLFODepth));
-//     } else {
-//       showCurrentParameterPage("LFO2 Depth", String(filterLFODepth));
-//     }
-//     startParameterDisplay();
-//   }
-// }
+FLASHMEM void updatedco1_PWM_lfo_source(bool announce) {
+  if (announce) {
+    switch (dco1_PWM_lfo_source) {
+      case 0:
+        showCurrentParameterPage("DCO1 PWM", "LFO1 Negative");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO1 PWM", "LFO1 Positive");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO1 PWM", "LFO2 Negative");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO1 PWM", "LFO1 Positive");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (dco1_PWM_lfo_source) {
+    case 0:
+      midiCCOut(CCdco1_PWM_lfo_source, 0x00);
+      mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, LOW);
+      mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, LOW);
+      break;
+    case 1:
+      midiCCOut(CCdco1_PWM_lfo_source, 0x20);
+      mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, HIGH);
+      mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, LOW);
+      break;
+    case 2:
+      midiCCOut(CCdco1_PWM_lfo_source, 0x40);
+      mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, LOW);
+      mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, HIGH);
+      break;
+    case 3:
+      midiCCOut(CCdco1_PWM_lfo_source, 0x60);
+      mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, HIGH);
+      mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, HIGH);
+      break;
+  }
+}
 
+FLASHMEM void updatedco2_PWM_lfo_source(bool announce) {
+  if (announce) {
+    switch (dco2_PWM_lfo_source) {
+      case 0:
+        showCurrentParameterPage("DCO2 PWM", "LFO1 Negative");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO2 PWM", "LFO1 Positive");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO2 PWM", "LFO2 Negative");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO2 PWM", "LFO1 Positive");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (dco2_PWM_lfo_source) {
+    case 0:
+      midiCCOut(CCdco2_PWM_lfo_source, 0x00);
+      mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, LOW);
+      mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, LOW);
+      break;
+    case 1:
+      midiCCOut(CCdco2_PWM_lfo_source, 0x20);
+      mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, HIGH);
+      mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, LOW);
+      break;
+    case 2:
+      midiCCOut(CCdco2_PWM_lfo_source, 0x40);
+      mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, LOW);
+      mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, HIGH);
+      break;
+    case 3:
+      midiCCOut(CCdco2_PWM_lfo_source, 0x60);
+      mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, HIGH);
+      mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, HIGH);
+      break;
+  }
+}
 
+FLASHMEM void updatedco1_pitch_dyn(bool announce) {
+  if (announce) {
+    switch (dco1_pitch_dyn) {
+      case 0:
+        showCurrentParameterPage("DCO1 Pitch", "Dynamics Off");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO1 Pitch", "Dynamics 1");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO1 Pitch", "Dynamics 2");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO1 Pitch", "Dynamics 3");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (dco1_pitch_dyn) {
+    case 0:
+      midiCCOut(CCdco1_pitch_dyn, 0x00);
+      mcp4.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
+      mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
+      break;
+    case 1:
+      midiCCOut(CCdco1_pitch_dyn, 0x20);
+      mcp4.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
+      mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
+      break;
+    case 2:
+      midiCCOut(CCdco1_pitch_dyn, 0x40);
+      mcp4.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
+      mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
+      break;
+    case 3:
+      midiCCOut(CCdco1_pitch_dyn, 0x60);
+      mcp4.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
+      mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
+      break;
+  }
+}
 
-// FLASHMEM void updateeffectsMix(bool announce) {
-//   if (announce) {
-//     if (effectsMix == 0) {
-//       showCurrentParameterPage("Effects Mix", "50/50");
-//     } else if (effectsMix < 0) {
-//       float positive_effectsMix = abs(effectsMix);
-//       showCurrentParameterPage("Effects Dry", String(positive_effectsMix));
-//     } else {
-//       showCurrentParameterPage("Effects Wet", String(effectsMix));
-//     }
-//     startParameterDisplay();
-//   }
-// }
+FLASHMEM void updatedco2_pitch_dyn(bool announce) {
+  if (announce) {
+    switch (dco2_pitch_dyn) {
+      case 0:
+        showCurrentParameterPage("DCO2 Pitch", "Dynamics Off");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO2 Pitch", "Dynamics 1");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO2 Pitch", "Dynamics 2");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO2 Pitch", "Dynamics 3");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (dco2_pitch_dyn) {
+    case 0:
+      midiCCOut(CCdco2_pitch_dyn, 0x00);
+      mcp3.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
+      mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
+      break;
+    case 1:
+      midiCCOut(CCdco2_pitch_dyn, 0x20);
+      mcp3.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
+      mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
+      break;
+    case 2:
+      midiCCOut(CCdco2_pitch_dyn, 0x40);
+      mcp3.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
+      mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
+      break;
+    case 3:
+      midiCCOut(CCdco2_pitch_dyn, 0x60);
+      mcp3.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
+      mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
+      break;
+  }
+}
 
-// void updateeffectsPot3SW(bool announce) {
-//   // Ignore trigger if already mid-move
-//   if (fast || slow) {
-//     effectsPot3SW = false;  // clear trigger so it doesn't fire again
-//     return;
-//   }
+FLASHMEM void updatedco1_pitch_lfo_source(bool announce) {
+  if (announce) {
+    switch (dco1_pitch_lfo_source) {
+      case 0:
+        showCurrentParameterPage("DCO1 Pitch", "LFO1 Negative");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO1 Pitch", "LFO1 Positive");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO1 Pitch", "LFO2 Negative");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO1 Pitch", "LFO1 Positive");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (dco1_pitch_lfo_source) {
+    case 0:
+      midiCCOut(CCdco1_pitch_lfo_source, 0x00);
+      mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, LOW);
+      mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, LOW);
+      break;
+    case 1:
+      midiCCOut(CCdco1_pitch_lfo_source, 0x20);
+      mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, HIGH);
+      mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, LOW);
+      break;
+    case 2:
+      midiCCOut(CCdco1_pitch_lfo_source, 0x40);
+      mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, LOW);
+      mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, HIGH);
+      break;
+    case 3:
+      midiCCOut(CCdco1_pitch_lfo_source, 0x60);
+      mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, HIGH);
+      mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, HIGH);
+      break;
+  }
+}
 
-//   if (effectsPot3SW) {  // Triggered by footswitch press
-//     showCurrentParameterPage("Foot Switch", "Pressed");
-//     startParameterDisplay();
+FLASHMEM void updatedco2_pitch_lfo_source(bool announce) {
+  if (announce) {
+    switch (dco2_pitch_lfo_source) {
+      case 0:
+        showCurrentParameterPage("DCO2 Pitch", "LFO1 Negative");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO2 Pitch", "LFO1 Positive");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO2 Pitch", "LFO2 Negative");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO2 Pitch", "LFO1 Positive");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (dco2_pitch_lfo_source) {
+    case 0:
+      midiCCOut(CCdco2_pitch_lfo_source, 0x00);
+      mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, LOW);
+      mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, LOW);
+      break;
+    case 1:
+      midiCCOut(CCdco2_pitch_lfo_source, 0x20);
+      mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, HIGH);
+      mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, LOW);
+      break;
+    case 2:
+      midiCCOut(CCdco2_pitch_lfo_source, 0x40);
+      mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, LOW);
+      mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, HIGH);
+      break;
+    case 3:
+      midiCCOut(CCdco2_pitch_lfo_source, 0x60);
+      mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, HIGH);
+      mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, HIGH);
+      break;
+  }
+}
 
-//     if (!pot3ToggleState) {
-//       if (effectPot3 < 127) {
-//         slowpot3 = effectPot3;
-//         fast = true;
-//         slow = false;
-//       } else {
-//         fastpot3 = effectPot3;
-//         slow = true;
-//         fast = false;
-//       }
-//     } else {
-//       if (effectPot3 < 127) {
-//         fast = true;
-//         slow = false;
-//       } else {
-//         slow = true;
-//         fast = false;
-//       }
-//     }
+FLASHMEM void updatedco1_pitch_env_source(bool announce) {
+  if (announce) {
+    switch (dco1_pitch_env_source) {
+      case 0:
+        showCurrentParameterPage("DCO1 Pitch", "Env1 Negative");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO1 Pitch", "Env1 Positive");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO1 Pitch", "Env2 Negative");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO1 Pitch", "Env2 Positive");
+        break;
+      case 4:
+        showCurrentParameterPage("DCO1 Pitch", "Env3 Negative");
+        break;
+      case 5:
+        showCurrentParameterPage("DCO1 Pitch", "Env3 Positive");
+        break;
+      case 6:
+        showCurrentParameterPage("DCO1 Pitch", "Env4 Negative");
+        break;
+      case 7:
+        showCurrentParameterPage("DCO1 Pitch", "Env4 Positive");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (dco1_pitch_env_source) {
+    case 0:
+      midiCCOut(CCdco1_pitch_env_source, 0x00);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
+      break;
+    case 1:
+      midiCCOut(CCdco1_pitch_env_source, 0x10);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
+      break;
+    case 2:
+      midiCCOut(CCdco1_pitch_env_source, 0x20);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
+      break;
+    case 3:
+      midiCCOut(CCdco1_pitch_env_source, 0x30);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
+      break;
+    case 4:
+      midiCCOut(CCdco1_pitch_env_source, 0x40);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
+      break;
+    case 5:
+      midiCCOut(CCdco1_pitch_env_source, 0x50);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
+      break;
+    case 6:
+      midiCCOut(CCdco1_pitch_env_source, 0x60);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
+      break;
+    case 7:
+      midiCCOut(CCdco1_pitch_env_source, 0x70);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
+      mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
+      break;
+  }
+}
 
-//     pot3ToggleState = !pot3ToggleState;
-//     effectsPot3SW = false;
-//   }
-// }
-
-// void changeSpeed() {
-//   if (slow) {
-//     effectPot3--;
-//     if (effectPot3 <= slowpot3) {
-//       slow = false;
-//     }
-//   }
-
-//   if (fast) {
-//     effectPot3++;
-//     if (effectPot3 >= fastpot3) {
-//       fast = false;
-//     }
-//   }
-// }
+FLASHMEM void updatedco2_pitch_env_source(bool announce) {
+  if (announce) {
+    switch (dco2_pitch_env_source) {
+      case 0:
+        showCurrentParameterPage("DCO2 Pitch", "Env1 Negative");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO2 Pitch", "Env1 Positive");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO2 Pitch", "Env2 Negative");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO2 Pitch", "Env2 Positive");
+        break;
+      case 4:
+        showCurrentParameterPage("DCO2 Pitch", "Env3 Negative");
+        break;
+      case 5:
+        showCurrentParameterPage("DCO2 Pitch", "Env3 Positive");
+        break;
+      case 6:
+        showCurrentParameterPage("DCO2 Pitch", "Env4 Negative");
+        break;
+      case 7:
+        showCurrentParameterPage("DCO2 Pitch", "Env4 Positive");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (dco2_pitch_env_source) {
+    case 0:
+      midiCCOut(CCdco2_pitch_env_source, 0x00);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
+      break;
+    case 1:
+      midiCCOut(CCdco2_pitch_env_source, 0x10);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
+      break;
+    case 2:
+      midiCCOut(CCdco2_pitch_env_source, 0x20);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
+      break;
+    case 3:
+      midiCCOut(CCdco2_pitch_env_source, 0x30);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
+      break;
+    case 4:
+      midiCCOut(CCdco2_pitch_env_source, 0x40);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
+      break;
+    case 5:
+      midiCCOut(CCdco2_pitch_env_source, 0x50);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
+      break;
+    case 6:
+      midiCCOut(CCdco2_pitch_env_source, 0x60);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
+      break;
+    case 7:
+      midiCCOut(CCdco2_pitch_env_source, 0x70);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
+      mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
+      break;
+  }
+}
 
 // FLASHMEM void updatevolumeLevel(bool announce) {
 //   if (announce) {
@@ -3369,84 +3935,197 @@ void mainButtonChanged(Button *btn, bool released) {
   switch (btn->id) {
     case LFO1_SYNC_BUTTON:
       if (!released) {
+        lfo1_sync = lfo1_sync + 1;
+        if (lfo1_sync > 2) {
+          lfo1_sync = 0;
+        }
+        myControlChange(midiChannel, CClfo1_sync, lfo1_sync);
       }
       break;
 
-    case OSC1_WAVE_BUTTON:
-
-      break;
-
-    case OSC1_SUB_BUTTON:
-
-      break;
-
-    case OSC2_WAVE_BUTTON:
-
-      break;
-
-    case OSC2_XMOD_BUTTON:
-
-      break;
-
-    case OSC2_EG_BUTTON:
-
-      break;
-
-    case LFO1_WAVE_BUTTON:
-
-      break;
-
-    case LFO2_WAVE_BUTTON:
-
-      break;
-
-    case LFO3_WAVE_BUTTON:
-
-      break;
-
-    case ENV_SEL_BUTTON:
-
-      break;
-
-    case LFO_SEL_BUTTON:
-
-      break;
-
-    case OSC1_LEV_SW:
-
-      break;
-
-    case OSC2_DET_SW:
-
-      break;
-
-    case OSC2_LEV_SW:
+    case LFO2_SYNC_BUTTON:
       if (!released) {
+        lfo2_sync = lfo2_sync + 1;
+        if (lfo2_sync > 2) {
+          lfo2_sync = 0;
+        }
+        myControlChange(midiChannel, CClfo2_sync, lfo2_sync);
       }
       break;
 
-    case OSC2_EG_SW:
+    case DCO1_PWM_DYN_BUTTON:
       if (!released) {
+        dco1_PWM_dyn = dco1_PWM_dyn + 1;
+        if (dco1_PWM_dyn > 3) {
+          dco1_PWM_dyn = 0;
+        }
+        myControlChange(midiChannel, CCdco1_PWM_dyn, dco1_PWM_dyn);
       }
       break;
 
-    case VCF_EG_SW:
+    case DCO2_PWM_DYN_BUTTON:
       if (!released) {
+        dco2_PWM_dyn = dco2_PWM_dyn + 1;
+        if (dco2_PWM_dyn > 3) {
+          dco2_PWM_dyn = 0;
+        }
+        myControlChange(midiChannel, CCdco2_PWM_dyn, dco2_PWM_dyn);
       }
       break;
 
-    case VCF_KEYF_SW:
+    case DCO1_PWM_ENV_SOURCE_BUTTON:
       if (!released) {
+        dco1_PWM_env_source = dco1_PWM_env_source + 2;
+        if (dco1_PWM_env_source > 7) {
+          dco1_PWM_env_source = 0;
+          dco1_PWM_env_pol = 0;
+        }
+        myControlChange(midiChannel, CCdco1_PWM_env_source, dco1_PWM_env_source);
       }
       break;
 
-    case VCF_VEL_SW:
+    case DCO2_PWM_ENV_SOURCE_BUTTON:
       if (!released) {
+        dco2_PWM_env_source = dco2_PWM_env_source + 2;
+        if (dco2_PWM_env_source > 7) {
+          dco2_PWM_env_source = 0;
+          dco2_PWM_env_pol = 0;
+        }
+        myControlChange(midiChannel, CCdco2_PWM_env_source, dco2_PWM_env_source);
       }
       break;
 
-    case VCA_VEL_SW:
+    case DCO1_PWM_ENV_POLARITY_BUTTON:
       if (!released) {
+        dco1_PWM_env_pol = !dco1_PWM_env_pol;
+        if (dco1_PWM_env_pol) {
+          dco1_PWM_env_source++;
+        }
+        if (!dco1_PWM_env_pol) {
+          dco1_PWM_env_source--;
+        }
+        myControlChange(midiChannel, CCdco1_PWM_env_source, dco1_PWM_env_source);
+      }
+      break;
+
+    case DCO2_PWM_ENV_POLARITY_BUTTON:
+      if (!released) {
+        dco2_PWM_env_pol = !dco2_PWM_env_pol;
+        if (dco2_PWM_env_pol) {
+          dco2_PWM_env_source++;
+        }
+        if (!dco2_PWM_env_pol) {
+          dco2_PWM_env_source--;
+        }
+        myControlChange(midiChannel, CCdco2_PWM_env_source, dco2_PWM_env_source);
+      }
+      break;
+
+    case DCO1_PWM_LFO_SOURCE_BUTTON:
+      if (!released) {
+        dco1_PWM_lfo_source = dco1_PWM_lfo_source + 1;
+        if (dco1_PWM_lfo_source > 3) {
+          dco1_PWM_lfo_source = 0;
+        }
+        myControlChange(midiChannel, CCdco1_PWM_lfo_source, dco1_PWM_lfo_source);
+      }
+      break;
+
+    case DCO2_PWM_LFO_SOURCE_BUTTON:
+      if (!released) {
+        dco2_PWM_lfo_source = dco2_PWM_lfo_source + 1;
+        if (dco2_PWM_lfo_source > 3) {
+          dco2_PWM_lfo_source = 0;
+        }
+        myControlChange(midiChannel, CCdco2_PWM_lfo_source, dco2_PWM_lfo_source);
+      }
+      break;
+
+    case DCO1_PITCH_DYN_BUTTON:
+      if (!released) {
+        dco1_pitch_dyn = dco1_pitch_dyn + 1;
+        if (dco1_pitch_dyn > 3) {
+          dco1_pitch_dyn = 0;
+        }
+        myControlChange(midiChannel, CCdco1_pitch_dyn, dco1_pitch_dyn);
+      }
+      break;
+
+    case DCO2_PITCH_DYN_BUTTON:
+      if (!released) {
+        dco2_pitch_dyn = dco2_pitch_dyn + 1;
+        if (dco2_pitch_dyn > 3) {
+          dco2_pitch_dyn = 0;
+        }
+        myControlChange(midiChannel, CCdco2_pitch_dyn, dco2_pitch_dyn);
+      }
+      break;
+
+    case DCO1_PITCH_LFO_SOURCE_BUTTON:
+      if (!released) {
+        dco1_pitch_lfo_source = dco1_pitch_lfo_source + 1;
+        if (dco1_pitch_lfo_source > 3) {
+          dco1_pitch_lfo_source = 0;
+        }
+        myControlChange(midiChannel, CCdco1_pitch_lfo_source, dco1_pitch_lfo_source);
+      }
+      break;
+
+    case DCO2_PITCH_LFO_SOURCE_BUTTON:
+      if (!released) {
+        dco2_pitch_lfo_source = dco2_pitch_lfo_source + 1;
+        if (dco2_pitch_lfo_source > 3) {
+          dco2_pitch_lfo_source = 0;
+        }
+        myControlChange(midiChannel, CCdco2_pitch_lfo_source, dco2_pitch_lfo_source);
+      }
+      break;
+
+    case DCO1_PITCH_ENV_SOURCE_BUTTON:
+      if (!released) {
+        dco1_pitch_env_source = dco1_pitch_env_source + 2;
+        if (dco1_pitch_env_source > 7) {
+          dco1_pitch_env_source = 0;
+          dco1_pitch_env_pol = 0;
+        }
+        myControlChange(midiChannel, CCdco1_pitch_env_source, dco1_pitch_env_source);
+      }
+      break;
+
+    case DCO2_PITCH_ENV_SOURCE_BUTTON:
+      if (!released) {
+        dco2_pitch_env_source = dco2_pitch_env_source + 2;
+        if (dco2_pitch_env_source > 7) {
+          dco2_pitch_env_source = 0;
+          dco2_pitch_env_pol = 0;
+        }
+        myControlChange(midiChannel, CCdco2_pitch_env_source, dco2_pitch_env_source);
+      }
+      break;
+
+    case DCO1_PITCH_ENV_POLARITY_BUTTON:
+      if (!released) {
+        dco1_pitch_env_pol = !dco1_pitch_env_pol;
+        if (dco1_pitch_env_pol) {
+          dco1_pitch_env_source++;
+        }
+        if (!dco1_pitch_env_pol) {
+          dco1_pitch_env_source--;
+        }
+        myControlChange(midiChannel, CCdco1_pitch_env_polarity, dco1_pitch_env_pol);
+      }
+      break;
+
+    case DCO2_PITCH_ENV_POLARITY_BUTTON:
+      if (!released) {
+        dco2_pitch_env_pol = !dco2_pitch_env_pol;
+        if (dco2_pitch_env_pol) {
+          dco2_pitch_env_source++;
+        }
+        if (!dco2_pitch_env_pol) {
+          dco2_pitch_env_source--;
+        }
+        myControlChange(midiChannel, CCdco2_pitch_env_polarity, dco2_pitch_env_pol);
       }
       break;
   }

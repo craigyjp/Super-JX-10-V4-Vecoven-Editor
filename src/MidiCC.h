@@ -112,5 +112,8 @@
 #define CCenv5stage       0x5A
 #define CCadsr            0x5B
 #define CCplaymode        0x5E
+#define CCvolume          0x5F
+#define CCportamento      0x60
+#define CCportamento_sw   0x61
 
 #define CCallnotesoff 123//Panic button

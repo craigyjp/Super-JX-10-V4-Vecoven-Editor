@@ -206,6 +206,16 @@ int at_vib;
 int at_lpf;
 int at_vol;
 int balance;
+int at_vib_str;
+int at_lpf_str;
+int at_vol_str;
+int balance_str;
+int portamento;
+int portamento_str;
+int portamento_sw;
+int portamento_sw_str;
+int volume;
+int volume_str;
 
 int time1;
 int level1;

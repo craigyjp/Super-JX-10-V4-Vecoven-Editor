@@ -33,7 +33,7 @@ ADC *adc = new ADC();
 #define MUX1_DCO1_WAVE 9
 #define MUX1_DCO1_RANGE 10
 #define MUX1_DCO1_TUNE 11
-#define MUX1_DCO1_MODE 12
+#define MUX1_PORTAMENTO 12
 #define MUX1_SPARE_13 13
 #define MUX1_SPARE_14 14
 #define MUX1_SPARE_15 15
@@ -52,7 +52,7 @@ ADC *adc = new ADC();
 #define MUX2_DCO2_RANGE 10
 #define MUX2_DCO2_TUNE 11
 #define MUX2_DCO2_FINE 12
-#define MUX2_SPARE_13 13
+#define MUX2_DCO1_MODE 13
 #define MUX2_SPARE_14 14
 #define MUX2_SPARE_15 15
 
@@ -72,7 +72,7 @@ ADC *adc = new ADC();
 #define MUX3_AT_LPF 12
 #define MUX3_AT_VOL 13
 #define MUX3_BALANCE 14
-#define MUX3_SPARE_15 15
+#define MUX3_VOLUME 15
 
 //Mux 4 Connections
 #define MUX4_T1 0
@@ -146,6 +146,7 @@ ADC *adc = new ADC();
 #define ADSR_SELECT_BUTTON 27
 #define LOWER_UPPER_BUTTON 28
 #define CHORUS_BUTTON 29
+#define PORTAMENTO_BUTTON 30
 
 
 //void RotaryEncoderChanged (bool clockwise, int id);
@@ -207,13 +208,14 @@ Button vcf_dyn_Button = Button(&mcp6, 5, VCF_DYN_BUTTON, &mainButtonChanged);
 Button adsr_select_Button = Button(&mcp6, 8, ADSR_SELECT_BUTTON, &mainButtonChanged);
 Button lower_upper_Button = Button(&mcp1, 13, LOWER_UPPER_BUTTON, &mainButtonChanged);
 Button chorus_Button = Button(&mcp6, 13, CHORUS_BUTTON, &mainButtonChanged);
+Button portamento_Button = Button(&mcp3, 3, PORTAMENTO_BUTTON, &mainButtonChanged);
 
 Button *mainButtons[] = {
         &lfo1_sync_Button, &lfo2_sync_Button, &dco1_PWM_env_src_Button, &dco2_PWM_env_src_Button, &dco1_PWM_env_pol_Button, &dco2_PWM_env_pol_Button, &dco1_PWM_dyn_Button, &dco2_PWM_dyn_Button,
         &dco1_PWM_lfo_src_Button, &dco2_PWM_lfo_src_Button, &dco1_pitch_lfo_src_Button, &dco2_pitch_lfo_src_Button, &dco1_pitch_dyn_Button, &dco2_pitch_dyn_Button,
         &dco1_pitch_env_pol_Button, &dco2_pitch_env_pol_Button, &dco1_pitch_env_src_Button, &dco1_pitch_env_src_Button, &dco2_pitch_env_src_Button,
         &dco_mix_env_pol_Button, &dco_mix_env_src_Button, &vcf_env_pol_Button, &dco_mix_dyn_Button, &env5stage_select_Button,
-        &vca_dyn_Button, &vca_env_src_Button, &vcf_env_src_Button, &vcf_dyn_Button, &adsr_select_Button, &lower_upper_Button, &chorus_Button,
+        &vca_dyn_Button, &vca_env_src_Button, &vcf_env_src_Button, &vcf_dyn_Button, &adsr_select_Button, &lower_upper_Button, &chorus_Button, &portamento_Button
 };
 
 Button *allButtons[] = {
@@ -221,7 +223,7 @@ Button *allButtons[] = {
         &dco1_PWM_lfo_src_Button, &dco2_PWM_lfo_src_Button, &dco1_pitch_lfo_src_Button, &dco2_pitch_lfo_src_Button, &dco1_pitch_dyn_Button, &dco2_pitch_dyn_Button,
         &dco1_pitch_env_pol_Button, &dco2_pitch_env_pol_Button, &dco1_pitch_env_src_Button, &dco1_pitch_env_src_Button, &dco2_pitch_env_src_Button,
         &dco_mix_env_pol_Button, &dco_mix_env_src_Button, &vcf_env_pol_Button, &dco_mix_dyn_Button, &env5stage_select_Button,
-        &vca_dyn_Button, &vca_env_src_Button, &vcf_env_src_Button, &vcf_dyn_Button, &adsr_select_Button, &lower_upper_Button, &chorus_Button
+        &vca_dyn_Button, &vca_env_src_Button, &vcf_env_src_Button, &vcf_dyn_Button, &adsr_select_Button, &lower_upper_Button, &chorus_Button, &portamento_Button
 };
 
 // an array of vectors to hold pointers to the encoders on each MCP
@@ -254,6 +256,9 @@ std::vector<RotaryEncOverMCP*> encByMCP[NUM_MCP];
 
 #define DCO2_PWM_ENV_SOURCE_RED 8
 #define DCO2_PWM_ENV_SOURCE_GREEN 9
+
+#define PORTAMENTO_LOWER_RED 10
+#define PORTAMENTO_UPPER_GREEN 11
 
 #define DCO2_ENV_POL_RED 14
 #define DCO2_ENV_POL_GREEN 15
@@ -417,6 +422,8 @@ void setupMCPoutputs() {
   mcp2.pinMode(7, OUTPUT);   // pin 7 = GPA7 of MCP2301X
   mcp2.pinMode(8, OUTPUT);   // pin 8 = GPA7 of MCP2301X
   mcp2.pinMode(9, OUTPUT);   // pin 9 = GPA7 of MCP2301X
+  mcp2.pinMode(10, OUTPUT);   // pin 10 = GPA7 of MCP2301X
+  mcp2.pinMode(11, OUTPUT);   // pin 11 = GPA7 of MCP2301X
   mcp2.pinMode(14, OUTPUT);   // pin 14 = GPA7 of MCP2301X
   mcp2.pinMode(15, OUTPUT);   // pin 15 = GPA7 of MCP2301X
 

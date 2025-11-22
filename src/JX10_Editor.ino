@@ -364,6 +364,16 @@ void myControlChange(byte channel, byte control, int value) {
       updatebalance(1);
       break;
 
+    case CCvolume:
+      volume = value;
+      updatevolume(1);
+      break;
+
+    case CCportamento:
+      portamento = value;
+      updateportamento(1);
+      break;
+
     case CCtime1:
       time1 = value;
       updatetime1(1);
@@ -592,6 +602,10 @@ void myControlChange(byte channel, byte control, int value) {
 
     case CCchorus_sw:
       updatechorus(1);
+      break;
+
+    case CCportamento_sw:
+      updateportamento_sw(1);
       break;
 
     case CCenv5stage:
@@ -1178,35 +1192,57 @@ FLASHMEM void updatevca_mod(bool announce) {
 }
 
 FLASHMEM void updateat_vib(bool announce) {
+  at_vib_str = map(at_vib, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("AT Vibrato", String(at_vib));
+    showCurrentParameterPage("AT Vibrato", String(at_vib_str));
     startParameterDisplay();
   }
-  midiCCOut(CCat_vib, at_vib);
+  sendCustomSysEx((midiOutCh -1), 0x1A, at_vib);
 }
 
 FLASHMEM void updateat_lpf(bool announce) {
+  at_lpf_str = map(at_lpf, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("AT Filter", String(at_lpf));
+    showCurrentParameterPage("AT Filter", String(at_lpf_str));
     startParameterDisplay();
   }
-  midiCCOut(CCat_lpf, at_lpf);
+  sendCustomSysEx((midiOutCh -1), 0x1B, at_lpf);
 }
 
 FLASHMEM void updateat_vol(bool announce) {
+  at_vol_str = map(at_vol, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("AT Volume", String(at_vol));
+    showCurrentParameterPage("AT Volume", String(at_vol_str));
     startParameterDisplay();
   }
-  midiCCOut(CCat_vol, at_vol);
+  sendCustomSysEx((midiOutCh -1), 0x1C, at_vol);
 }
 
 FLASHMEM void updatebalance(bool announce) {
+  balance_str = map(balance, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("Balance", String(balance));
+    showCurrentParameterPage("Balance", String(balance_str));
     startParameterDisplay();
   }
-  midiCCOut(CCbalance, balance);
+  sendCustomSysEx((midiOutCh -1), 0x12, balance);
+}
+
+FLASHMEM void updateportamento(bool announce) {
+  portamento_str = map(portamento, 0, 127, 0, 99);
+  if (announce) {
+    showCurrentParameterPage("Portamento", String(portamento_str));
+    startParameterDisplay();
+  }
+  sendCustomSysEx((midiOutCh -1), 0x16, portamento);
+}
+
+FLASHMEM void updatevolume(bool announce) {
+  volume_str = map(volume, 0, 127, 0, 99);
+  if (announce) {
+    showCurrentParameterPage("Volume", String(volume_str));
+    startParameterDisplay();
+  }
+  sendCustomSysEx((midiOutCh -1), 0x19, volume);
 }
 
 FLASHMEM void updatetime1(bool announce) {
@@ -2897,6 +2933,56 @@ FLASHMEM void updatechorus(bool announce) {
   }
 }
 
+FLASHMEM void updateportamento_sw(bool announce) {
+  if (announce) {
+    switch (portamento_sw) {
+      case 0:
+        showCurrentParameterPage("Portamento", "Off");
+        break;
+      case 1:
+        showCurrentParameterPage("Portamento", "Lower");
+        break;
+      case 2:
+        showCurrentParameterPage("Portamento", "Upper");
+        break;
+      case 3:
+        showCurrentParameterPage("Portamento", "Both");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (portamento_sw) {
+    case 0:
+      sendCustomSysEx((midiOutCh -1), 0x2C, 0x00);
+      delay(20);
+      sendCustomSysEx((midiOutCh -1), 0x23, 0x00);
+      mcp2.digitalWrite(PORTAMENTO_LOWER_RED, LOW);
+      mcp2.digitalWrite(PORTAMENTO_UPPER_GREEN, LOW);
+      break;
+    case 1:
+      sendCustomSysEx((midiOutCh -1), 0x23, 0x00);
+      delay(20);
+      sendCustomSysEx((midiOutCh -1), 0x2C, 0x01);
+      mcp2.digitalWrite(PORTAMENTO_LOWER_RED, HIGH);
+      mcp2.digitalWrite(PORTAMENTO_UPPER_GREEN, LOW);
+      break;
+    case 2:
+      sendCustomSysEx((midiOutCh -1), 0x2C, 0x00);
+      delay(20);
+      sendCustomSysEx((midiOutCh -1), 0x23, 0x01);
+      mcp2.digitalWrite(PORTAMENTO_LOWER_RED, LOW);
+      mcp2.digitalWrite(PORTAMENTO_UPPER_GREEN, HIGH);
+      break;
+    case 3:
+      sendCustomSysEx((midiOutCh -1), 0x23, 0x01);
+      delay(20);
+      sendCustomSysEx((midiOutCh -1), 0x2C, 0x01);
+      mcp2.digitalWrite(PORTAMENTO_LOWER_RED, HIGH);
+      mcp2.digitalWrite(PORTAMENTO_UPPER_GREEN, HIGH);
+      break;
+  }
+}
+
 FLASHMEM void updateenv5stage(bool announce) {
   if (announce) {
     switch (env5stage) {
@@ -3965,6 +4051,24 @@ void checkEncoder() {
   }
 }
 
+void sendCustomSysEx(byte outChannel, byte parameter, byte value)
+{
+  const byte sysexData[] = {
+    0xF0,
+    0x41,
+    0x39,                     // Correct IPR opcode
+    (byte)(outChannel & 0x0F),
+    0x24,
+    0x30,
+    0x01,
+    (byte)(parameter & 0x7F),
+    (byte)(value & 0x7F),
+    0xF7
+  };
+
+  MIDI.sendSysEx(sizeof(sysexData), sysexData, true);
+}
+
 void midiCCOut(int CC, int value) {
   switch (playmode) {
     case 0:
@@ -4298,6 +4402,16 @@ void mainButtonChanged(Button *btn, bool released) {
       }
       break;
 
+    case PORTAMENTO_BUTTON:
+      if (!released) {
+        portamento_sw = portamento_sw + 1;
+        if (portamento_sw > 3) {
+          portamento_sw = 0;
+        }
+        myControlChange(midiChannel, CCportamento_sw, portamento_sw);
+      }
+      break;
+
     case ENV5STAGE_SELECT_BUTTON:
       if (!released) {
         env5stage = !env5stage;
@@ -4362,8 +4476,8 @@ void checkMux() {
       case MUX1_DCO1_TUNE:
         myControlChange(midiChannel, CCdco1_tune, mux1Read);
         break;
-      case MUX1_DCO1_MODE:
-        myControlChange(midiChannel, CCdco1_mode, mux1Read);
+      case MUX1_PORTAMENTO:
+        myControlChange(midiChannel, CCportamento, mux1Read);
         break;
     }
   }
@@ -4411,6 +4525,9 @@ void checkMux() {
         break;
       case MUX2_DCO2_FINE:
         myControlChange(midiChannel, CCdco2_fine, mux2Read);
+        break;
+      case MUX2_DCO1_MODE:
+        myControlChange(midiChannel, CCdco1_mode, mux2Read);
         break;
     }
   }
@@ -4464,6 +4581,9 @@ void checkMux() {
         break;
       case MUX3_BALANCE:
         myControlChange(midiChannel, CCbalance, mux3Read);
+        break;
+      case MUX3_VOLUME:
+        myControlChange(midiChannel, CCvolume, mux3Read);
         break;
     }
   }

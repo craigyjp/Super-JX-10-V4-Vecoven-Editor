@@ -331,7 +331,7 @@ std::vector<RotaryEncOverMCP*> encByMCP[NUM_MCP];
 #define ENCODER_PINB 5
 
 #define MUXCHANNELS 16
-#define QUANTISE_FACTOR 3
+#define QUANTISE_FACTOR 1
 
 #define DEBOUNCE 30
 

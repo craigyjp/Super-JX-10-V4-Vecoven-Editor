@@ -161,7 +161,6 @@ void myControlChange(byte channel, byte control, int value) {
 
     case CClfo1_wave:
       lfo1_wave = value;
-      lfo1_wave_str = map(value, 0, 127, 0, 4);
       updatelfo1_wave(1);
       break;
 
@@ -206,13 +205,11 @@ void myControlChange(byte channel, byte control, int value) {
       break;
 
     case CCdco1_wave:
-      dco1_wave_str = map(value, 0, 127, 0, 3);
       dco1_wave = value;
       updatedco1_wave(1);
       break;
 
     case CCdco1_range:
-      dco1_range_str = map(value, 0, 127, 0, 3);
       dco1_range = value;
       updatedco1_range(1);
       break;
@@ -223,14 +220,12 @@ void myControlChange(byte channel, byte control, int value) {
       break;
 
     case CCdco1_mode:
-      dco1_mode_str = map(value, 0, 127, 0, 3);
       dco1_mode = value;
       updatedco1_mode(1);
       break;
 
     case CClfo2_wave:
       lfo2_wave = value;
-      lfo2_wave_str = map(value, 0, 127, 0, 4);
       updatelfo2_wave(1);
       break;
 
@@ -275,13 +270,11 @@ void myControlChange(byte channel, byte control, int value) {
       break;
 
     case CCdco2_wave:
-      dco2_wave_str = map(value, 0, 127, 0, 3);
       dco2_wave = value;
       updatedco2_wave(1);
       break;
 
     case CCdco2_range:
-      dco2_range_str = map(value, 0, 127, 0, 3);
       dco2_range = value;
       updatedco2_range(1);
       break;
@@ -407,9 +400,48 @@ void myControlChange(byte channel, byte control, int value) {
       break;
 
     case CC5stage_mode:
-      env5stage_mode_str = map(value, 0, 127, 0, 7);
       env5stage_mode = value;
       updateenv5stage_mode(1);
+      break;
+
+    case CC2time1:
+      env2_time1 = value;
+      updateenv2_time1(1);
+      break;
+
+    case CC2level1:
+      env2_level1 = value;
+      updateenv2_level1(1);
+      break;
+
+    case CC2time2:
+      env2_time2 = value;
+      updateenv2_time2(1);
+      break;
+
+    case CC2level2:
+      env2_level2 = value;
+      updateenv2_level2(1);
+      break;
+
+    case CC2time3:
+      env2_time3 = value;
+      updateenv2_time3(1);
+      break;
+
+    case CC2level3:
+      env2_level3 = value;
+      updateenv2_level3(1);
+      break;
+
+    case CC2time4:
+      env2_time4 = value;
+      updateenv2_time4(1);
+      break;
+
+    case CC25stage_mode:
+      env2_5stage_mode = value;
+      updateenv2_env5stage_mode(1);
       break;
 
     case CCattack:
@@ -417,9 +449,19 @@ void myControlChange(byte channel, byte control, int value) {
       updateattack(1);
       break;
 
+    case CC4attack:
+      env4_attack = value;
+      updateenv4_attack(1);
+      break;
+
     case CCdecay:
       decay = value;
       updatedecay(1);
+      break;
+
+    case CC4decay:
+      env4_decay = value;
+      updateenv4_decay(1);
       break;
 
     case CCsustain:
@@ -427,15 +469,29 @@ void myControlChange(byte channel, byte control, int value) {
       updatesustain(1);
       break;
 
+    case CC4sustain:
+      env4_sustain = value;
+      updateenv4_sustain(1);
+      break;
+
     case CCrelease:
       release = value;
       updaterelease(1);
       break;
 
+    case CC4release:
+      env4_release = value;
+      updateenv4_release(1);
+      break;
+
     case CCadsr_mode:
-      adsr_mode_str = map(value, 0, 127, 0, 7);
       adsr_mode = value;
       updateadsr_mode(1);
+      break;
+
+    case CC4adsr_mode:
+      env4_adsr_mode = value;
+      updateenv4_adsr_mode(1);
       break;
 
     case CCctla:
@@ -448,7 +504,7 @@ void myControlChange(byte channel, byte control, int value) {
       updatectlb(1);
       break;
 
-// Buttons
+      // Buttons
 
     case CClfo1_sync:
       updatelfo1_sync(1);
@@ -537,7 +593,7 @@ void myControlChange(byte channel, byte control, int value) {
     case CCchorus_sw:
       updatechorus(1);
       break;
-    
+
     case CCenv5stage:
       updateenv5stage(1);
       break;
@@ -549,6 +605,7 @@ void myControlChange(byte channel, byte control, int value) {
 }
 
 FLASHMEM void updatelfo1_wave(bool announce) {
+  lfo1_wave_str = map(lfo1_wave, 0, 127, 0, 4);
   if (announce) {
     switch (lfo1_wave_str) {
       case 0:
@@ -573,74 +630,103 @@ FLASHMEM void updatelfo1_wave(bool announce) {
     }
     startParameterDisplay();
   }
-  midiCCOut(CClfo1_wave, lfo1_wave);
+  switch (lfo1_wave_str) {
+    case 0:
+      midiCCOut(CClfo1_wave, 0x00);
+      break;
+
+    case 1:
+      midiCCOut(CClfo1_wave, 0x10);
+      break;
+
+    case 2:
+      midiCCOut(CClfo1_wave, 0x20);
+      break;
+
+    case 3:
+      midiCCOut(CClfo1_wave, 0x30);
+      break;
+
+    case 4:
+      midiCCOut(CClfo1_wave, 0x40);
+      break;
+  }
 }
 
 FLASHMEM void updatelfo1_rate(bool announce) {
+  lfo1_rate_str = map(lfo1_rate, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("LFO1 Rate", String(lfo1_rate));
+    showCurrentParameterPage("LFO1 Rate", String(lfo1_rate_str));
     startParameterDisplay();
   }
   midiCCOut(CClfo1_rate, lfo1_rate);
 }
 
 FLASHMEM void updatelfo1_delay(bool announce) {
+  lfo1_delay_str = map(lfo1_delay, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("LFO1 Delay", String(lfo1_delay));
+    showCurrentParameterPage("LFO1 Delay", String(lfo1_delay_str));
     startParameterDisplay();
   }
   midiCCOut(CClfo1_delay, lfo1_delay);
 }
 
 FLASHMEM void updatelfo1_lfo2(bool announce) {
+  lfo1_lfo2_str = map(lfo1_lfo2, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("LFO1 to LFO2", String(lfo1_lfo2));
+    showCurrentParameterPage("LFO1 to LFO2", String(lfo1_lfo2_str));
     startParameterDisplay();
   }
   midiCCOut(CClfo1_lfo2, lfo1_lfo2);
 }
 
 FLASHMEM void updatedco1_PW(bool announce) {
+  dco1_PW_str = map(dco1_PW, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("DCO1 PW", String(dco1_PW));
+    showCurrentParameterPage("DCO1 PW", String(dco1_PW_str));
     startParameterDisplay();
   }
   midiCCOut(CCdco1_PW, dco1_PW);
 }
 
 FLASHMEM void updatedco1_PWM_env(bool announce) {
+  dco1_PWM_env_str = map(dco1_PWM_env, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("DCO1 PWM Env", String(dco1_PWM_env));
+    showCurrentParameterPage("PWM1 Env", String(dco1_PWM_env_str));
     startParameterDisplay();
   }
   midiCCOut(CCdco1_PWM_env, dco1_PWM_env);
 }
 
 FLASHMEM void updatedco1_PWM_lfo(bool announce) {
+  dco1_PWM_lfo_str = map(dco1_PWM_lfo, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("DCO1 PWM LFO", String(dco1_PWM_lfo));
+    showCurrentParameterPage("PWM1 LFO", String(dco1_PWM_lfo));
     startParameterDisplay();
   }
   midiCCOut(CCdco1_PWM_lfo, dco1_PWM_lfo);
 }
 
 FLASHMEM void updatedco1_pitch_env(bool announce) {
+  dco1_pitch_env_str = map(dco1_pitch_env, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("DCO1 Pitch Env", String(dco1_pitch_env));
+    showCurrentParameterPage("DCO1 Env", String(dco1_pitch_env_str));
     startParameterDisplay();
   }
   midiCCOut(CCdco1_pitch_env, dco1_pitch_env);
 }
 
 FLASHMEM void updatedco1_pitch_lfo(bool announce) {
+  dco1_pitch_lfo_str = map(dco1_pitch_lfo, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("DCO1 Pitch LFO", String(dco1_pitch_lfo));
+    showCurrentParameterPage("DCO1 LFO", String(dco1_pitch_lfo));
     startParameterDisplay();
   }
   midiCCOut(CCdco1_pitch_lfo, dco1_pitch_lfo);
 }
 
 FLASHMEM void updatedco1_wave(bool announce) {
+  dco1_wave_str = map(dco1_wave, 0, 127, 0, 3);
   if (announce) {
     switch (dco1_wave_str) {
       case 0:
@@ -661,10 +747,27 @@ FLASHMEM void updatedco1_wave(bool announce) {
     }
     startParameterDisplay();
   }
-  midiCCOut(CCdco1_wave, dco1_wave);
+  switch (dco1_wave_str) {
+    case 0:
+      midiCCOut(CCdco1_wave, 0x00);
+      break;
+
+    case 1:
+      midiCCOut(CCdco1_wave, 0x20);
+      break;
+
+    case 2:
+      midiCCOut(CCdco1_wave, 0x40);
+      break;
+
+    case 3:
+      midiCCOut(CCdco1_wave, 0x60);
+      break;
+  }
 }
 
 FLASHMEM void updatedco1_range(bool announce) {
+  dco1_range_str = map(dco1_range, 0, 127, 0, 3);
   if (announce) {
     switch (dco1_range_str) {
       case 0:
@@ -685,42 +788,77 @@ FLASHMEM void updatedco1_range(bool announce) {
     }
     startParameterDisplay();
   }
-  midiCCOut(CCdco1_range, dco1_range);
+  switch (dco1_range_str) {
+    case 0:
+      midiCCOut(CCdco1_range, 0x00);
+      break;
+
+    case 1:
+      midiCCOut(CCdco1_range, 0x20);
+      break;
+
+    case 2:
+      midiCCOut(CCdco1_range, 0x40);
+      break;
+
+    case 3:
+      midiCCOut(CCdco1_range, 0x60);
+      break;
+  }
 }
 
 FLASHMEM void updatedco1_tune(bool announce) {
+  dco1_tune_str = map(dco1_tune, 0, 127, -12, 12);
   if (announce) {
-    showCurrentParameterPage("DCO1 Tuning", String(dco1_tune));
+    showCurrentParameterPage("DCO1 Tuning", String(dco1_tune_str));
     startParameterDisplay();
   }
   midiCCOut(CCdco1_tune, dco1_tune);
 }
 
 FLASHMEM void updatedco1_mode(bool announce) {
+  dco1_mode_str = map(dco1_mode, 0, 127, 0, 3);
   if (announce) {
     switch (dco1_mode_str) {
       case 0:
-        showCurrentParameterPage("DCO Sync", "Off");
+        showCurrentParameterPage("DCO XMOD", "Off");
         break;
 
       case 1:
-        showCurrentParameterPage("DCO Sync", "Sync 1");
+        showCurrentParameterPage("DCO XMOD", "Sync 1");
         break;
 
       case 2:
-        showCurrentParameterPage("DCO Sync", "Sync 2");
+        showCurrentParameterPage("DCO XMOD", "Sync 2");
         break;
 
       case 3:
-        showCurrentParameterPage("DCO Sync", "Cross Mod");
+        showCurrentParameterPage("DCO XMOD", "X Mod");
         break;
     }
     startParameterDisplay();
   }
-  midiCCOut(CCdco1_mode, dco1_mode);
+  switch (dco1_mode_str) {
+    case 0:
+      midiCCOut(CCdco1_mode, 0x00);
+      break;
+
+    case 1:
+      midiCCOut(CCdco1_mode, 0x20);
+      break;
+
+    case 2:
+      midiCCOut(CCdco1_mode, 0x40);
+      break;
+
+    case 3:
+      midiCCOut(CCdco1_mode, 0x60);
+      break;
+  }
 }
 
 FLASHMEM void updatelfo2_wave(bool announce) {
+  lfo2_wave_str = map(lfo2_wave, 0, 127, 0, 4);
   if (announce) {
     switch (lfo2_wave_str) {
       case 0:
@@ -745,74 +883,103 @@ FLASHMEM void updatelfo2_wave(bool announce) {
     }
     startParameterDisplay();
   }
-  midiCCOut(CClfo2_wave, lfo2_wave);
+  switch (lfo2_wave_str) {
+    case 0:
+      midiCCOut(CClfo2_wave, 0x00);
+      break;
+
+    case 1:
+      midiCCOut(CClfo2_wave, 0x10);
+      break;
+
+    case 2:
+      midiCCOut(CClfo2_wave, 0x20);
+      break;
+
+    case 3:
+      midiCCOut(CClfo2_wave, 0x30);
+      break;
+
+    case 4:
+      midiCCOut(CClfo2_wave, 0x40);
+      break;
+  }
 }
 
 FLASHMEM void updatelfo2_rate(bool announce) {
+  lfo2_rate_str = map(lfo2_rate, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("LFO2 Rate", String(lfo2_rate));
+    showCurrentParameterPage("LFO2 Rate", String(lfo2_rate_str));
     startParameterDisplay();
   }
   midiCCOut(CClfo2_rate, lfo2_rate);
 }
 
 FLASHMEM void updatelfo2_delay(bool announce) {
+  lfo2_delay_str = map(lfo2_delay, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("LFO2 Delay", String(lfo2_delay));
+    showCurrentParameterPage("LFO2 Delay", String(lfo2_delay_str));
     startParameterDisplay();
   }
   midiCCOut(CClfo2_delay, lfo2_delay);
 }
 
 FLASHMEM void updatelfo2_lfo1(bool announce) {
+  lfo2_lfo1_str = map(lfo2_lfo1, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("LFO2 to LFO1", String(lfo2_lfo1));
+    showCurrentParameterPage("LFO2 to LFO1", String(lfo2_lfo1_str));
     startParameterDisplay();
   }
   midiCCOut(CClfo2_lfo1, lfo2_lfo1);
 }
 
 FLASHMEM void updatedco2_PW(bool announce) {
+  dco2_PW_str = map(dco2_PW, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("DCO2 PW", String(dco2_PW));
+    showCurrentParameterPage("DCO2 PW", String(dco2_PW_str));
     startParameterDisplay();
   }
   midiCCOut(CCdco2_PW, dco2_PW);
 }
 
 FLASHMEM void updatedco2_PWM_env(bool announce) {
+  dco2_PWM_env_str = map(dco2_PWM_env, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("DCO2 PWM Env", String(dco2_PWM_env));
+    showCurrentParameterPage("PWM2 Env", String(dco2_PWM_env_str));
     startParameterDisplay();
   }
   midiCCOut(CCdco2_PWM_env, dco2_PWM_env);
 }
 
 FLASHMEM void updatedco2_PWM_lfo(bool announce) {
+  dco2_PWM_lfo_str = map(dco2_PWM_lfo, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("DCO2 PWM LFO", String(dco2_PWM_lfo));
+    showCurrentParameterPage("PWM2 LFO", String(dco2_PWM_lfo_str));
     startParameterDisplay();
   }
   midiCCOut(CCdco2_PWM_lfo, dco2_PWM_lfo);
 }
 
 FLASHMEM void updatedco2_pitch_env(bool announce) {
+  dco2_pitch_env_str = map(dco2_pitch_env, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("DCO2 P. Env", String(dco2_pitch_env));
+    showCurrentParameterPage("DCO2 Env", String(dco2_pitch_env_str));
     startParameterDisplay();
   }
   midiCCOut(CCdco2_pitch_env, dco2_pitch_env);
 }
 
 FLASHMEM void updatedco2_pitch_lfo(bool announce) {
+  dco2_pitch_lfo_str = map(dco2_pitch_lfo, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("DCO2 P. LFO", String(dco2_pitch_lfo));
+    showCurrentParameterPage("DCO2 LFO", String(dco2_pitch_lfo_str));
     startParameterDisplay();
   }
   midiCCOut(CCdco2_pitch_lfo, dco2_pitch_lfo);
 }
 
 FLASHMEM void updatedco2_wave(bool announce) {
+  dco2_wave_str = map(dco2_wave, 0, 127, 0, 3);
   if (announce) {
     switch (dco2_wave_str) {
       case 0:
@@ -833,10 +1000,27 @@ FLASHMEM void updatedco2_wave(bool announce) {
     }
     startParameterDisplay();
   }
-  midiCCOut(CCdco2_wave, dco2_wave);
+  switch (dco2_wave_str) {
+    case 0:
+      midiCCOut(CCdco2_wave, 0x00);
+      break;
+
+    case 1:
+      midiCCOut(CCdco2_wave, 0x20);
+      break;
+
+    case 2:
+      midiCCOut(CCdco2_wave, 0x40);
+      break;
+
+    case 3:
+      midiCCOut(CCdco2_wave, 0x60);
+      break;
+  }
 }
 
 FLASHMEM void updatedco2_range(bool announce) {
+  dco2_range_str = map(dco2_range, 0, 127, 0, 3);
   if (announce) {
     switch (dco2_range_str) {
       case 0:
@@ -857,108 +1041,137 @@ FLASHMEM void updatedco2_range(bool announce) {
     }
     startParameterDisplay();
   }
-  midiCCOut(CCdco2_range, dco2_range);
+  switch (dco2_range_str) {
+    case 0:
+      midiCCOut(CCdco2_range, 0x00);
+      break;
+
+    case 1:
+      midiCCOut(CCdco2_range, 0x20);
+      break;
+
+    case 2:
+      midiCCOut(CCdco2_range, 0x40);
+      break;
+
+    case 3:
+      midiCCOut(CCdco2_range, 0x60);
+      break;
+  }
 }
 
 FLASHMEM void updatedco2_tune(bool announce) {
+  dco2_tune_str = map(dco2_tune, 0, 127, -12, 12);
   if (announce) {
-    showCurrentParameterPage("DCO2 Tuning", String(dco2_tune));
+    showCurrentParameterPage("DCO2 Tuning", String(dco2_tune_str));
     startParameterDisplay();
   }
   midiCCOut(CCdco2_tune, dco2_tune);
 }
 
 FLASHMEM void updatedco2_fine(bool announce) {
+  dco2_fine_str = map(dco2_fine, 0, 127, -50, 50);
   if (announce) {
-    showCurrentParameterPage("DCO2 Fine", String(dco2_fine));
+    showCurrentParameterPage("DCO2 Fine", String(dco2_fine_str));
     startParameterDisplay();
   }
   midiCCOut(CCdco2_fine, dco2_fine);
 }
 
 FLASHMEM void updatedco1_level(bool announce) {
+  dco1_level_str = map(dco1_level, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("DCO1 Level", String(dco1_level));
+    showCurrentParameterPage("MIX DCO1", String(dco1_level_str));
     startParameterDisplay();
   }
   midiCCOut(CCdco1_level, dco1_level);
 }
 
 FLASHMEM void updatedco2_level(bool announce) {
+  dco2_level_str = map(dco2_level, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("DCO2 Level", String(dco2_level));
+    showCurrentParameterPage("MIX DCO2", String(dco2_level_str));
     startParameterDisplay();
   }
   midiCCOut(CCdco2_level, dco2_level);
 }
 
 FLASHMEM void updatedco2_mod(bool announce) {
+  dco2_mod_str = map(dco2_mod, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("DCO Env Mod", String(dco2_mod));
+    showCurrentParameterPage("MIX ENV", String(dco2_mod_str));
     startParameterDisplay();
   }
   midiCCOut(CCdco2_mod, dco2_mod);
 }
 
 FLASHMEM void updatevcf_hpf(bool announce) {
+  vcf_hpf_str = map(vcf_hpf, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("VCF HPF", String(vcf_hpf));
+    showCurrentParameterPage("VCF HPF", String(vcf_hpf_str));
     startParameterDisplay();
   }
   midiCCOut(CCvcf_hpf, vcf_hpf);
 }
 
 FLASHMEM void updatevcf_cutoff(bool announce) {
+  vcf_cutoff_str = map(vcf_cutoff, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("VCF Cutoff", String(vcf_cutoff));
+    showCurrentParameterPage("VCF FREQ", String(vcf_cutoff_str));
     startParameterDisplay();
   }
   midiCCOut(CCvcf_cutoff, vcf_cutoff);
 }
 
 FLASHMEM void updatevcf_res(bool announce) {
+  vcf_res_str = map(vcf_res, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("VCF Res", String(vcf_res));
+    showCurrentParameterPage("VCF RES", String(vcf_res_str));
     startParameterDisplay();
   }
   midiCCOut(CCvcf_res, vcf_res);
 }
 
 FLASHMEM void updatevcf_kb(bool announce) {
+  vcf_kb_str = map(vcf_kb, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("VCF Track", String(vcf_kb));
+    showCurrentParameterPage("VCF KEY", String(vcf_kb_str));
     startParameterDisplay();
   }
   midiCCOut(CCvcf_kb, vcf_kb);
 }
 
 FLASHMEM void updatevcf_env(bool announce) {
+  vcf_env_str = map(vcf_env, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("VCF Env", String(vcf_env));
+    showCurrentParameterPage("VCF Env", String(vcf_env_str));
     startParameterDisplay();
   }
   midiCCOut(CCvcf_env, vcf_env);
 }
 
 FLASHMEM void updatevcf_lfo1(bool announce) {
+  vcf_lfo1_str = map(vcf_lfo1, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("VCF LFO1", String(vcf_lfo1));
+    showCurrentParameterPage("VCF LFO1", String(vcf_lfo1_str));
     startParameterDisplay();
   }
   midiCCOut(CCvcf_lfo1, vcf_lfo1);
 }
 
 FLASHMEM void updatevcf_lfo2(bool announce) {
+  vcf_lfo2_str = map(vcf_lfo2, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("VCF LFO2", String(vcf_lfo2));
+    showCurrentParameterPage("VCF LFO2", String(vcf_lfo2_str));
     startParameterDisplay();
   }
   midiCCOut(CCvcf_lfo2, vcf_lfo2);
 }
 
 FLASHMEM void updatevca_mod(bool announce) {
+  vca_mod_str = map(vca_mod, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("VCA Env", String(vca_mod));
+    showCurrentParameterPage("VCA LEVEL", String(vca_mod_str));
     startParameterDisplay();
   }
   midiCCOut(CCvca_mod, vca_mod);
@@ -997,62 +1210,70 @@ FLASHMEM void updatebalance(bool announce) {
 }
 
 FLASHMEM void updatetime1(bool announce) {
+  time1_str = map(time1, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("Env1 T1", String(time1));
+    showCurrentParameterPage("Env1 T1", String(time1_str));
     startParameterDisplay();
   }
   midiCCOut(CCtime1, time1);
 }
 
 FLASHMEM void updatelevel1(bool announce) {
+  level1_str = map(level1, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("Env1 L1", String(level1));
+    showCurrentParameterPage("Env1 L1", String(level1_str));
     startParameterDisplay();
   }
   midiCCOut(CClevel1, level1);
 }
 
 FLASHMEM void updatetime2(bool announce) {
+  time2_str = map(time2, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("Env1 T2", String(time2));
+    showCurrentParameterPage("Env1 T2", String(time2_str));
     startParameterDisplay();
   }
   midiCCOut(CCtime2, time2);
 }
 
 FLASHMEM void updatelevel2(bool announce) {
+  level2_str = map(level2, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("Env1 L2", String(level2));
+    showCurrentParameterPage("Env1 L2", String(level2_str));
     startParameterDisplay();
   }
   midiCCOut(CClevel2, level2);
 }
 
 FLASHMEM void updatetime3(bool announce) {
+  time3_str = map(time3, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("Env1 T3", String(time3));
+    showCurrentParameterPage("Env1 T3", String(time3_str));
     startParameterDisplay();
   }
   midiCCOut(CCtime3, time3);
 }
 
 FLASHMEM void updatelevel3(bool announce) {
+  level3_str = map(level3, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("Env1 L3", String(level3));
+    showCurrentParameterPage("Env1 L3", String(level3_str));
     startParameterDisplay();
   }
   midiCCOut(CClevel3, level3);
 }
 
 FLASHMEM void updatetime4(bool announce) {
+  time4_str = map(time4, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("Env1 T4", String(time4));
+    showCurrentParameterPage("Env1 T4", String(time4_str));
     startParameterDisplay();
   }
   midiCCOut(CCtime4, time4);
 }
 
 FLASHMEM void updateenv5stage_mode(bool announce) {
+  env5stage_mode_str = map(env5stage_mode, 0, 127, 0, 7);
   if (announce) {
     switch (env5stage_mode_str) {
       case 0:
@@ -1089,44 +1310,108 @@ FLASHMEM void updateenv5stage_mode(bool announce) {
     }
     startParameterDisplay();
   }
-  midiCCOut(CC5stage_mode, env5stage_mode);
+  switch (env5stage_mode_str) {
+    case 0:
+      midiCCOut(CC5stage_mode, 0x00);
+      break;
+
+    case 1:
+      midiCCOut(CC5stage_mode, 0x10);
+      break;
+
+    case 2:
+      midiCCOut(CC5stage_mode, 0x20);
+      break;
+
+    case 3:
+      midiCCOut(CC5stage_mode, 0x30);
+      break;
+
+    case 4:
+      midiCCOut(CC5stage_mode, 0x40);
+      break;
+
+    case 5:
+      midiCCOut(CC5stage_mode, 0x50);
+      break;
+
+    case 6:
+      midiCCOut(CC5stage_mode, 0x60);
+      break;
+
+    case 7:
+      midiCCOut(CC5stage_mode, 0x70);
+      break;
+  }
 }
 
-FLASHMEM void updateattack(bool announce) {
+FLASHMEM void updateenv2_time1(bool announce) {
+  env2_time1_str = map(env2_time1, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("Env2 Attack", String(attack));
+    showCurrentParameterPage("Env2 T1", String(env2_time1_str));
     startParameterDisplay();
   }
-  midiCCOut(CCattack, attack);
+  midiCCOut(CC2time1, env2_time1);
 }
 
-FLASHMEM void updatedecay(bool announce) {
+FLASHMEM void updateenv2_level1(bool announce) {
+  env2_level1_str = map(env2_level1, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("Env2 Decay", String(decay));
+    showCurrentParameterPage("Env2 L1", String(env2_level1_str));
     startParameterDisplay();
   }
-  midiCCOut(CCdecay, decay);
+  midiCCOut(CC2level1, env2_level1);
 }
 
-FLASHMEM void updatesustain(bool announce) {
+FLASHMEM void updateenv2_time2(bool announce) {
+  env2_time2_str = map(env2_time2, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("Env2 Sustain", String(sustain));
+    showCurrentParameterPage("Env2 T2", String(env2_time2_str));
     startParameterDisplay();
   }
-  midiCCOut(CCsustain, sustain);
+  midiCCOut(CC2time2, env2_time2);
 }
 
-FLASHMEM void updaterelease(bool announce) {
+FLASHMEM void updateenv2_level2(bool announce) {
+  env2_level2_str = map(env2_level2, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("Env2 Release", String(release));
+    showCurrentParameterPage("Env2 L2", String(env2_level2_str));
     startParameterDisplay();
   }
-  midiCCOut(CCrelease, release);
+  midiCCOut(CC2level2, env2_level2);
 }
 
-FLASHMEM void updateadsr_mode(bool announce) {
+FLASHMEM void updateenv2_time3(bool announce) {
+  env2_time3_str = map(env2_time3, 0, 127, 0, 99);
   if (announce) {
-    switch (adsr_mode_str) {
+    showCurrentParameterPage("Env2 T3", String(env2_time3_str));
+    startParameterDisplay();
+  }
+  midiCCOut(CC2time3, env2_time3);
+}
+
+FLASHMEM void updateenv2_level3(bool announce) {
+  env2_level3_str = map(env2_level3, 0, 127, 0, 99);
+  if (announce) {
+    showCurrentParameterPage("Env2 L3", String(env2_level3_str));
+    startParameterDisplay();
+  }
+  midiCCOut(CC2level3, env2_level3);
+}
+
+FLASHMEM void updateenv2_time4(bool announce) {
+  env2_time4_str = map(env2_time4, 0, 127, 0, 99);
+  if (announce) {
+    showCurrentParameterPage("Env2 T4", String(env2_time4_str));
+    startParameterDisplay();
+  }
+  midiCCOut(CC2time4, env2_time4);
+}
+
+FLASHMEM void updateenv2_env5stage_mode(bool announce) {
+  env2_5stage_mode_str = map(env2_5stage_mode, 0, 127, 0, 7);
+  if (announce) {
+    switch (env2_5stage_mode_str) {
       case 0:
         showCurrentParameterPage("Env2 Key F.", "Off");
         break;
@@ -1161,7 +1446,257 @@ FLASHMEM void updateadsr_mode(bool announce) {
     }
     startParameterDisplay();
   }
-  midiCCOut(CCadsr_mode, adsr_mode);
+  switch (env2_5stage_mode_str) {
+    case 0:
+      midiCCOut(CC25stage_mode, 0x00);
+      break;
+
+    case 1:
+      midiCCOut(CC25stage_mode, 0x10);
+      break;
+
+    case 2:
+      midiCCOut(CC25stage_mode, 0x20);
+      break;
+
+    case 3:
+      midiCCOut(CC25stage_mode, 0x30);
+      break;
+
+    case 4:
+      midiCCOut(CC25stage_mode, 0x40);
+      break;
+
+    case 5:
+      midiCCOut(CC25stage_mode, 0x50);
+      break;
+
+    case 6:
+      midiCCOut(CC25stage_mode, 0x60);
+      break;
+
+    case 7:
+      midiCCOut(CC25stage_mode, 0x70);
+      break;
+  }
+}
+
+FLASHMEM void updateattack(bool announce) {
+  attack_str = map(attack, 0, 127, 0, 99);
+  if (announce) {
+    showCurrentParameterPage("Env3 Attack", String(attack_str));
+    startParameterDisplay();
+  }
+  midiCCOut(CCattack, attack);
+}
+
+FLASHMEM void updatedecay(bool announce) {
+  decay_str = map(decay, 0, 127, 0, 99);
+  if (announce) {
+    showCurrentParameterPage("Env3 Decay", String(decay_str));
+    startParameterDisplay();
+  }
+  midiCCOut(CCdecay, decay);
+}
+
+FLASHMEM void updatesustain(bool announce) {
+  sustain_str = map(sustain, 0, 127, 0, 99);
+  if (announce) {
+    showCurrentParameterPage("Env3 Sustain", String(sustain_str));
+    startParameterDisplay();
+  }
+  midiCCOut(CCsustain, sustain);
+}
+
+FLASHMEM void updaterelease(bool announce) {
+  release_str = map(release, 0, 127, 0, 99);
+  if (announce) {
+    showCurrentParameterPage("Env3 Release", String(release_str));
+    startParameterDisplay();
+  }
+  midiCCOut(CCrelease, release);
+}
+
+FLASHMEM void updateadsr_mode(bool announce) {
+  adsr_mode_str = map(adsr_mode, 0, 127, 0, 7);
+  if (announce) {
+    switch (adsr_mode_str) {
+      case 0:
+        showCurrentParameterPage("Env3 Key F.", "Off");
+        break;
+
+      case 1:
+        showCurrentParameterPage("Env3 Key F.", "Key 1");
+        break;
+
+      case 2:
+        showCurrentParameterPage("Env3 Key F.", "Key 2");
+        break;
+
+      case 3:
+        showCurrentParameterPage("Env3 Key F.", "Key 3");
+        break;
+
+      case 4:
+        showCurrentParameterPage("Env3 Key F.", "Loop 0");
+        break;
+
+      case 5:
+        showCurrentParameterPage("Env3 Key F.", "Loop 1");
+        break;
+
+      case 6:
+        showCurrentParameterPage("Env3 Key F.", "Loop 2");
+        break;
+
+      case 7:
+        showCurrentParameterPage("Env3 Key F.", "Loop 3");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (adsr_mode_str) {
+    case 0:
+      midiCCOut(CCadsr_mode, 0x00);
+      break;
+
+    case 1:
+      midiCCOut(CCadsr_mode, 0x10);
+      break;
+
+    case 2:
+      midiCCOut(CCadsr_mode, 0x20);
+      break;
+
+    case 3:
+      midiCCOut(CCadsr_mode, 0x30);
+      break;
+
+    case 4:
+      midiCCOut(CCadsr_mode, 0x40);
+      break;
+
+    case 5:
+      midiCCOut(CCadsr_mode, 0x50);
+      break;
+
+    case 6:
+      midiCCOut(CCadsr_mode, 0x60);
+      break;
+
+    case 7:
+      midiCCOut(CCadsr_mode, 0x70);
+      break;
+  }
+}
+
+FLASHMEM void updateenv4_attack(bool announce) {
+  env4_attack_str = map(env4_attack, 0, 127, 0, 99);
+  if (announce) {
+    showCurrentParameterPage("Env4 Attack", String(env4_attack_str));
+    startParameterDisplay();
+  }
+  midiCCOut(CC4attack, env4_attack);
+}
+
+FLASHMEM void updateenv4_decay(bool announce) {
+  env4_decay_str = map(env4_decay, 0, 127, 0, 99);
+  if (announce) {
+    showCurrentParameterPage("Env4 Decay", String(env4_decay_str));
+    startParameterDisplay();
+  }
+  midiCCOut(CC4decay, env4_decay);
+}
+
+FLASHMEM void updateenv4_sustain(bool announce) {
+  env4_sustain_str = map(env4_sustain, 0, 127, 0, 99);
+  if (announce) {
+    showCurrentParameterPage("Env4 Sustain", String(env4_sustain_str));
+    startParameterDisplay();
+  }
+  midiCCOut(CC4sustain, env4_sustain);
+}
+
+FLASHMEM void updateenv4_release(bool announce) {
+  env4_release_str = map(env4_release, 0, 127, 0, 99);
+  if (announce) {
+    showCurrentParameterPage("Env4 Release", String(env4_release_str));
+    startParameterDisplay();
+  }
+  midiCCOut(CC4release, env4_release);
+}
+
+FLASHMEM void updateenv4_adsr_mode(bool announce) {
+  env4_adsr_mode_str = map(env4_adsr_mode, 0, 127, 0, 7);
+  if (announce) {
+    switch (env4_adsr_mode_str) {
+      case 0:
+        showCurrentParameterPage("Env4 Key F.", "Off");
+        break;
+
+      case 1:
+        showCurrentParameterPage("Env4 Key F.", "Key 1");
+        break;
+
+      case 2:
+        showCurrentParameterPage("Env4 Key F.", "Key 2");
+        break;
+
+      case 3:
+        showCurrentParameterPage("Env4 Key F.", "Key 3");
+        break;
+
+      case 4:
+        showCurrentParameterPage("Env4 Key F.", "Loop 0");
+        break;
+
+      case 5:
+        showCurrentParameterPage("Env4 Key F.", "Loop 1");
+        break;
+
+      case 6:
+        showCurrentParameterPage("Env4 Key F.", "Loop 2");
+        break;
+
+      case 7:
+        showCurrentParameterPage("Env4 Key F.", "Loop 3");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (env4_adsr_mode_str) {
+    case 0:
+      midiCCOut(CC4adsr_mode, 0x00);
+      break;
+
+    case 1:
+      midiCCOut(CC4adsr_mode, 0x10);
+      break;
+
+    case 2:
+      midiCCOut(CC4adsr_mode, 0x20);
+      break;
+
+    case 3:
+      midiCCOut(CC4adsr_mode, 0x30);
+      break;
+
+    case 4:
+      midiCCOut(CC4adsr_mode, 0x40);
+      break;
+
+    case 5:
+      midiCCOut(CC4adsr_mode, 0x50);
+      break;
+
+    case 6:
+      midiCCOut(CC4adsr_mode, 0x60);
+      break;
+
+    case 7:
+      midiCCOut(CC4adsr_mode, 0x70);
+      break;
+  }
 }
 
 FLASHMEM void updatectla(bool announce) {
@@ -3124,6 +3659,8 @@ void setCurrentPatchData(String data[]) {
 
 
   updateplaymode(0);
+  updateenv5stage(0);
+  updateadsr(0);
 
   //Patchname
   updatePatchname();
@@ -3429,6 +3966,29 @@ void checkEncoder() {
 }
 
 void midiCCOut(int CC, int value) {
+  switch (playmode) {
+    case 0:
+      MIDI.sendControlChange(99, 1, midiOutCh);     // NRPN MSB
+      MIDI.sendControlChange(98, CC, midiOutCh);    // NRPN LSB
+      MIDI.sendControlChange(6, value, midiOutCh);  // Data Entry MSB
+      break;
+
+    case 1:
+      MIDI.sendControlChange(99, 0, midiOutCh);     // NRPN MSB
+      MIDI.sendControlChange(98, CC, midiOutCh);    // NRPN LSB
+      MIDI.sendControlChange(6, value, midiOutCh);  // Data Entry MSB
+      break;
+
+    case 2:
+      MIDI.sendControlChange(99, 1, midiOutCh);     // NRPN MSB
+      MIDI.sendControlChange(98, CC, midiOutCh);    // NRPN LSB
+      MIDI.sendControlChange(6, value, midiOutCh);  // Data Entry MSB
+
+      MIDI.sendControlChange(99, 0, midiOutCh);     // NRPN MSB
+      MIDI.sendControlChange(98, CC, midiOutCh);    // NRPN LSB
+      MIDI.sendControlChange(6, value, midiOutCh);  // Data Entry MSB
+      break;
+  }
 }
 
 void mainButtonChanged(Button *btn, bool released) {
@@ -3713,7 +4273,6 @@ void mainButtonChanged(Button *btn, bool released) {
         vca_env_source = vca_env_source + 1;
         if (vca_env_source > 3) {
           vca_env_source = 0;
-
         }
         myControlChange(midiChannel, CCvca_env_source, vca_env_source);
       }
@@ -3915,43 +4474,95 @@ void checkMux() {
 
     switch (muxInput) {
       case MUX4_T1:
-        myControlChange(midiChannel, CCtime1, mux4Read);
+        if (!env5stage) {
+          myControlChange(midiChannel, CCtime1, mux4Read);
+        } else {
+          myControlChange(midiChannel, CC2time1, mux4Read);
+        }
         break;
       case MUX4_L1:
-        myControlChange(midiChannel, CClevel1, mux4Read);
+        if (!env5stage) {
+          myControlChange(midiChannel, CClevel1, mux4Read);
+        } else {
+          myControlChange(midiChannel, CC2level1, mux4Read);
+        }
         break;
       case MUX4_T2:
-        myControlChange(midiChannel, CCtime2, mux4Read);
+        if (!env5stage) {
+          myControlChange(midiChannel, CCtime2, mux4Read);
+        } else {
+          myControlChange(midiChannel, CC2time2, mux4Read);
+        }
         break;
       case MUX4_L2:
-        myControlChange(midiChannel, CClevel2, mux4Read);
+        if (!env5stage) {
+          myControlChange(midiChannel, CClevel2, mux4Read);
+        } else {
+          myControlChange(midiChannel, CC2level2, mux4Read);
+        }
         break;
       case MUX4_T3:
-        myControlChange(midiChannel, CCtime3, mux4Read);
+        if (!env5stage) {
+          myControlChange(midiChannel, CCtime3, mux4Read);
+        } else {
+          myControlChange(midiChannel, CC2time3, mux4Read);
+        }
         break;
       case MUX4_L3:
-        myControlChange(midiChannel, CClevel3, mux4Read);
+        if (!env5stage) {
+          myControlChange(midiChannel, CClevel3, mux4Read);
+        } else {
+          myControlChange(midiChannel, CC2level3, mux4Read);
+        }
         break;
       case MUX4_T4:
-        myControlChange(midiChannel, CCtime4, mux4Read);
+        if (!env5stage) {
+          myControlChange(midiChannel, CCtime4, mux4Read);
+        } else {
+          myControlChange(midiChannel, CC2time4, mux4Read);
+        }
         break;
       case MUX4_5STAGE_MODE:
-        myControlChange(midiChannel, CC5stage_mode, mux4Read);
+        if (!env5stage) {
+          myControlChange(midiChannel, CC5stage_mode, mux4Read);
+        } else {
+          myControlChange(midiChannel, CC25stage_mode, mux4Read);
+        }
         break;
       case MUX4_ATTACK:
-        myControlChange(midiChannel, CCattack, mux4Read);
+        if (!adsr) {
+          myControlChange(midiChannel, CCattack, mux4Read);
+        } else {
+          myControlChange(midiChannel, CC4attack, mux4Read);
+        }
         break;
       case MUX4_DECAY:
-        myControlChange(midiChannel, CCdecay, mux4Read);
+        if (!adsr) {
+          myControlChange(midiChannel, CCdecay, mux4Read);
+        } else {
+          myControlChange(midiChannel, CC4decay, mux4Read);
+        }
         break;
       case MUX4_SUSTAIN:
-        myControlChange(midiChannel, CCsustain, mux4Read);
+        if (!adsr) {
+          myControlChange(midiChannel, CCsustain, mux4Read);
+        } else {
+          myControlChange(midiChannel, CC4sustain, mux4Read);
+        }
         break;
       case MUX4_RELEASE:
-        myControlChange(midiChannel, CCrelease, mux4Read);
+        if (!adsr) {
+          myControlChange(midiChannel, CCrelease, mux4Read);
+        } else {
+          myControlChange(midiChannel, CCrelease, mux4Read);
+        }
         break;
       case MUX4_ADSR_MODE:
-        myControlChange(midiChannel, CCadsr_mode, mux4Read);
+        if (!adsr) {
+          myControlChange(midiChannel, CCadsr_mode, mux4Read);
+        } else {
+          myControlChange(midiChannel, CC4adsr_mode, mux4Read);
+        }
         break;
       case MUX4_CTLA:
         myControlChange(midiChannel, CCctla, mux4Read);

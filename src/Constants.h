@@ -1,7 +1,7 @@
 #define  NO_OF_VOICES 8
 constexpr int VOICES = 8;  // you’re indexing 1..8
 
-const char* VERSION = "V1.0";
+const char* VERSION = "V1.1";
 
 #define NO_OF_PARAMS 92
 const char* INITPATCHNAME = "Initial Patch";

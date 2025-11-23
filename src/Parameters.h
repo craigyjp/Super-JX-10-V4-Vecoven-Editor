@@ -51,7 +51,7 @@ bool LFODelayGoA = false;
 bool LFODelayGoB = false;
 bool LFODelayGoC = false;
 
-int resolutionFrig = 1;
+int resolutionFrig = 5;
 
 uint32_t noteAgeCounter = 1;
 int nextVoiceRR = 0;
@@ -275,8 +275,20 @@ int env4_adsr_mode_str;
 
 int chorus;
 
-int ctla;
-int ctlb;
+int dualdetune;
+int dualdetune_str;
+int unisondetune;
+int unisondetune_str;
+int mod_lfo;
+int mod_lfo_str;
+int bend_range;
+int bend_range_str;
+bool set10ctave = false;
+int octave_down = 0;
+bool octave_down_upwards = true;  // true = going up, false = going down
+int octave_up = 0;
+bool octave_up_upwards = true;
+
 int playmode = 0;
 int adsr = 0;
 int env5stage = 0;

@@ -103,8 +103,8 @@
 
 // Not defined as NRPN or sysex
 
-#define CCctla            0x54
-#define CCctlb            0x55
+#define CCdualdetune      0x54
+#define CCunisondetune    0x55
 #define CCbalance         0x56
 #define CCat_vib          0x57
 #define CCat_lpf          0x58
@@ -115,5 +115,9 @@
 #define CCvolume          0x5F
 #define CCportamento      0x60
 #define CCportamento_sw   0x61
+#define CCbend_range      0x62
+#define CCmod_lfo         0x63
+#define CCoctave_down     0x64
+#define CCoctave_up       0x65
 
 #define CCallnotesoff 123//Panic button

@@ -15,13 +15,13 @@ ADC *adc = new ADC();
 #define MUX_2 31
 #define MUX_3 32
 
-#define MUX1_S A10   // ADC0
-#define MUX2_S A11   // ADC0
-#define MUX3_S A12   // ADC1
-#define MUX4_S A13   // ADC1
+#define MUX1_S A10  // ADC0
+#define MUX2_S A11  // ADC0
+#define MUX3_S A12  // ADC1
+#define MUX4_S A13  // ADC1
 
 //Mux 1 Connections
-#define MUX1_LFO1_WAVE 0
+#define MUX1_MOD_LFO 0
 #define MUX1_LFO1_RATE 1
 #define MUX1_LFO1_DELAY 2
 #define MUX1_LFO1_LFO2_MOD 3
@@ -34,12 +34,12 @@ ADC *adc = new ADC();
 #define MUX1_DCO1_RANGE 10
 #define MUX1_DCO1_TUNE 11
 #define MUX1_PORTAMENTO 12
-#define MUX1_SPARE_13 13
+#define MUX1_LFO1_WAVE 13
 #define MUX1_SPARE_14 14
 #define MUX1_SPARE_15 15
 
 //Mux 2 Connections
-#define MUX2_LFO2_WAVE 0
+#define MUX2_BEND_RANGE 0
 #define MUX2_LFO2_RATE 1
 #define MUX2_LFO2_DELAY 2
 #define MUX2_LFO2_LFO1_MOD 3
@@ -53,7 +53,7 @@ ADC *adc = new ADC();
 #define MUX2_DCO2_TUNE 11
 #define MUX2_DCO2_FINE 12
 #define MUX2_DCO1_MODE 13
-#define MUX2_SPARE_14 14
+#define MUX2_LFO2_WAVE 14
 #define MUX2_SPARE_15 15
 
 //Mux 3 Connections
@@ -88,8 +88,8 @@ ADC *adc = new ADC();
 #define MUX4_SUSTAIN 10
 #define MUX4_RELEASE 11
 #define MUX4_ADSR_MODE 12
-#define MUX4_CTLA 13
-#define MUX4_CTLB 14
+#define MUX4_DUAL_DETUNE 13
+#define MUX4_UNISON_DETUNE 14
 #define MUX4_SPARE_15 15
 
 
@@ -148,6 +148,16 @@ ADC *adc = new ADC();
 #define CHORUS_BUTTON 29
 #define PORTAMENTO_BUTTON 30
 
+#define OCTAVE_DOWN_BUTTON 31
+#define OCTAVE_UP_BUTTON 32
+#define BEND_ENABLE_BUTTON 33
+#define KEY_SINGLE_BUTTON 34
+#define ASSIGN_POLY_BUTTON 35
+#define ASSIGN_MONO_BUTTON 36
+#define ASSIGN_UNI_BUTTON 37
+#define KEY_DUAL_BUTTON 38
+#define KEY_SPLIT_BUTTON 39
+#define KEY_SPECIAL_BUTTON 40
 
 //void RotaryEncoderChanged (bool clockwise, int id);
 
@@ -161,9 +171,11 @@ Adafruit_MCP23017 mcp3;
 Adafruit_MCP23017 mcp4;
 Adafruit_MCP23017 mcp5;
 Adafruit_MCP23017 mcp6;
+Adafruit_MCP23017 mcp7;
+Adafruit_MCP23017 mcp8;
 
 //Array of pointers of all MCPs
-Adafruit_MCP23017 *allMCPs[] = {&mcp1, &mcp2, &mcp3, &mcp4, &mcp5, &mcp6};
+Adafruit_MCP23017 *allMCPs[] = { &mcp1, &mcp2, &mcp3, &mcp4, &mcp5, &mcp6, &mcp7, &mcp8 };
 
 // // My encoders
 // /* Array of all rotary encoders and their pins */
@@ -184,7 +196,6 @@ Button dco1_PWM_env_src_Button = Button(&mcp1, 4, DCO1_PWM_ENV_SOURCE_BUTTON, &m
 Button dco2_PWM_env_src_Button = Button(&mcp2, 4, DCO2_PWM_ENV_SOURCE_BUTTON, &mainButtonChanged);
 Button dco1_PWM_dyn_Button = Button(&mcp1, 5, DCO1_PWM_DYN_BUTTON, &mainButtonChanged);
 Button dco2_PWM_dyn_Button = Button(&mcp2, 5, DCO2_PWM_DYN_BUTTON, &mainButtonChanged);
-
 Button dco1_PWM_lfo_src_Button = Button(&mcp4, 0, DCO1_PWM_LFO_SOURCE_BUTTON, &mainButtonChanged);
 Button dco2_PWM_lfo_src_Button = Button(&mcp3, 0, DCO2_PWM_LFO_SOURCE_BUTTON, &mainButtonChanged);
 Button dco1_pitch_lfo_src_Button = Button(&mcp4, 4, DCO1_PITCH_LFO_SOURCE_BUTTON, &mainButtonChanged);
@@ -195,7 +206,6 @@ Button dco1_pitch_env_pol_Button = Button(&mcp4, 8, DCO1_PITCH_ENV_POLARITY_BUTT
 Button dco2_pitch_env_pol_Button = Button(&mcp3, 8, DCO2_PITCH_ENV_POLARITY_BUTTON, &mainButtonChanged);
 Button dco1_pitch_env_src_Button = Button(&mcp4, 12, DCO1_PITCH_ENV_SOURCE_BUTTON, &mainButtonChanged);
 Button dco2_pitch_env_src_Button = Button(&mcp3, 12, DCO2_PITCH_ENV_SOURCE_BUTTON, &mainButtonChanged);
-
 Button dco_mix_env_pol_Button = Button(&mcp4, 3, DCO_MIX_ENV_POLARITY_BUTTON, &mainButtonChanged);
 Button dco_mix_env_src_Button = Button(&mcp5, 8, DCO_MIX_ENV_SOURCE_BUTTON, &mainButtonChanged);
 Button vcf_env_pol_Button = Button(&mcp5, 2, VCF_ENV_POLARITY_BUTTON, &mainButtonChanged);
@@ -210,24 +220,74 @@ Button lower_upper_Button = Button(&mcp1, 13, LOWER_UPPER_BUTTON, &mainButtonCha
 Button chorus_Button = Button(&mcp6, 13, CHORUS_BUTTON, &mainButtonChanged);
 Button portamento_Button = Button(&mcp3, 3, PORTAMENTO_BUTTON, &mainButtonChanged);
 
+Button octave_down_Button = Button(&mcp7, 8, OCTAVE_DOWN_BUTTON, &mainButtonChanged);
+Button octave_up_Button = Button(&mcp7, 9, OCTAVE_UP_BUTTON, &mainButtonChanged);
+Button bend_enable_Button = Button(&mcp7, 10, BEND_ENABLE_BUTTON, &mainButtonChanged);
+Button key_single_Button = Button(&mcp7, 11, KEY_SINGLE_BUTTON, &mainButtonChanged);
+Button assign_poly_Button = Button(&mcp8, 0, ASSIGN_POLY_BUTTON, &mainButtonChanged);
+Button assign_mono_Button = Button(&mcp8, 1, ASSIGN_MONO_BUTTON, &mainButtonChanged);
+Button assign_uni_Button = Button(&mcp8, 8, ASSIGN_UNI_BUTTON, &mainButtonChanged);
+Button key_dual_Button = Button(&mcp8, 9, KEY_DUAL_BUTTON, &mainButtonChanged);
+Button key_split_Button = Button(&mcp8, 11, KEY_SPLIT_BUTTON, &mainButtonChanged);
+Button key_special_Button = Button(&mcp8, 13, KEY_SPECIAL_BUTTON, &mainButtonChanged);
+
 Button *mainButtons[] = {
-        &lfo1_sync_Button, &lfo2_sync_Button, &dco1_PWM_env_src_Button, &dco2_PWM_env_src_Button, &dco1_PWM_env_pol_Button, &dco2_PWM_env_pol_Button, &dco1_PWM_dyn_Button, &dco2_PWM_dyn_Button,
-        &dco1_PWM_lfo_src_Button, &dco2_PWM_lfo_src_Button, &dco1_pitch_lfo_src_Button, &dco2_pitch_lfo_src_Button, &dco1_pitch_dyn_Button, &dco2_pitch_dyn_Button,
-        &dco1_pitch_env_pol_Button, &dco2_pitch_env_pol_Button, &dco1_pitch_env_src_Button, &dco1_pitch_env_src_Button, &dco2_pitch_env_src_Button,
-        &dco_mix_env_pol_Button, &dco_mix_env_src_Button, &vcf_env_pol_Button, &dco_mix_dyn_Button, &env5stage_select_Button,
-        &vca_dyn_Button, &vca_env_src_Button, &vcf_env_src_Button, &vcf_dyn_Button, &adsr_select_Button, &lower_upper_Button, &chorus_Button, &portamento_Button
+  &lfo1_sync_Button,
+  &lfo2_sync_Button,
+  &dco1_PWM_env_src_Button,
+  &dco2_PWM_env_src_Button,
+  &dco1_PWM_env_pol_Button,
+  &dco2_PWM_env_pol_Button,
+  &dco1_PWM_dyn_Button,
+  &dco2_PWM_dyn_Button,
+  &dco1_PWM_lfo_src_Button,
+  &dco2_PWM_lfo_src_Button,
+  &dco1_pitch_lfo_src_Button,
+  &dco2_pitch_lfo_src_Button,
+  &dco1_pitch_dyn_Button,
+  &dco2_pitch_dyn_Button,
+  &dco1_pitch_env_pol_Button,
+  &dco2_pitch_env_pol_Button,
+  &dco1_pitch_env_src_Button,
+  &dco1_pitch_env_src_Button,
+  &dco2_pitch_env_src_Button,
+  &dco_mix_env_pol_Button,
+  &dco_mix_env_src_Button,
+  &vcf_env_pol_Button,
+  &dco_mix_dyn_Button,
+  &env5stage_select_Button,
+  &vca_dyn_Button,
+  &vca_env_src_Button,
+  &vcf_env_src_Button,
+  &vcf_dyn_Button,
+  &adsr_select_Button,
+  &lower_upper_Button,
+  &chorus_Button,
+  &portamento_Button,
+  &octave_down_Button,
+  &octave_up_Button,
+  &bend_enable_Button,
+  &key_single_Button,
+  &assign_poly_Button,
+  &assign_mono_Button,
+  &assign_uni_Button,
+  &key_dual_Button,
+  &key_split_Button,
+  &key_special_Button,
 };
 
 Button *allButtons[] = {
-        &lfo1_sync_Button, &lfo2_sync_Button, &dco1_PWM_env_src_Button, &dco2_PWM_env_src_Button, &dco1_PWM_env_pol_Button, &dco2_PWM_env_pol_Button, &dco1_PWM_dyn_Button, &dco2_PWM_dyn_Button,
-        &dco1_PWM_lfo_src_Button, &dco2_PWM_lfo_src_Button, &dco1_pitch_lfo_src_Button, &dco2_pitch_lfo_src_Button, &dco1_pitch_dyn_Button, &dco2_pitch_dyn_Button,
-        &dco1_pitch_env_pol_Button, &dco2_pitch_env_pol_Button, &dco1_pitch_env_src_Button, &dco1_pitch_env_src_Button, &dco2_pitch_env_src_Button,
-        &dco_mix_env_pol_Button, &dco_mix_env_src_Button, &vcf_env_pol_Button, &dco_mix_dyn_Button, &env5stage_select_Button,
-        &vca_dyn_Button, &vca_env_src_Button, &vcf_env_src_Button, &vcf_dyn_Button, &adsr_select_Button, &lower_upper_Button, &chorus_Button, &portamento_Button
+  &lfo1_sync_Button, &lfo2_sync_Button, &dco1_PWM_env_src_Button, &dco2_PWM_env_src_Button, &dco1_PWM_env_pol_Button, &dco2_PWM_env_pol_Button, &dco1_PWM_dyn_Button, &dco2_PWM_dyn_Button,
+  &dco1_PWM_lfo_src_Button, &dco2_PWM_lfo_src_Button, &dco1_pitch_lfo_src_Button, &dco2_pitch_lfo_src_Button, &dco1_pitch_dyn_Button, &dco2_pitch_dyn_Button,
+  &dco1_pitch_env_pol_Button, &dco2_pitch_env_pol_Button, &dco1_pitch_env_src_Button, &dco1_pitch_env_src_Button, &dco2_pitch_env_src_Button,
+  &dco_mix_env_pol_Button, &dco_mix_env_src_Button, &vcf_env_pol_Button, &dco_mix_dyn_Button, &env5stage_select_Button,
+  &vca_dyn_Button, &vca_env_src_Button, &vcf_env_src_Button, &vcf_dyn_Button, &adsr_select_Button, &lower_upper_Button, &chorus_Button, &portamento_Button,
+  &octave_down_Button, &octave_up_Button, &bend_enable_Button, &key_single_Button, &assign_poly_Button, &assign_mono_Button, &assign_uni_Button,
+  &key_dual_Button, &key_split_Button, &key_special_Button
 };
 
 // an array of vectors to hold pointers to the encoders on each MCP
-std::vector<RotaryEncOverMCP*> encByMCP[NUM_MCP];
+std::vector<RotaryEncOverMCP *> encByMCP[NUM_MCP];
 
 // // GP1
 
@@ -325,6 +385,32 @@ std::vector<RotaryEncOverMCP*> encByMCP[NUM_MCP];
 #define CHORUS_SELECT_RED 14
 #define CHORUS_SELECT_GREEN 15
 
+// // GP7
+
+#define OCTAVE_UP_RED 4
+#define OCTAVE_UP_GREEN 5
+#define OCTAVE_DOWN_RED 6
+#define OCTAVE_DOWN_GREEN 7
+
+#define KEY_SINGLE_RED 12
+#define KEY_SINGLE_GREEN 13
+#define BEND_ENABLE_RED 14
+#define BEND_ENABLE_GREEN 15
+
+// // GP8
+
+#define ASSIGN_UNI_RED 2
+#define ASSIGN_UNI_GREEN 3
+#define ASSIGN_POLY_RED 4
+#define ASSIGN_POLY_GREEN 5
+#define ASSIGN_MONO_RED 6
+#define ASSIGN_MONO_GREEN 7
+
+#define KEY_DUAL_RED 10
+#define KEY_SPLIT_RED 12
+#define KEY_SPECIAL_RED 14
+#define KEY_SPECIAL_GREEN 15
+
 //Teensy 4.1 Pins
 
 #define RECALL_SW 33
@@ -336,7 +422,7 @@ std::vector<RotaryEncOverMCP*> encByMCP[NUM_MCP];
 #define ENCODER_PINB 5
 
 #define MUXCHANNELS 16
-#define QUANTISE_FACTOR 1
+#define QUANTISE_FACTOR 2
 
 #define DEBOUNCE 30
 
@@ -347,10 +433,10 @@ static int mux4ValuesPrev[MUXCHANNELS] = {};
 
 static byte muxInput = 0;
 
-static int mux1Read = 0;
-static int mux2Read = 0;
-static int mux3Read = 0;
-static int mux4Read = 0;
+// static int mux1Read = 0;
+// static int mux2Read = 0;
+// static int mux3Read = 0;
+// static int mux4Read = 0;
 
 static long encPrevious = 0;
 
@@ -359,23 +445,36 @@ static long encPrevious = 0;
 TButton saveButton{ SAVE_SW, LOW, HOLD_DURATION, DEBOUNCE, CLICK_DURATION };
 TButton settingsButton{ SETTINGS_SW, LOW, HOLD_DURATION, DEBOUNCE, CLICK_DURATION };
 TButton backButton{ BACK_SW, LOW, HOLD_DURATION, DEBOUNCE, CLICK_DURATION };
-TButton recallButton{ RECALL_SW, LOW, HOLD_DURATION, DEBOUNCE, CLICK_DURATION }; // on encoder
+TButton recallButton{ RECALL_SW, LOW, HOLD_DURATION, DEBOUNCE, CLICK_DURATION };  // on encoder
 
 Encoder encoder(ENCODER_PINB, ENCODER_PINA);  //This often needs the pins swapping depending on the encoder
 
 void setupHardware() {
 
-  //Volume Pot is on ADC0
-  adc->adc0->setAveraging(32);                                          // set number of averages 0, 4, 8, 16 or 32.
-  adc->adc0->setResolution(8);                                         // set bits of resolution  8, 10, 12 or 16 bits.
-  adc->adc0->setConversionSpeed(ADC_CONVERSION_SPEED::VERY_LOW_SPEED);  // change the conversion speed
-  adc->adc0->setSamplingSpeed(ADC_SAMPLING_SPEED::MED_SPEED);           // change the sampling speed
+  const int ADC_AVG = 8;   // 8 is ideal
+  const int ADC_RES = 12;  // teensy 4.1 sweet spot
 
-  //MUXs on ADC1
-  adc->adc1->setAveraging(32);                                          // set number of averages 0, 4, 8, 16 or 32.
-  adc->adc1->setResolution(8);                                         // set bits of resolution  8, 10, 12 or 16 bits.
-  adc->adc1->setConversionSpeed(ADC_CONVERSION_SPEED::VERY_LOW_SPEED);  // change the conversion speed
-  adc->adc1->setSamplingSpeed(ADC_SAMPLING_SPEED::MED_SPEED);           // change the sampling speed
+  adc->adc0->setAveraging(ADC_AVG);
+  adc->adc0->setResolution(ADC_RES);
+  adc->adc0->setConversionSpeed(ADC_CONVERSION_SPEED::HIGH_SPEED);
+  adc->adc0->setSamplingSpeed(ADC_SAMPLING_SPEED::HIGH_SPEED);
+
+  adc->adc1->setAveraging(ADC_AVG);
+  adc->adc1->setResolution(ADC_RES);
+  adc->adc1->setConversionSpeed(ADC_CONVERSION_SPEED::HIGH_SPEED);
+  adc->adc1->setSamplingSpeed(ADC_SAMPLING_SPEED::HIGH_SPEED);
+
+  //Volume Pot is on ADC0
+  // adc->adc0->setAveraging(32);                                          // set number of averages 0, 4, 8, 16 or 32.
+  // adc->adc0->setResolution(8);                                          // set bits of resolution  8, 10, 12 or 16 bits.
+  // adc->adc0->setConversionSpeed(ADC_CONVERSION_SPEED::VERY_LOW_SPEED);  // change the conversion speed
+  // adc->adc0->setSamplingSpeed(ADC_SAMPLING_SPEED::MED_SPEED);           // change the sampling speed
+
+  // //MUXs on ADC1
+  // adc->adc1->setAveraging(32);                                          // set number of averages 0, 4, 8, 16 or 32.
+  // adc->adc1->setResolution(8);                                          // set bits of resolution  8, 10, 12 or 16 bits.
+  // adc->adc1->setConversionSpeed(ADC_CONVERSION_SPEED::VERY_LOW_SPEED);  // change the conversion speed
+  // adc->adc1->setSamplingSpeed(ADC_SAMPLING_SPEED::MED_SPEED);           // change the sampling speed
 
   //Mux address pins
 
@@ -394,13 +493,12 @@ void setupHardware() {
   pinMode(MUX2_S, INPUT_DISABLE);
   pinMode(MUX3_S, INPUT_DISABLE);
   pinMode(MUX4_S, INPUT_DISABLE);
-  
+
   //Switches
   pinMode(RECALL_SW, INPUT_PULLUP);  //On encoder
   pinMode(SAVE_SW, INPUT_PULLUP);
   pinMode(SETTINGS_SW, INPUT_PULLUP);
   pinMode(BACK_SW, INPUT_PULLUP);
-
 }
 
 void setupMCPoutputs() {
@@ -411,10 +509,10 @@ void setupMCPoutputs() {
   mcp1.pinMode(7, OUTPUT);   // pin 7 = GPA7 of MCP2301X
   mcp1.pinMode(8, OUTPUT);   // pin 6 = GPA7 of MCP2301X
   mcp1.pinMode(9, OUTPUT);   // pin 7 = GPA7 of MCP2301X
-  mcp1.pinMode(11, OUTPUT);   // pin 11 = GPA7 of MCP2301X
-  mcp1.pinMode(12, OUTPUT);   // pin 12 = GPA7 of MCP2301X
-  mcp1.pinMode(14, OUTPUT);   // pin 14 = GPA7 of MCP2301X
-  mcp1.pinMode(15, OUTPUT);   // pin 15 = GPA7 of MCP2301X
+  mcp1.pinMode(11, OUTPUT);  // pin 11 = GPA7 of MCP2301X
+  mcp1.pinMode(12, OUTPUT);  // pin 12 = GPA7 of MCP2301X
+  mcp1.pinMode(14, OUTPUT);  // pin 14 = GPA7 of MCP2301X
+  mcp1.pinMode(15, OUTPUT);  // pin 15 = GPA7 of MCP2301X
 
   mcp2.pinMode(1, OUTPUT);   // pin 1 = GPA7 of MCP2301X
   mcp2.pinMode(2, OUTPUT);   // pin 2 = GPA7 of MCP2301X
@@ -422,32 +520,32 @@ void setupMCPoutputs() {
   mcp2.pinMode(7, OUTPUT);   // pin 7 = GPA7 of MCP2301X
   mcp2.pinMode(8, OUTPUT);   // pin 8 = GPA7 of MCP2301X
   mcp2.pinMode(9, OUTPUT);   // pin 9 = GPA7 of MCP2301X
-  mcp2.pinMode(10, OUTPUT);   // pin 10 = GPA7 of MCP2301X
-  mcp2.pinMode(11, OUTPUT);   // pin 11 = GPA7 of MCP2301X
-  mcp2.pinMode(14, OUTPUT);   // pin 14 = GPA7 of MCP2301X
-  mcp2.pinMode(15, OUTPUT);   // pin 15 = GPA7 of MCP2301X
+  mcp2.pinMode(10, OUTPUT);  // pin 10 = GPA7 of MCP2301X
+  mcp2.pinMode(11, OUTPUT);  // pin 11 = GPA7 of MCP2301X
+  mcp2.pinMode(14, OUTPUT);  // pin 14 = GPA7 of MCP2301X
+  mcp2.pinMode(15, OUTPUT);  // pin 15 = GPA7 of MCP2301X
 
   mcp3.pinMode(1, OUTPUT);   // pin 1 = GPA7 of MCP2301X
   mcp3.pinMode(2, OUTPUT);   // pin 2 = GPA7 of MCP2301X
   mcp3.pinMode(6, OUTPUT);   // pin 6 = GPA7 of MCP2301X
   mcp3.pinMode(7, OUTPUT);   // pin 7 = GPA7 of MCP2301X
   mcp3.pinMode(9, OUTPUT);   // pin 9 = GPA7 of MCP2301X
-  mcp3.pinMode(10, OUTPUT);   // pin 10 = GPA7 of MCP2301X
-  mcp3.pinMode(11, OUTPUT);   // pin 11 = GPA7 of MCP2301X
-  mcp3.pinMode(13, OUTPUT);   // pin 13 = GPA7 of MCP2301X
-  mcp3.pinMode(14, OUTPUT);   // pin 14 = GPA7 of MCP2301X
-  mcp3.pinMode(15, OUTPUT);   // pin 15 = GPA7 of MCP2301X
+  mcp3.pinMode(10, OUTPUT);  // pin 10 = GPA7 of MCP2301X
+  mcp3.pinMode(11, OUTPUT);  // pin 11 = GPA7 of MCP2301X
+  mcp3.pinMode(13, OUTPUT);  // pin 13 = GPA7 of MCP2301X
+  mcp3.pinMode(14, OUTPUT);  // pin 14 = GPA7 of MCP2301X
+  mcp3.pinMode(15, OUTPUT);  // pin 15 = GPA7 of MCP2301X
 
   mcp4.pinMode(1, OUTPUT);   // pin 1 = GPA7 of MCP2301X
   mcp4.pinMode(2, OUTPUT);   // pin 2 = GPA7 of MCP2301X
   mcp4.pinMode(6, OUTPUT);   // pin 6 = GPA7 of MCP2301X
   mcp4.pinMode(7, OUTPUT);   // pin 7 = GPA7 of MCP2301X
   mcp4.pinMode(9, OUTPUT);   // pin 9 = GPA7 of MCP2301X
-  mcp4.pinMode(10, OUTPUT);   // pin 10 = GPA7 of MCP2301X
-  mcp4.pinMode(11, OUTPUT);   // pin 11 = GPA7 of MCP2301X
-  mcp4.pinMode(13, OUTPUT);   // pin 13 = GPA7 of MCP2301X
-  mcp4.pinMode(14, OUTPUT);   // pin 14 = GPA7 of MCP2301X
-  mcp4.pinMode(15, OUTPUT);   // pin 15 = GPA7 of MCP2301X
+  mcp4.pinMode(10, OUTPUT);  // pin 10 = GPA7 of MCP2301X
+  mcp4.pinMode(11, OUTPUT);  // pin 11 = GPA7 of MCP2301X
+  mcp4.pinMode(13, OUTPUT);  // pin 13 = GPA7 of MCP2301X
+  mcp4.pinMode(14, OUTPUT);  // pin 14 = GPA7 of MCP2301X
+  mcp4.pinMode(15, OUTPUT);  // pin 15 = GPA7 of MCP2301X
 
   mcp5.pinMode(0, OUTPUT);   // pin 0 = GPA7 of MCP2301X
   mcp5.pinMode(1, OUTPUT);   // pin 1 = GPA7 of MCP2301X
@@ -456,21 +554,40 @@ void setupMCPoutputs() {
   mcp5.pinMode(6, OUTPUT);   // pin 6 = GPA7 of MCP2301X
   mcp5.pinMode(7, OUTPUT);   // pin 7 = GPA7 of MCP2301X
   mcp5.pinMode(9, OUTPUT);   // pin 9 = GPA7 of MCP2301X
-  mcp5.pinMode(10, OUTPUT);   // pin 10 = GPA7 of MCP2301X
-  mcp5.pinMode(11, OUTPUT);   // pin 11 = GPA7 of MCP2301X
-  mcp5.pinMode(13, OUTPUT);   // pin 13 = GPA7 of MCP2301X
-  mcp5.pinMode(14, OUTPUT);   // pin 14 = GPA7 of MCP2301X
-  mcp5.pinMode(15, OUTPUT);   // pin 15 = GPA7 of MCP2301X
+  mcp5.pinMode(10, OUTPUT);  // pin 10 = GPA7 of MCP2301X
+  mcp5.pinMode(11, OUTPUT);  // pin 11 = GPA7 of MCP2301X
+  mcp5.pinMode(13, OUTPUT);  // pin 13 = GPA7 of MCP2301X
+  mcp5.pinMode(14, OUTPUT);  // pin 14 = GPA7 of MCP2301X
+  mcp5.pinMode(15, OUTPUT);  // pin 15 = GPA7 of MCP2301X
 
   mcp6.pinMode(2, OUTPUT);   // pin 1 = GPA7 of MCP2301X
   mcp6.pinMode(3, OUTPUT);   // pin 2 = GPA7 of MCP2301X
   mcp6.pinMode(6, OUTPUT);   // pin 6 = GPA7 of MCP2301X
   mcp6.pinMode(7, OUTPUT);   // pin 7 = GPA7 of MCP2301X
   mcp6.pinMode(9, OUTPUT);   // pin 9 = GPA7 of MCP2301X
-  mcp6.pinMode(10, OUTPUT);   // pin 10 = GPA7 of MCP2301X
-  mcp6.pinMode(11, OUTPUT);   // pin 11 = GPA7 of MCP2301X
-  mcp6.pinMode(12, OUTPUT);   // pin 12 = GPA7 of MCP2301X
-  mcp6.pinMode(14, OUTPUT);   // pin 14 = GPA7 of MCP2301X
-  mcp6.pinMode(15, OUTPUT);   // pin 15 = GPA7 of MCP2301X
+  mcp6.pinMode(10, OUTPUT);  // pin 10 = GPA7 of MCP2301X
+  mcp6.pinMode(11, OUTPUT);  // pin 11 = GPA7 of MCP2301X
+  mcp6.pinMode(12, OUTPUT);  // pin 12 = GPA7 of MCP2301X
+  mcp6.pinMode(14, OUTPUT);  // pin 14 = GPA7 of MCP2301X
+  mcp6.pinMode(15, OUTPUT);  // pin 15 = GPA7 of MCP2301X
 
+  mcp7.pinMode(4, OUTPUT);   // pin 4 = GPA7 of MCP2301X
+  mcp7.pinMode(5, OUTPUT);   // pin 5 = GPA7 of MCP2301X
+  mcp7.pinMode(6, OUTPUT);   // pin 6 = GPA7 of MCP2301X
+  mcp7.pinMode(7, OUTPUT);   // pin 7 = GPA7 of MCP2301X
+  mcp7.pinMode(12, OUTPUT);  // pin 12 = GPA7 of MCP2301X
+  mcp7.pinMode(13, OUTPUT);  // pin 13 = GPA7 of MCP2301X
+  mcp7.pinMode(14, OUTPUT);  // pin 14 = GPA7 of MCP2301X
+  mcp7.pinMode(15, OUTPUT);  // pin 15 = GPA7 of MCP2301X
+
+  mcp8.pinMode(2, OUTPUT);   // pin 2 = GPA7 of MCP2301X
+  mcp8.pinMode(3, OUTPUT);   // pin 3 = GPA7 of MCP2301X
+  mcp8.pinMode(4, OUTPUT);   // pin 4 = GPA7 of MCP2301X
+  mcp8.pinMode(5, OUTPUT);   // pin 5 = GPA7 of MCP2301X
+  mcp8.pinMode(6, OUTPUT);   // pin 6 = GPA7 of MCP2301X
+  mcp8.pinMode(7, OUTPUT);   // pin 7 = GPA7 of MCP2301X
+  mcp8.pinMode(10, OUTPUT);  // pin 10 = GPA7 of MCP2301X
+  mcp8.pinMode(12, OUTPUT);  // pin 12 = GPA7 of MCP2301X
+  mcp8.pinMode(14, OUTPUT);  // pin 14 = GPA7 of MCP2301X
+  mcp8.pinMode(15, OUTPUT);  // pin 15 = GPA7 of MCP2301X
 }

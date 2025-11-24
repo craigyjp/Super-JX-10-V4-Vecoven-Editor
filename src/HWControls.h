@@ -224,8 +224,8 @@ Button octave_down_Button = Button(&mcp7, 8, OCTAVE_DOWN_BUTTON, &mainButtonChan
 Button octave_up_Button = Button(&mcp7, 9, OCTAVE_UP_BUTTON, &mainButtonChanged);
 Button bend_enable_Button = Button(&mcp7, 10, BEND_ENABLE_BUTTON, &mainButtonChanged);
 Button key_single_Button = Button(&mcp7, 11, KEY_SINGLE_BUTTON, &mainButtonChanged);
-Button assign_poly_Button = Button(&mcp8, 0, ASSIGN_POLY_BUTTON, &mainButtonChanged);
-Button assign_mono_Button = Button(&mcp8, 1, ASSIGN_MONO_BUTTON, &mainButtonChanged);
+Button assign_poly_Button = Button(&mcp8, 1, ASSIGN_POLY_BUTTON, &mainButtonChanged);
+Button assign_mono_Button = Button(&mcp8, 0, ASSIGN_MONO_BUTTON, &mainButtonChanged);
 Button assign_uni_Button = Button(&mcp8, 8, ASSIGN_UNI_BUTTON, &mainButtonChanged);
 Button key_dual_Button = Button(&mcp8, 9, KEY_DUAL_BUTTON, &mainButtonChanged);
 Button key_split_Button = Button(&mcp8, 11, KEY_SPLIT_BUTTON, &mainButtonChanged);
@@ -401,10 +401,10 @@ std::vector<RotaryEncOverMCP *> encByMCP[NUM_MCP];
 
 #define ASSIGN_UNI_RED 2
 #define ASSIGN_UNI_GREEN 3
-#define ASSIGN_POLY_RED 4
-#define ASSIGN_POLY_GREEN 5
-#define ASSIGN_MONO_RED 6
-#define ASSIGN_MONO_GREEN 7
+#define ASSIGN_MONO_RED 4
+#define ASSIGN_MONO_GREEN 5
+#define ASSIGN_POLY_RED 6
+#define ASSIGN_POLY_GREEN 7
 
 #define KEY_DUAL_RED 10
 #define KEY_SPLIT_RED 12
@@ -422,7 +422,7 @@ std::vector<RotaryEncOverMCP *> encByMCP[NUM_MCP];
 #define ENCODER_PINB 5
 
 #define MUXCHANNELS 16
-#define QUANTISE_FACTOR 2
+#define QUANTISE_FACTOR 1
 
 #define DEBOUNCE 30
 
@@ -431,12 +431,12 @@ static int mux2ValuesPrev[MUXCHANNELS] = {};
 static int mux3ValuesPrev[MUXCHANNELS] = {};
 static int mux4ValuesPrev[MUXCHANNELS] = {};
 
-static byte muxInput = 0;
+static int mux1Read = 0;
+static int mux2Read = 0;
+static int mux3Read = 0;
+static int mux4Read = 0;
 
-// static int mux1Read = 0;
-// static int mux2Read = 0;
-// static int mux3Read = 0;
-// static int mux4Read = 0;
+static byte muxInput = 0;
 
 static long encPrevious = 0;
 
@@ -451,30 +451,16 @@ Encoder encoder(ENCODER_PINB, ENCODER_PINA);  //This often needs the pins swappi
 
 void setupHardware() {
 
-  const int ADC_AVG = 8;   // 8 is ideal
-  const int ADC_RES = 12;  // teensy 4.1 sweet spot
+  adc->adc0->setAveraging(32);                                          // set number of averages 0, 4, 8, 16 or 32.
+  adc->adc0->setResolution(8);                                          // set bits of resolution  8, 10, 12 or 16 bits.
+  adc->adc0->setConversionSpeed(ADC_CONVERSION_SPEED::VERY_LOW_SPEED);  // change the conversion speed
+  adc->adc0->setSamplingSpeed(ADC_SAMPLING_SPEED::MED_SPEED);           // change the sampling speed
 
-  adc->adc0->setAveraging(ADC_AVG);
-  adc->adc0->setResolution(ADC_RES);
-  adc->adc0->setConversionSpeed(ADC_CONVERSION_SPEED::HIGH_SPEED);
-  adc->adc0->setSamplingSpeed(ADC_SAMPLING_SPEED::HIGH_SPEED);
-
-  adc->adc1->setAveraging(ADC_AVG);
-  adc->adc1->setResolution(ADC_RES);
-  adc->adc1->setConversionSpeed(ADC_CONVERSION_SPEED::HIGH_SPEED);
-  adc->adc1->setSamplingSpeed(ADC_SAMPLING_SPEED::HIGH_SPEED);
-
-  //Volume Pot is on ADC0
-  // adc->adc0->setAveraging(32);                                          // set number of averages 0, 4, 8, 16 or 32.
-  // adc->adc0->setResolution(8);                                          // set bits of resolution  8, 10, 12 or 16 bits.
-  // adc->adc0->setConversionSpeed(ADC_CONVERSION_SPEED::VERY_LOW_SPEED);  // change the conversion speed
-  // adc->adc0->setSamplingSpeed(ADC_SAMPLING_SPEED::MED_SPEED);           // change the sampling speed
-
-  // //MUXs on ADC1
-  // adc->adc1->setAveraging(32);                                          // set number of averages 0, 4, 8, 16 or 32.
-  // adc->adc1->setResolution(8);                                          // set bits of resolution  8, 10, 12 or 16 bits.
-  // adc->adc1->setConversionSpeed(ADC_CONVERSION_SPEED::VERY_LOW_SPEED);  // change the conversion speed
-  // adc->adc1->setSamplingSpeed(ADC_SAMPLING_SPEED::MED_SPEED);           // change the sampling speed
+  //MUXs on ADC1
+  adc->adc1->setAveraging(32);                                          // set number of averages 0, 4, 8, 16 or 32.
+  adc->adc1->setResolution(8);                                          // set bits of resolution  8, 10, 12 or 16 bits.
+  adc->adc1->setConversionSpeed(ADC_CONVERSION_SPEED::VERY_LOW_SPEED);  // change the conversion speed
+  adc->adc1->setSamplingSpeed(ADC_SAMPLING_SPEED::MED_SPEED);           // change the sampling speed
 
   //Mux address pins
 

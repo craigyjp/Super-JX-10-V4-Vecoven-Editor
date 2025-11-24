@@ -119,5 +119,12 @@
 #define CCmod_lfo         0x63
 #define CCoctave_down     0x64
 #define CCoctave_up       0x65
+#define CCdual_button     0x66
+#define CCsplit_button    0x67
+#define CCsingle_button   0x68
+#define CCspecial_button  0x69
+#define CCpoly_button     0x6A
+#define CCmono_button     0x6B
+#define CCunison_button   0x6C
 
 #define CCallnotesoff 123//Panic button

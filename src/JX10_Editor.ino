@@ -154,7 +154,7 @@ void myPitchBend(byte channel, int pitchValue) {
 }
 
 void myControlConvert(byte channel, byte control, byte value) {
-  myControlChange(channel, control, value);
+  //myControlChange(channel, control, value);
 }
 
 void myControlChange(byte channel, byte control, int value) {
@@ -535,6 +535,34 @@ void myControlChange(byte channel, byte control, int value) {
       updateoctave_up(1);
       break;
 
+    case CCdual_button:
+      updatedual_button(1);
+      break;
+
+    case CCsplit_button:
+      updatesplit_button(1);
+      break;
+
+    case CCsingle_button:
+      updatesingle_button(1);
+      break;
+
+    case CCspecial_button:
+      updatespecial_button(1);
+      break;
+
+    case CCpoly_button:
+      updatepoly_button(1);
+      break;
+
+    case CCmono_button:
+      updatemono_button(1);
+      break;
+
+    case CCunison_button:
+      updateunison_button(1);
+      break;
+
     case CClfo1_sync:
       updatelfo1_sync(1);
       break;
@@ -687,14 +715,26 @@ FLASHMEM void updatelfo1_wave(bool announce) {
 }
 
 FLASHMEM void updatemod_lfo(bool announce) {
-  lfo1_rate_str = map(mod_lfo, 0, 127, 0, 99);
+  mod_lfo_str = map(mod_lfo, 0, 127, 0, 99);
   if (announce) {
-    showCurrentParameterPage("MOD Depth", String(lfo1_rate_str));
+    showCurrentParameterPage("MOD Depth", String(mod_lfo_str));
     startParameterDisplay();
   }
-  sendCustomSysEx((midiOutCh - 1), 0x22, mod_lfo);
-  delay(20);
-  sendCustomSysEx((midiOutCh - 1), 0x2B, mod_lfo);
+  switch (playmode) {
+    case 0:
+      sendCustomSysEx((midiOutCh - 1), 0x2B, mod_lfo);
+      break;
+
+    case 1:
+      sendCustomSysEx((midiOutCh - 1), 0x22, mod_lfo);
+      break;
+
+    case 2:
+      sendCustomSysEx((midiOutCh - 1), 0x22, mod_lfo);
+      delay(20);
+      sendCustomSysEx((midiOutCh - 1), 0x2B, mod_lfo);
+      break;
+  }
 }
 
 FLASHMEM void updatebend_range(bool announce) {
@@ -2004,6 +2044,180 @@ FLASHMEM void updateoctave_up(bool announce) {
   }
 }
 
+FLASHMEM void updatedual_button(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("Key Mode", "Dual");
+    startParameterDisplay();
+  }
+  sendCustomSysEx((midiOutCh - 1), 0x18, 0x00);
+  delay(20);
+  sendCustomSysEx((midiOutCh - 1), 0x33, 0x00);
+  mcp8.digitalWrite(KEY_DUAL_RED, HIGH);
+  mcp8.digitalWrite(KEY_SPLIT_RED, LOW);
+  mcp8.digitalWrite(KEY_SPECIAL_RED, LOW);
+  mcp8.digitalWrite(KEY_SPECIAL_GREEN, LOW);
+  mcp7.digitalWrite(KEY_SINGLE_RED, LOW);
+  mcp7.digitalWrite(KEY_SINGLE_GREEN, LOW);
+  keymode = 0;
+  split_button = false;
+  single_button = false;
+  special_button = false;
+}
+
+FLASHMEM void updatesplit_button(bool announce) {
+  if (announce) {
+    showCurrentParameterPage("Key Mode", "Split");
+    startParameterDisplay();
+  }
+  sendCustomSysEx((midiOutCh - 1), 0x18, 0x01);
+  delay(20);
+  sendCustomSysEx((midiOutCh - 1), 0x33, 0x00);
+  mcp8.digitalWrite(KEY_DUAL_RED, LOW);
+  mcp8.digitalWrite(KEY_SPLIT_RED, HIGH);
+  mcp8.digitalWrite(KEY_SPECIAL_RED, LOW);
+  mcp8.digitalWrite(KEY_SPECIAL_GREEN, LOW);
+  mcp7.digitalWrite(KEY_SINGLE_RED, LOW);
+  mcp7.digitalWrite(KEY_SINGLE_GREEN, LOW);
+  keymode = 3;
+  dual_button = false;
+  single_button = false;
+  special_button = false;
+}
+
+FLASHMEM void updatesingle_button(bool announce) {
+  if (announce) {
+    if (!single_button) {
+      showCurrentParameterPage("Key Mode", "Single Up");
+    } else {
+      showCurrentParameterPage("Key Mode", "Single Low");
+    }
+    startParameterDisplay();
+  }
+  if (!single_button) {
+    sendCustomSysEx((midiOutCh - 1), 0x18, 0x02);
+    delay(20);
+    sendCustomSysEx((midiOutCh - 1), 0x33, 0x00);
+    mcp7.digitalWrite(KEY_SINGLE_RED, HIGH);
+    mcp7.digitalWrite(KEY_SINGLE_GREEN, LOW);
+    keymode = 1;
+  } else {
+    sendCustomSysEx((midiOutCh - 1), 0x18, 0x03);
+    delay(20);
+    sendCustomSysEx((midiOutCh - 1), 0x33, 0x00);
+    mcp7.digitalWrite(KEY_SINGLE_RED, LOW);
+    mcp7.digitalWrite(KEY_SINGLE_GREEN, HIGH);
+    keymode = 2;
+  }
+  mcp8.digitalWrite(KEY_DUAL_RED, LOW);
+  mcp8.digitalWrite(KEY_SPLIT_RED, LOW);
+  mcp8.digitalWrite(KEY_SPECIAL_RED, LOW);
+  mcp8.digitalWrite(KEY_SPECIAL_GREEN, LOW);
+
+  split_button = false;
+  dual_button = false;
+  special_button = false;
+}
+
+FLASHMEM void updatespecial_button(bool announce) {
+  if (announce) {
+    if (!special_button) {
+      showCurrentParameterPage("Key Mode", "X Fade");
+    } else {
+      showCurrentParameterPage("Key Mode", "2 Voice");
+    }
+    startParameterDisplay();
+  }
+  if (!special_button) {
+    sendCustomSysEx((midiOutCh - 1), 0x18, 0x00);
+    delay(20);
+    sendCustomSysEx((midiOutCh - 1), 0x33, 0x01);
+    mcp8.digitalWrite(KEY_SPECIAL_RED, LOW);
+    mcp8.digitalWrite(KEY_SPECIAL_GREEN, HIGH);
+    keymode = 4;
+  } else {
+    sendCustomSysEx((midiOutCh - 1), 0x18, 0x00);
+    delay(20);
+    sendCustomSysEx((midiOutCh - 1), 0x33, 0x02);
+    mcp8.digitalWrite(KEY_SPECIAL_RED, HIGH);
+    mcp8.digitalWrite(KEY_SPECIAL_GREEN, LOW);
+    keymode = 5;
+  }
+  mcp8.digitalWrite(KEY_DUAL_RED, LOW);
+  mcp8.digitalWrite(KEY_SPLIT_RED, LOW);
+  mcp7.digitalWrite(KEY_SINGLE_RED, LOW);
+  mcp7.digitalWrite(KEY_SINGLE_GREEN, LOW);
+
+  split_button = false;
+  dual_button = false;
+  single_button = false;
+}
+
+FLASHMEM void updatepoly_button(bool announce) {
+  if (announce) {
+    if (!poly_button) {
+      showCurrentParameterPage("Assign Mode", "Poly 1");
+    } else {
+      showCurrentParameterPage("Assign Mode", "Poly 2");
+    }
+    startParameterDisplay();
+  }
+  if (!poly_button) {
+    mcp8.digitalWrite(ASSIGN_POLY_RED, HIGH);
+    mcp8.digitalWrite(ASSIGN_POLY_GREEN, LOW);
+  } else {
+    mcp8.digitalWrite(ASSIGN_POLY_RED, LOW);
+    mcp8.digitalWrite(ASSIGN_POLY_GREEN, HIGH);
+  }
+  mcp8.digitalWrite(ASSIGN_MONO_RED, LOW);
+  mcp8.digitalWrite(ASSIGN_MONO_GREEN, LOW);
+  mcp8.digitalWrite(ASSIGN_UNI_RED, LOW);
+  mcp8.digitalWrite(ASSIGN_UNI_GREEN, LOW);
+}
+
+FLASHMEM void updatemono_button(bool announce) {
+    if (announce) {
+    if (!mono_button) {
+      showCurrentParameterPage("Assign Mode", "Mono 1");
+    } else {
+      showCurrentParameterPage("Assign Mode", "Mono 2");
+    }
+    startParameterDisplay();
+  }
+  if (!mono_button) {
+    mcp8.digitalWrite(ASSIGN_MONO_RED, HIGH);
+    mcp8.digitalWrite(ASSIGN_MONO_GREEN, LOW);
+  } else {
+    mcp8.digitalWrite(ASSIGN_MONO_RED, LOW);
+    mcp8.digitalWrite(ASSIGN_MONO_GREEN, HIGH);
+  }
+  mcp8.digitalWrite(ASSIGN_POLY_RED, LOW);
+  mcp8.digitalWrite(ASSIGN_POLY_GREEN, LOW);
+  mcp8.digitalWrite(ASSIGN_UNI_RED, LOW);
+  mcp8.digitalWrite(ASSIGN_UNI_GREEN, LOW);
+}
+
+FLASHMEM void updateunison_button(bool announce) {
+    if (announce) {
+    if (!unison_button) {
+      showCurrentParameterPage("Assign Mode", "Unison 1");
+    } else {
+      showCurrentParameterPage("Assign Mode", "Unison 2");
+    }
+    startParameterDisplay();
+  }
+    if (!unison_button) {
+    mcp8.digitalWrite(ASSIGN_UNI_RED, HIGH);
+    mcp8.digitalWrite(ASSIGN_UNI_GREEN, LOW);
+  } else {
+    mcp8.digitalWrite(ASSIGN_UNI_RED, LOW);
+    mcp8.digitalWrite(ASSIGN_UNI_GREEN, HIGH);
+  }
+  mcp8.digitalWrite(ASSIGN_POLY_RED, LOW);
+  mcp8.digitalWrite(ASSIGN_POLY_GREEN, LOW);
+  mcp8.digitalWrite(ASSIGN_MONO_RED, LOW);
+  mcp8.digitalWrite(ASSIGN_MONO_GREEN, LOW);
+}
+
 FLASHMEM void updatelfo1_sync(bool announce) {
   if (announce) {
     switch (lfo1_sync) {
@@ -3282,23 +3496,6 @@ FLASHMEM void updateadsr(bool announce) {
   }
 }
 
-// void RotaryEncoderChanged(bool clockwise, int id) {
-
-//   if (!accelerate) {
-//     speed = 1;
-//   } else {
-//     speed = getEncoderSpeed(id);
-//   }
-
-//   if (!clockwise) {
-//     speed = -speed;
-//   }
-
-
-
-//   //rotaryEncoderChanged(id, clockwise, speed);
-// }
-
 int getEncoderSpeed(int id) {
   if (id < 1 || id > numEncoders) return 1;
 
@@ -4389,6 +4586,55 @@ void mainButtonChanged(Button *btn, bool released) {
       }
       break;
 
+    case KEY_DUAL_BUTTON:
+      if (!released) {
+        dual_button = true;
+        myControlChange(midiChannel, CCdual_button, dual_button);
+      }
+      break;
+
+    case KEY_SPLIT_BUTTON:
+      if (!released) {
+        split_button = true;
+        myControlChange(midiChannel, CCsplit_button, split_button);
+      }
+      break;
+
+    case KEY_SINGLE_BUTTON:
+      if (!released) {
+        single_button = !single_button;
+        myControlChange(midiChannel, CCsingle_button, single_button);
+      }
+      break;
+
+    case KEY_SPECIAL_BUTTON:
+      if (!released) {
+        special_button = !special_button;
+        myControlChange(midiChannel, CCspecial_button, special_button);
+      }
+      break;
+
+    case ASSIGN_POLY_BUTTON:
+      if (!released) {
+        poly_button = !poly_button;
+        myControlChange(midiChannel, CCpoly_button, poly_button);
+      }
+      break;
+
+    case ASSIGN_UNI_BUTTON:
+      if (!released) {
+        unison_button = !unison_button;
+        myControlChange(midiChannel, CCunison_button, unison_button);
+      }
+      break;
+
+    case ASSIGN_MONO_BUTTON:
+      if (!released) {
+        mono_button = !mono_button;
+        myControlChange(midiChannel, CCmono_button, mono_button);
+      }
+      break;
+
     case LFO1_SYNC_BUTTON:
       if (!released) {
         lfo1_sync = lfo1_sync + 1;
@@ -4720,593 +4966,287 @@ void mainButtonChanged(Button *btn, bool released) {
 }
 
 void checkMux() {
-  // --- 1. Select MUX channel first ---
-  digitalWriteFast(MUX_0, muxInput & 0x01);
-  digitalWriteFast(MUX_1, muxInput & 0x02);
-  digitalWriteFast(MUX_2, muxInput & 0x04);
-  digitalWriteFast(MUX_3, muxInput & 0x08);
 
-  // Allow the 4051/4067 to settle
-  delayMicroseconds(5);  // Teensy 4.1 + short wires = 2–10µs
+  digitalWriteFast(MUX_0, muxInput & B0001);
+  digitalWriteFast(MUX_1, muxInput & B0010);
+  digitalWriteFast(MUX_2, muxInput & B0100);
+  digitalWriteFast(MUX_3, muxInput & B1000);
+  delayMicroseconds(5);
 
-  // --- 2. Read all MUX outputs ---
-  int r1 = adc->adc0->analogRead(MUX1_S);
-  int r2 = adc->adc0->analogRead(MUX2_S);
-  int r3 = adc->adc1->analogRead(MUX4_S);
-  int r4 = adc->adc1->analogRead(MUX3_S);
+  mux1Read = adc->adc0->analogRead(MUX1_S);
+  mux2Read = adc->adc0->analogRead(MUX2_S);
+  mux3Read = adc->adc1->analogRead(MUX4_S);
+  mux4Read = adc->adc1->analogRead(MUX3_S);
 
-  // --- 3. Process each one ---
-  processMuxValue(1, muxInput, r1);
-  processMuxValue(2, muxInput, r2);
-  processMuxValue(3, muxInput, r3);
-  processMuxValue(4, muxInput, r4);
+  if (mux1Read > (mux1ValuesPrev[muxInput] + QUANTISE_FACTOR) || mux1Read < (mux1ValuesPrev[muxInput] - QUANTISE_FACTOR)) {
+    mux1ValuesPrev[muxInput] = mux1Read;
+    mux1Read = (mux1Read >> resolutionFrig);  // Change range to 0-127
 
-  // --- 4. Next channel ---
+    switch (muxInput) {
+      case MUX1_MOD_LFO:
+        myControlChange(midiChannel, CCmod_lfo, mux1Read);
+        break;
+      case MUX1_LFO1_RATE:
+        myControlChange(midiChannel, CClfo1_rate, mux1Read);
+        break;
+      case MUX1_LFO1_DELAY:
+        myControlChange(midiChannel, CClfo1_delay, mux1Read);
+        break;
+      case MUX1_LFO1_LFO2_MOD:
+        myControlChange(midiChannel, CClfo1_lfo2, mux1Read);
+        break;
+      case MUX1_DCO1_PW:
+        myControlChange(midiChannel, CCdco1_PW, mux1Read);
+        break;
+      case MUX1_DCO1_PWM_ENV:
+        myControlChange(midiChannel, CCdco1_PWM_env, mux1Read);
+        break;
+      case MUX1_DCO1_PWM_LFO:
+        myControlChange(midiChannel, CCdco1_PWM_lfo, mux1Read);
+        break;
+      case MUX1_DCO1_PITCH_ENV:
+        myControlChange(midiChannel, CCdco1_pitch_env, mux1Read);
+        break;
+      case MUX1_DCO1_PITCH_LFO:
+        myControlChange(midiChannel, CCdco1_pitch_lfo, mux1Read);
+        break;
+      case MUX1_DCO1_WAVE:
+        myControlChange(midiChannel, CCdco1_wave, mux1Read);
+        break;
+      case MUX1_DCO1_RANGE:
+        myControlChange(midiChannel, CCdco1_range, mux1Read);
+        break;
+      case MUX1_DCO1_TUNE:
+        myControlChange(midiChannel, CCdco1_tune, mux1Read);
+        break;
+      case MUX1_PORTAMENTO:
+        myControlChange(midiChannel, CCportamento, mux1Read);
+        break;
+      case MUX1_LFO1_WAVE:
+        myControlChange(midiChannel, CClfo1_wave, mux1Read);
+        break;
+    }
+  }
+
+  if (mux2Read > (mux2ValuesPrev[muxInput] + QUANTISE_FACTOR) || mux2Read < (mux2ValuesPrev[muxInput] - QUANTISE_FACTOR)) {
+    mux2ValuesPrev[muxInput] = mux2Read;
+    mux2Read = (mux2Read >> resolutionFrig);  // Change range to 0-127
+
+    switch (muxInput) {
+      case MUX2_BEND_RANGE:
+        myControlChange(midiChannel, CCbend_range, mux2Read);
+        break;
+      case MUX2_LFO2_RATE:
+        myControlChange(midiChannel, CClfo2_rate, mux2Read);
+        break;
+      case MUX2_LFO2_DELAY:
+        myControlChange(midiChannel, CClfo2_delay, mux2Read);
+        break;
+      case MUX2_LFO2_LFO1_MOD:
+        myControlChange(midiChannel, CClfo2_lfo1, mux2Read);
+        break;
+      case MUX2_DCO2_PW:
+        myControlChange(midiChannel, CCdco2_PW, mux2Read);
+        break;
+      case MUX2_DCO2_PWM_ENV:
+        myControlChange(midiChannel, CCdco2_PWM_env, mux2Read);
+        break;
+      case MUX2_DCO2_PWM_LFO:
+        myControlChange(midiChannel, CCdco2_PWM_lfo, mux2Read);
+        break;
+      case MUX2_DCO2_PITCH_ENV:
+        myControlChange(midiChannel, CCdco2_pitch_env, mux2Read);
+        break;
+      case MUX2_DCO2_PITCH_LFO:
+        myControlChange(midiChannel, CCdco2_pitch_lfo, mux2Read);
+        break;
+      case MUX2_DCO2_WAVE:
+        myControlChange(midiChannel, CCdco2_wave, mux2Read);
+        break;
+      case MUX2_DCO2_RANGE:
+        myControlChange(midiChannel, CCdco2_range, mux2Read);
+        break;
+      case MUX2_DCO2_TUNE:
+        myControlChange(midiChannel, CCdco2_tune, mux2Read);
+        break;
+      case MUX2_DCO2_FINE:
+        myControlChange(midiChannel, CCdco2_fine, mux2Read);
+        break;
+      case MUX2_DCO1_MODE:
+        myControlChange(midiChannel, CCdco1_mode, mux2Read);
+        break;
+      case MUX2_LFO2_WAVE:
+        myControlChange(midiChannel, CClfo2_wave, mux2Read);
+        break;
+    }
+  }
+
+  if (mux3Read > (mux3ValuesPrev[muxInput] + QUANTISE_FACTOR) || mux3Read < (mux3ValuesPrev[muxInput] - QUANTISE_FACTOR)) {
+    mux3ValuesPrev[muxInput] = mux3Read;
+    mux3Read = (mux3Read >> resolutionFrig);  // Change range to 0-127
+
+    switch (muxInput) {
+      case MUX3_DCO1_LEVEL:
+        myControlChange(midiChannel, CCdco1_level, mux3Read);
+        break;
+      case MUX3_DCO2_LEVEL:
+        myControlChange(midiChannel, CCdco2_level, mux3Read);
+        break;
+      case MUX3_DCO2_MOD:
+        myControlChange(midiChannel, CCdco2_mod, mux3Read);
+        break;
+      case MUX3_VCF_HPF:
+        myControlChange(midiChannel, CCvcf_hpf, mux3Read);
+        break;
+      case MUX3_VCF_CUTOFF:
+        myControlChange(midiChannel, CCvcf_cutoff, mux3Read);
+        break;
+      case MUX3_VCF_RES:
+        myControlChange(midiChannel, CCvcf_res, mux3Read);
+        break;
+      case MUX3_VCF_KB:
+        myControlChange(midiChannel, CCvcf_kb, mux3Read);
+        break;
+      case MUX3_VCF_ENV:
+        myControlChange(midiChannel, CCvcf_env, mux3Read);
+        break;
+      case MUX3_VCF_LFO1:
+        myControlChange(midiChannel, CCvcf_lfo1, mux3Read);
+        break;
+      case MUX3_VCF_LFO2:
+        myControlChange(midiChannel, CCvcf_lfo2, mux3Read);
+        break;
+      case MUX3_VCA_MOD:
+        myControlChange(midiChannel, CCvca_mod, mux3Read);
+        break;
+      case MUX3_AT_VIB:
+        myControlChange(midiChannel, CCat_vib, mux3Read);
+        break;
+      case MUX3_AT_LPF:
+        myControlChange(midiChannel, CCat_lpf, mux3Read);
+        break;
+      case MUX3_AT_VOL:
+        myControlChange(midiChannel, CCat_vol, mux3Read);
+        break;
+      case MUX3_BALANCE:
+        myControlChange(midiChannel, CCbalance, mux3Read);
+        break;
+      case MUX3_VOLUME:
+        myControlChange(midiChannel, CCvolume, mux3Read);
+        break;
+    }
+  }
+
+  if (mux4Read > (mux4ValuesPrev[muxInput] + QUANTISE_FACTOR) || mux4Read < (mux4ValuesPrev[muxInput] - QUANTISE_FACTOR)) {
+    mux4ValuesPrev[muxInput] = mux4Read;
+    mux4Read = (mux4Read >> resolutionFrig);  // Change range to 0-127
+
+    switch (muxInput) {
+      case MUX4_T1:
+        if (!env5stage) {
+          myControlChange(midiChannel, CCtime1, mux4Read);
+        } else {
+          myControlChange(midiChannel, CC2time1, mux4Read);
+        }
+        break;
+      case MUX4_L1:
+        if (!env5stage) {
+          myControlChange(midiChannel, CClevel1, mux4Read);
+        } else {
+          myControlChange(midiChannel, CC2level1, mux4Read);
+        }
+        break;
+      case MUX4_T2:
+        if (!env5stage) {
+          myControlChange(midiChannel, CCtime2, mux4Read);
+        } else {
+          myControlChange(midiChannel, CC2time2, mux4Read);
+        }
+        break;
+      case MUX4_L2:
+        if (!env5stage) {
+          myControlChange(midiChannel, CClevel2, mux4Read);
+        } else {
+          myControlChange(midiChannel, CC2level2, mux4Read);
+        }
+        break;
+      case MUX4_T3:
+        if (!env5stage) {
+          myControlChange(midiChannel, CCtime3, mux4Read);
+        } else {
+          myControlChange(midiChannel, CC2time3, mux4Read);
+        }
+        break;
+      case MUX4_L3:
+        if (!env5stage) {
+          myControlChange(midiChannel, CClevel3, mux4Read);
+        } else {
+          myControlChange(midiChannel, CC2level3, mux4Read);
+        }
+        break;
+      case MUX4_T4:
+        if (!env5stage) {
+          myControlChange(midiChannel, CCtime4, mux4Read);
+        } else {
+          myControlChange(midiChannel, CC2time4, mux4Read);
+        }
+        break;
+      case MUX4_5STAGE_MODE:
+        if (!env5stage) {
+          myControlChange(midiChannel, CC5stage_mode, mux4Read);
+        } else {
+          myControlChange(midiChannel, CC25stage_mode, mux4Read);
+        }
+        break;
+      case MUX4_ATTACK:
+        if (!adsr) {
+          myControlChange(midiChannel, CCattack, mux4Read);
+        } else {
+          myControlChange(midiChannel, CC4attack, mux4Read);
+        }
+        break;
+      case MUX4_DECAY:
+        if (!adsr) {
+          myControlChange(midiChannel, CCdecay, mux4Read);
+        } else {
+          myControlChange(midiChannel, CC4decay, mux4Read);
+        }
+        break;
+      case MUX4_SUSTAIN:
+        if (!adsr) {
+          myControlChange(midiChannel, CCsustain, mux4Read);
+        } else {
+          myControlChange(midiChannel, CC4sustain, mux4Read);
+        }
+        break;
+      case MUX4_RELEASE:
+        if (!adsr) {
+          myControlChange(midiChannel, CCrelease, mux4Read);
+        } else {
+          myControlChange(midiChannel, CCrelease, mux4Read);
+        }
+        break;
+      case MUX4_ADSR_MODE:
+        if (!adsr) {
+          myControlChange(midiChannel, CCadsr_mode, mux4Read);
+        } else {
+          myControlChange(midiChannel, CC4adsr_mode, mux4Read);
+        }
+        break;
+      case MUX4_DUAL_DETUNE:
+        myControlChange(midiChannel, CCdualdetune, mux4Read);
+        break;
+      case MUX4_UNISON_DETUNE:
+        myControlChange(midiChannel, CCunisondetune, mux4Read);
+        break;
+    }
+  }
+
   muxInput++;
-  if (muxInput >= MUXCHANNELS) muxInput = 0;
-}
-
-void processMuxValue(uint8_t mux, uint8_t ch, int raw) {
-  raw >>= resolutionFrig;  // scale to 0–127
-
-  int *prevArray;
-
-  switch (mux) {
-    case 1: prevArray = mux1ValuesPrev; break;
-    case 2: prevArray = mux2ValuesPrev; break;
-    case 3: prevArray = mux3ValuesPrev; break;
-    case 4: prevArray = mux4ValuesPrev; break;
-    default: return;
-  }
-
-  if (abs(raw - prevArray[ch]) <= QUANTISE_FACTOR) return;
-
-  prevArray[ch] = raw;
-
-  // Your existing CC switch for each mux goes here
-  sendMuxCC(mux, ch, raw);
-}
-
-void sendMuxCC(uint8_t mux, uint8_t ch, int val) {
-  switch (mux) {
-
-    case 1:
-      switch (ch) {
-        case MUX1_MOD_LFO:
-          myControlChange(midiChannel, CCmod_lfo, val);
-          break;
-        case MUX1_LFO1_RATE:
-          myControlChange(midiChannel, CClfo1_rate, val);
-          break;
-        case MUX1_LFO1_DELAY:
-          myControlChange(midiChannel, CClfo1_delay, val);
-          break;
-        case MUX1_LFO1_LFO2_MOD:
-          myControlChange(midiChannel, CClfo1_lfo2, val);
-          break;
-        case MUX1_DCO1_PW:
-          myControlChange(midiChannel, CCdco1_PW, val);
-          break;
-        case MUX1_DCO1_PWM_ENV:
-          myControlChange(midiChannel, CCdco1_PWM_env, val);
-          break;
-        case MUX1_DCO1_PWM_LFO:
-          myControlChange(midiChannel, CCdco1_PWM_lfo, val);
-          break;
-        case MUX1_DCO1_PITCH_ENV:
-          myControlChange(midiChannel, CCdco1_pitch_env, val);
-          break;
-        case MUX1_DCO1_PITCH_LFO:
-          myControlChange(midiChannel, CCdco1_pitch_lfo, val);
-          break;
-        case MUX1_DCO1_WAVE:
-          myControlChange(midiChannel, CCdco1_wave, val);
-          break;
-        case MUX1_DCO1_RANGE:
-          myControlChange(midiChannel, CCdco1_range, val);
-          break;
-        case MUX1_DCO1_TUNE:
-          myControlChange(midiChannel, CCdco1_tune, val);
-          break;
-        case MUX1_PORTAMENTO:
-          myControlChange(midiChannel, CCportamento, val);
-          break;
-        case MUX1_LFO1_WAVE:
-          myControlChange(midiChannel, CClfo1_wave, val);
-          break;
-      }
-      break;
-
-    case 2:
-      switch (ch) {
-        case MUX2_BEND_RANGE:
-          myControlChange(midiChannel, CCbend_range, val);
-          break;
-        case MUX2_LFO2_RATE:
-          myControlChange(midiChannel, CClfo2_rate, val);
-          break;
-        case MUX2_LFO2_DELAY:
-          myControlChange(midiChannel, CClfo2_delay, val);
-          break;
-        case MUX2_LFO2_LFO1_MOD:
-          myControlChange(midiChannel, CClfo2_lfo1, val);
-          break;
-        case MUX2_DCO2_PW:
-          myControlChange(midiChannel, CCdco2_PW, val);
-          break;
-        case MUX2_DCO2_PWM_ENV:
-          myControlChange(midiChannel, CCdco2_PWM_env, val);
-          break;
-        case MUX2_DCO2_PWM_LFO:
-          myControlChange(midiChannel, CCdco2_PWM_lfo, val);
-          break;
-        case MUX2_DCO2_PITCH_ENV:
-          myControlChange(midiChannel, CCdco2_pitch_env, val);
-          break;
-        case MUX2_DCO2_PITCH_LFO:
-          myControlChange(midiChannel, CCdco2_pitch_lfo, val);
-          break;
-        case MUX2_DCO2_WAVE:
-          myControlChange(midiChannel, CCdco2_wave, val);
-          break;
-        case MUX2_DCO2_RANGE:
-          myControlChange(midiChannel, CCdco2_range, val);
-          break;
-        case MUX2_DCO2_TUNE:
-          myControlChange(midiChannel, CCdco2_tune, val);
-          break;
-        case MUX2_DCO2_FINE:
-          myControlChange(midiChannel, CCdco2_fine, val);
-          break;
-        case MUX2_DCO1_MODE:
-          myControlChange(midiChannel, CCdco1_mode, val);
-          break;
-        case MUX2_LFO2_WAVE:
-          myControlChange(midiChannel, CClfo2_wave, val);
-          break;
-      }
-      break;
-
-    case 3:
-      switch (ch) {
-        case MUX3_DCO1_LEVEL:
-          myControlChange(midiChannel, CCdco1_level, val);
-          break;
-        case MUX3_DCO2_LEVEL:
-          myControlChange(midiChannel, CCdco2_level, val);
-          break;
-        case MUX3_DCO2_MOD:
-          myControlChange(midiChannel, CCdco2_mod, val);
-          break;
-        case MUX3_VCF_HPF:
-          myControlChange(midiChannel, CCvcf_hpf, val);
-          break;
-        case MUX3_VCF_CUTOFF:
-          myControlChange(midiChannel, CCvcf_cutoff, val);
-          break;
-        case MUX3_VCF_RES:
-          myControlChange(midiChannel, CCvcf_res, val);
-          break;
-        case MUX3_VCF_KB:
-          myControlChange(midiChannel, CCvcf_kb, val);
-          break;
-        case MUX3_VCF_ENV:
-          myControlChange(midiChannel, CCvcf_env, val);
-          break;
-        case MUX3_VCF_LFO1:
-          myControlChange(midiChannel, CCvcf_lfo1, val);
-          break;
-        case MUX3_VCF_LFO2:
-          myControlChange(midiChannel, CCvcf_lfo2, val);
-          break;
-        case MUX3_VCA_MOD:
-          myControlChange(midiChannel, CCvca_mod, val);
-          break;
-        case MUX3_AT_VIB:
-          myControlChange(midiChannel, CCat_vib, val);
-          break;
-        case MUX3_AT_LPF:
-          myControlChange(midiChannel, CCat_lpf, val);
-          break;
-        case MUX3_AT_VOL:
-          myControlChange(midiChannel, CCat_vol, val);
-          break;
-        case MUX3_BALANCE:
-          myControlChange(midiChannel, CCbalance, val);
-          break;
-        case MUX3_VOLUME:
-          myControlChange(midiChannel, CCvolume, val);
-          break;
-      }
-      break;
-
-    case 4:
-      switch (ch) {
-        case MUX4_T1:
-          if (!env5stage) {
-            myControlChange(midiChannel, CCtime1, val);
-          } else {
-            myControlChange(midiChannel, CC2time1, val);
-          }
-          break;
-        case MUX4_L1:
-          if (!env5stage) {
-            myControlChange(midiChannel, CClevel1, val);
-          } else {
-            myControlChange(midiChannel, CC2level1, val);
-          }
-          break;
-        case MUX4_T2:
-          if (!env5stage) {
-            myControlChange(midiChannel, CCtime2, val);
-          } else {
-            myControlChange(midiChannel, CC2time2, val);
-          }
-          break;
-        case MUX4_L2:
-          if (!env5stage) {
-            myControlChange(midiChannel, CClevel2, val);
-          } else {
-            myControlChange(midiChannel, CC2level2, val);
-          }
-          break;
-        case MUX4_T3:
-          if (!env5stage) {
-            myControlChange(midiChannel, CCtime3, val);
-          } else {
-            myControlChange(midiChannel, CC2time3, val);
-          }
-          break;
-        case MUX4_L3:
-          if (!env5stage) {
-            myControlChange(midiChannel, CClevel3, val);
-          } else {
-            myControlChange(midiChannel, CC2level3, val);
-          }
-          break;
-        case MUX4_T4:
-          if (!env5stage) {
-            myControlChange(midiChannel, CCtime4, val);
-          } else {
-            myControlChange(midiChannel, CC2time4, val);
-          }
-          break;
-        case MUX4_5STAGE_MODE:
-          if (!env5stage) {
-            myControlChange(midiChannel, CC5stage_mode, val);
-          } else {
-            myControlChange(midiChannel, CC25stage_mode, val);
-          }
-          break;
-        case MUX4_ATTACK:
-          if (!adsr) {
-            myControlChange(midiChannel, CCattack, val);
-          } else {
-            myControlChange(midiChannel, CC4attack, val);
-          }
-          break;
-        case MUX4_DECAY:
-          if (!adsr) {
-            myControlChange(midiChannel, CCdecay, val);
-          } else {
-            myControlChange(midiChannel, CC4decay, val);
-          }
-          break;
-        case MUX4_SUSTAIN:
-          if (!adsr) {
-            myControlChange(midiChannel, CCsustain, val);
-          } else {
-            myControlChange(midiChannel, CC4sustain, val);
-          }
-          break;
-        case MUX4_RELEASE:
-          if (!adsr) {
-            myControlChange(midiChannel, CCrelease, val);
-          } else {
-            myControlChange(midiChannel, CCrelease, val);
-          }
-          break;
-        case MUX4_ADSR_MODE:
-          if (!adsr) {
-            myControlChange(midiChannel, CCadsr_mode, val);
-          } else {
-            myControlChange(midiChannel, CC4adsr_mode, val);
-          }
-          break;
-        case MUX4_DUAL_DETUNE:
-          myControlChange(midiChannel, CCdualdetune, val);
-          break;
-        case MUX4_UNISON_DETUNE:
-          myControlChange(midiChannel, CCunisondetune, val);
-          break;
-      }
-      break;
+  if (muxInput >= MUXCHANNELS) {
+    muxInput = 0;
   }
 }
-
-
-// void checkMux() {
-
-//   mux1Read = adc->adc0->analogRead(MUX1_S);
-//   mux2Read = adc->adc0->analogRead(MUX2_S);
-//   mux3Read = adc->adc1->analogRead(MUX4_S);
-//   mux4Read = adc->adc1->analogRead(MUX3_S);
-
-//   if (mux1Read > (mux1ValuesPrev[muxInput] + QUANTISE_FACTOR) || mux1Read < (mux1ValuesPrev[muxInput] - QUANTISE_FACTOR)) {
-//     mux1ValuesPrev[muxInput] = mux1Read;
-//     mux1Read = (mux1Read >> resolutionFrig);  // Change range to 0-127
-
-//     switch (muxInput) {
-//       case MUX1_MOD_LFO:
-//         myControlChange(midiChannel, CCmod_lfo, mux1Read);
-//         break;
-//       case MUX1_LFO1_RATE:
-//         myControlChange(midiChannel, CClfo1_rate, mux1Read);
-//         break;
-//       case MUX1_LFO1_DELAY:
-//         myControlChange(midiChannel, CClfo1_delay, mux1Read);
-//         break;
-//       case MUX1_LFO1_LFO2_MOD:
-//         myControlChange(midiChannel, CClfo1_lfo2, mux1Read);
-//         break;
-//       case MUX1_DCO1_PW:
-//         myControlChange(midiChannel, CCdco1_PW, mux1Read);
-//         break;
-//       case MUX1_DCO1_PWM_ENV:
-//         myControlChange(midiChannel, CCdco1_PWM_env, mux1Read);
-//         break;
-//       case MUX1_DCO1_PWM_LFO:
-//         myControlChange(midiChannel, CCdco1_PWM_lfo, mux1Read);
-//         break;
-//       case MUX1_DCO1_PITCH_ENV:
-//         myControlChange(midiChannel, CCdco1_pitch_env, mux1Read);
-//         break;
-//       case MUX1_DCO1_PITCH_LFO:
-//         myControlChange(midiChannel, CCdco1_pitch_lfo, mux1Read);
-//         break;
-//       case MUX1_DCO1_WAVE:
-//         myControlChange(midiChannel, CCdco1_wave, mux1Read);
-//         break;
-//       case MUX1_DCO1_RANGE:
-//         myControlChange(midiChannel, CCdco1_range, mux1Read);
-//         break;
-//       case MUX1_DCO1_TUNE:
-//         myControlChange(midiChannel, CCdco1_tune, mux1Read);
-//         break;
-//       case MUX1_PORTAMENTO:
-//         myControlChange(midiChannel, CCportamento, mux1Read);
-//         break;
-//       case MUX1_LFO1_WAVE:
-//         myControlChange(midiChannel, CClfo1_wave, mux1Read);
-//         break;
-//     }
-//   }
-
-//   if (mux2Read > (mux2ValuesPrev[muxInput] + QUANTISE_FACTOR) || mux2Read < (mux2ValuesPrev[muxInput] - QUANTISE_FACTOR)) {
-//     mux2ValuesPrev[muxInput] = mux2Read;
-//     mux2Read = (mux2Read >> resolutionFrig);  // Change range to 0-127
-
-//     switch (muxInput) {
-//       case MUX2_BEND_RANGE:
-//         myControlChange(midiChannel, CCbend_range, mux2Read);
-//         break;
-//       case MUX2_LFO2_RATE:
-//         myControlChange(midiChannel, CClfo2_rate, mux2Read);
-//         break;
-//       case MUX2_LFO2_DELAY:
-//         myControlChange(midiChannel, CClfo2_delay, mux2Read);
-//         break;
-//       case MUX2_LFO2_LFO1_MOD:
-//         myControlChange(midiChannel, CClfo2_lfo1, mux2Read);
-//         break;
-//       case MUX2_DCO2_PW:
-//         myControlChange(midiChannel, CCdco2_PW, mux2Read);
-//         break;
-//       case MUX2_DCO2_PWM_ENV:
-//         myControlChange(midiChannel, CCdco2_PWM_env, mux2Read);
-//         break;
-//       case MUX2_DCO2_PWM_LFO:
-//         myControlChange(midiChannel, CCdco2_PWM_lfo, mux2Read);
-//         break;
-//       case MUX2_DCO2_PITCH_ENV:
-//         myControlChange(midiChannel, CCdco2_pitch_env, mux2Read);
-//         break;
-//       case MUX2_DCO2_PITCH_LFO:
-//         myControlChange(midiChannel, CCdco2_pitch_lfo, mux2Read);
-//         break;
-//       case MUX2_DCO2_WAVE:
-//         myControlChange(midiChannel, CCdco2_wave, mux2Read);
-//         break;
-//       case MUX2_DCO2_RANGE:
-//         myControlChange(midiChannel, CCdco2_range, mux2Read);
-//         break;
-//       case MUX2_DCO2_TUNE:
-//         myControlChange(midiChannel, CCdco2_tune, mux2Read);
-//         break;
-//       case MUX2_DCO2_FINE:
-//         myControlChange(midiChannel, CCdco2_fine, mux2Read);
-//         break;
-//       case MUX2_DCO1_MODE:
-//         myControlChange(midiChannel, CCdco1_mode, mux2Read);
-//         break;
-//       case MUX2_LFO2_WAVE:
-//         myControlChange(midiChannel, CClfo2_wave, mux2Read);
-//         break;
-//     }
-//   }
-
-//   if (mux3Read > (mux3ValuesPrev[muxInput] + QUANTISE_FACTOR) || mux3Read < (mux3ValuesPrev[muxInput] - QUANTISE_FACTOR)) {
-//     mux3ValuesPrev[muxInput] = mux3Read;
-//     mux3Read = (mux3Read >> resolutionFrig);  // Change range to 0-127
-
-//     switch (muxInput) {
-//       case MUX3_DCO1_LEVEL:
-//         myControlChange(midiChannel, CCdco1_level, mux3Read);
-//         break;
-//       case MUX3_DCO2_LEVEL:
-//         myControlChange(midiChannel, CCdco2_level, mux3Read);
-//         break;
-//       case MUX3_DCO2_MOD:
-//         myControlChange(midiChannel, CCdco2_mod, mux3Read);
-//         break;
-//       case MUX3_VCF_HPF:
-//         myControlChange(midiChannel, CCvcf_hpf, mux3Read);
-//         break;
-//       case MUX3_VCF_CUTOFF:
-//         myControlChange(midiChannel, CCvcf_cutoff, mux3Read);
-//         break;
-//       case MUX3_VCF_RES:
-//         myControlChange(midiChannel, CCvcf_res, mux3Read);
-//         break;
-//       case MUX3_VCF_KB:
-//         myControlChange(midiChannel, CCvcf_kb, mux3Read);
-//         break;
-//       case MUX3_VCF_ENV:
-//         myControlChange(midiChannel, CCvcf_env, mux3Read);
-//         break;
-//       case MUX3_VCF_LFO1:
-//         myControlChange(midiChannel, CCvcf_lfo1, mux3Read);
-//         break;
-//       case MUX3_VCF_LFO2:
-//         myControlChange(midiChannel, CCvcf_lfo2, mux3Read);
-//         break;
-//       case MUX3_VCA_MOD:
-//         myControlChange(midiChannel, CCvca_mod, mux3Read);
-//         break;
-//       case MUX3_AT_VIB:
-//         myControlChange(midiChannel, CCat_vib, mux3Read);
-//         break;
-//       case MUX3_AT_LPF:
-//         myControlChange(midiChannel, CCat_lpf, mux3Read);
-//         break;
-//       case MUX3_AT_VOL:
-//         myControlChange(midiChannel, CCat_vol, mux3Read);
-//         break;
-//       case MUX3_BALANCE:
-//         myControlChange(midiChannel, CCbalance, mux3Read);
-//         break;
-//       case MUX3_VOLUME:
-//         myControlChange(midiChannel, CCvolume, mux3Read);
-//         break;
-//     }
-//   }
-
-//   if (mux4Read > (mux4ValuesPrev[muxInput] + QUANTISE_FACTOR) || mux4Read < (mux4ValuesPrev[muxInput] - QUANTISE_FACTOR)) {
-//     mux4ValuesPrev[muxInput] = mux4Read;
-//     mux4Read = (mux4Read >> resolutionFrig);  // Change range to 0-127
-
-//     switch (muxInput) {
-//       case MUX4_T1:
-//         if (!env5stage) {
-//           myControlChange(midiChannel, CCtime1, mux4Read);
-//         } else {
-//           myControlChange(midiChannel, CC2time1, mux4Read);
-//         }
-//         break;
-//       case MUX4_L1:
-//         if (!env5stage) {
-//           myControlChange(midiChannel, CClevel1, mux4Read);
-//         } else {
-//           myControlChange(midiChannel, CC2level1, mux4Read);
-//         }
-//         break;
-//       case MUX4_T2:
-//         if (!env5stage) {
-//           myControlChange(midiChannel, CCtime2, mux4Read);
-//         } else {
-//           myControlChange(midiChannel, CC2time2, mux4Read);
-//         }
-//         break;
-//       case MUX4_L2:
-//         if (!env5stage) {
-//           myControlChange(midiChannel, CClevel2, mux4Read);
-//         } else {
-//           myControlChange(midiChannel, CC2level2, mux4Read);
-//         }
-//         break;
-//       case MUX4_T3:
-//         if (!env5stage) {
-//           myControlChange(midiChannel, CCtime3, mux4Read);
-//         } else {
-//           myControlChange(midiChannel, CC2time3, mux4Read);
-//         }
-//         break;
-//       case MUX4_L3:
-//         if (!env5stage) {
-//           myControlChange(midiChannel, CClevel3, mux4Read);
-//         } else {
-//           myControlChange(midiChannel, CC2level3, mux4Read);
-//         }
-//         break;
-//       case MUX4_T4:
-//         if (!env5stage) {
-//           myControlChange(midiChannel, CCtime4, mux4Read);
-//         } else {
-//           myControlChange(midiChannel, CC2time4, mux4Read);
-//         }
-//         break;
-//       case MUX4_5STAGE_MODE:
-//         if (!env5stage) {
-//           myControlChange(midiChannel, CC5stage_mode, mux4Read);
-//         } else {
-//           myControlChange(midiChannel, CC25stage_mode, mux4Read);
-//         }
-//         break;
-//       case MUX4_ATTACK:
-//         if (!adsr) {
-//           myControlChange(midiChannel, CCattack, mux4Read);
-//         } else {
-//           myControlChange(midiChannel, CC4attack, mux4Read);
-//         }
-//         break;
-//       case MUX4_DECAY:
-//         if (!adsr) {
-//           myControlChange(midiChannel, CCdecay, mux4Read);
-//         } else {
-//           myControlChange(midiChannel, CC4decay, mux4Read);
-//         }
-//         break;
-//       case MUX4_SUSTAIN:
-//         if (!adsr) {
-//           myControlChange(midiChannel, CCsustain, mux4Read);
-//         } else {
-//           myControlChange(midiChannel, CC4sustain, mux4Read);
-//         }
-//         break;
-//       case MUX4_RELEASE:
-//         if (!adsr) {
-//           myControlChange(midiChannel, CCrelease, mux4Read);
-//         } else {
-//           myControlChange(midiChannel, CCrelease, mux4Read);
-//         }
-//         break;
-//       case MUX4_ADSR_MODE:
-//         if (!adsr) {
-//           myControlChange(midiChannel, CCadsr_mode, mux4Read);
-//         } else {
-//           myControlChange(midiChannel, CC4adsr_mode, mux4Read);
-//         }
-//         break;
-//       case MUX4_DUAL_DETUNE:
-//         myControlChange(midiChannel, CCdualdetune, mux4Read);
-//         break;
-//       case MUX4_UNISON_DETUNE:
-//         myControlChange(midiChannel, CCunisondetune, mux4Read);
-//         break;
-//     }
-//   }
-
-//   muxInput++;
-//   if (muxInput >= MUXCHANNELS) {
-//     muxInput = 0;
-//   }
-
-//   digitalWriteFast(MUX_0, muxInput & B0001);
-//   digitalWriteFast(MUX_1, muxInput & B0010);
-//   digitalWriteFast(MUX_2, muxInput & B0100);
-//   digitalWriteFast(MUX_3, muxInput & B1000);
-//   delayMicroseconds(75);
-// }
 
 void loop() {
 

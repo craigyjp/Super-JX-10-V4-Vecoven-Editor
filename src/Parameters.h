@@ -51,7 +51,7 @@ bool LFODelayGoA = false;
 bool LFODelayGoB = false;
 bool LFODelayGoC = false;
 
-int resolutionFrig = 5;
+int resolutionFrig = 1;
 
 uint32_t noteAgeCounter = 1;
 int nextVoiceRR = 0;
@@ -293,6 +293,14 @@ int playmode = 0;
 int adsr = 0;
 int env5stage = 0;
 
+boolean dual_button;
+boolean split_button;
+boolean single_button;
+boolean special_button;
+int keymode = 0;
+boolean poly_button;
+boolean mono_button;
+boolean unison_button;
 
 // old hybrid params
 

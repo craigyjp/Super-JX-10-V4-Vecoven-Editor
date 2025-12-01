@@ -3,6 +3,7 @@
 #include <SD.h>
 #include <SerialFlash.h>
 #include <MIDI.h>
+#include <USBHost_t36.h>
 #include "MidiCC.h"
 #include "Constants.h"
 #include "Parameters.h"
@@ -28,6 +29,12 @@ unsigned int state = PARAMETER;
 
 bool cardStatus = false;
 
+  //USB HOST MIDI Class Compliant
+  USBHost myusb;
+  USBHub hub1(myusb);
+  USBHub hub2(myusb);
+  MIDIDevice midi1(myusb);
+
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
 
 #include "Settings.h"
@@ -40,14 +47,11 @@ void pollAllMCPs();
 
 void initButtons();
 
-int getEncoderSpeed(int id);
-
-
 void setup() {
   Serial.begin(115200);
 
   SPI.begin();
-  SPISettings settings(8000000, MSBFIRST, SPI_MODE0);  // 8 MHz to start
+  SPISettings settings(20000000, MSBFIRST, SPI_MODE0);
 
   setupDisplay();
   setUpSettings();
@@ -99,7 +103,18 @@ void setup() {
 
   setupMCPoutputs();
 
-  pitchDirty = true;
+    //Read MIDI In Channel from EEPROM
+  midiChannel = getMIDIChannel();
+  
+  //USB HOST MIDI Class Compliant
+  delay(400);  //Wait to turn on USB Host
+  myusb.begin();
+  midi1.setHandleControlChange(myControlConvert);
+  midi1.setHandleNoteOff(myNoteOff);
+  midi1.setHandleNoteOn(myNoteOn);
+  midi1.setHandlePitchChange(myPitchBend);
+  midi1.setHandleAfterTouchChannel(myAfterTouch);
+  Serial.println("USB HOST MIDI Class Compliant Listening");
 
   // USB MIDI
   usbMIDI.setHandleNoteOn(myNoteOn);
@@ -109,7 +124,7 @@ void setup() {
   usbMIDI.setHandleProgramChange(myProgramChange);
   usbMIDI.setHandleAfterTouchChannel(myAfterTouch);
 
-  MIDI.begin(MIDI_CHANNEL_OMNI);
+  MIDI.begin();
   MIDI.setHandleNoteOn(myNoteOn);
   MIDI.setHandleNoteOff(myNoteOff);
   MIDI.setHandlePitchBend(myPitchBend);
@@ -121,9 +136,6 @@ void setup() {
 
   //Read Encoder Direction from EEPROM
   encCW = getEncoderDir();
-
-  //Read MIDI In Channel from EEPROM
-  midiChannel = getMIDIChannel();
 
   //Read MIDI Out Channel from EEPROM
   midiOutCh = getMIDIOutCh();
@@ -139,6 +151,7 @@ void startParameterDisplay() {
 }
 
 void myAfterTouch(byte channel, byte value) {
+  MIDI.sendAfterTouch(value, channel);
 }
 
 void myProgramChange(byte channel, byte program) {
@@ -151,10 +164,33 @@ void myProgramChange(byte channel, byte program) {
 }
 
 void myPitchBend(byte channel, int pitchValue) {
+    MIDI.sendPitchBend(pitchValue, midiOutCh);
 }
 
 void myControlConvert(byte channel, byte control, byte value) {
-  //myControlChange(channel, control, value);
+    switch (control) {
+
+      case 1:
+        MIDI.sendControlChange(control, value, midiOutCh);
+        break;
+
+      case 2:
+        MIDI.sendControlChange(control, value, midiOutCh);
+        break;
+
+      case 7:
+        MIDI.sendControlChange(control, value, midiOutCh);
+        break;
+
+      case 64:
+        MIDI.sendControlChange(control, value, midiOutCh);
+        break;
+
+      default:
+        int newvalue = value;
+        myControlChange(channel, control, newvalue);
+        break;
+    }
 }
 
 void myControlChange(byte channel, byte control, int value) {
@@ -3496,25 +3532,6 @@ FLASHMEM void updateadsr(bool announce) {
   }
 }
 
-int getEncoderSpeed(int id) {
-  if (id < 1 || id > numEncoders) return 1;
-
-  unsigned long now = millis();
-  unsigned long revolutionTime = now - lastTransition[id];
-
-  int speed = 1;
-  if (revolutionTime < 50) {
-    speed = 10;
-  } else if (revolutionTime < 125) {
-    speed = 5;
-  } else if (revolutionTime < 250) {
-    speed = 2;
-  }
-
-  lastTransition[id] = now;
-  return speed;
-}
-
 void initRotaryEncoders() {
   for (auto &rotaryEncoder : rotaryEncoders) {
     rotaryEncoder.init();
@@ -3540,488 +3557,14 @@ void pollAllMCPs() {
   }
 }
 
-int getVoiceNo(int note) {
-  voiceToReturn = -1;       //Initialise to 'null'
-  earliestTime = millis();  //Initialise to now
-  if (note == -1) {
-    //NoteOn() - Get the oldest free voice (recent voices may be still on release stage)
-    for (int i = 0; i < NO_OF_VOICES; i++) {
-      if (voices[i].note == -1) {
-        if (voices[i].timeOn < earliestTime) {
-          earliestTime = voices[i].timeOn;
-          voiceToReturn = i;
-        }
-      }
-    }
-    if (voiceToReturn == -1) {
-      //No free voices, need to steal oldest sounding voice
-      earliestTime = millis();  //Reinitialise
-      for (int i = 0; i < NO_OF_VOICES; i++) {
-        if (voices[i].timeOn < earliestTime) {
-          earliestTime = voices[i].timeOn;
-          voiceToReturn = i;
-        }
-      }
-    }
-    return voiceToReturn + 1;
-  } else {
-    //NoteOff() - Get voice number from note
-    for (int i = 0; i < NO_OF_VOICES; i++) {
-      if (voices[i].note == note) {
-        return i + 1;
-      }
-    }
-  }
-  //Shouldn't get here, return voice 1
-  return 1;
-}
-
 void myNoteOn(byte channel, byte note, byte velocity) {
-
-
-  if (playModeSW == 0) {
-    detune = 1.000;  //POLYPHONIC mode
-    if (note < 0 || note > 127) return;
-    switch (getVoiceNo(-1)) {
-      case 1:
-        voices[0].note = note;
-        voices[0].velocity = velocity;
-        voices[0].timeOn = millis();
-        note1freq = note;
-
-
-        voiceOn[0] = true;
-        //Serial.println("Voice 1 On");
-        break;
-
-      case 2:
-        voices[1].note = note;
-        voices[1].velocity = velocity;
-        voices[1].timeOn = millis();
-        note2freq = note;
-
-
-        voiceOn[1] = true;
-        //Serial.println("Voice 2 On");
-        break;
-
-      case 3:
-        voices[2].note = note;
-        voices[2].velocity = velocity;
-        voices[2].timeOn = millis();
-        note3freq = note;
-
-        voiceOn[2] = true;
-        //Serial.println("Voice 3 On");
-        break;
-
-      case 4:
-        voices[3].note = note;
-        voices[3].velocity = velocity;
-        voices[3].timeOn = millis();
-        note4freq = note;
-
-        voiceOn[3] = true;
-        //Serial.println("Voice 4 On");
-        break;
-
-      case 5:
-        voices[4].note = note;
-        voices[4].velocity = velocity;
-        voices[4].timeOn = millis();
-        note5freq = note;
-
-        voiceOn[4] = true;
-        //Serial.println("Voice 5 On");
-        break;
-
-      case 6:
-        voices[5].note = note;
-        voices[5].velocity = velocity;
-        voices[5].timeOn = millis();
-        note6freq = note;
-
-        voiceOn[5] = true;
-        //Serial.println("Voice 6 On");
-        break;
-
-      case 7:
-        voices[6].note = note;
-        voices[6].velocity = velocity;
-        voices[6].timeOn = millis();
-        note7freq = note;
-
-        voiceOn[6] = true;
-        //Serial.println("Voice 7 On");
-        break;
-
-      case 8:
-        voices[7].note = note;
-        voices[7].velocity = velocity;
-        voices[7].timeOn = millis();
-        note8freq = note;
-
-        voiceOn[7] = true;
-        //Serial.println("Voice 8 On");
-        break;
-    }
-  }
-
-  if (playModeSW == 2) {  //UNISON mode
-
-    noteMsg = note;
-
-    if (velocity == 0) {
-      notes[noteMsg] = false;
-    } else {
-      notes[noteMsg] = true;
-    }
-
-    switch (notePrioritySW) {
-      case 1:
-        commandTopNoteUnison();
-        break;
-
-      case 0:
-        commandBottomNoteUnison();
-        break;
-
-      case 2:
-        if (notes[noteMsg]) {  // If note is on and using last note priority, add to ordered list
-          orderIndx = (orderIndx + 1) % 40;
-          noteOrder[orderIndx] = noteMsg;
-        }
-        commandLastNoteUnison();
-        break;
-    }
-  }
-
-  if (playModeSW == 1) {
-    detune = 1.000;
-    noteMsg = note;
-
-    if (velocity == 0) {
-      notes[noteMsg] = false;
-    } else {
-      notes[noteMsg] = true;
-    }
-
-    switch (notePrioritySW) {
-      case 1:
-        commandTopNote();
-        break;
-
-      case 0:
-        commandBottomNote();
-        break;
-
-      case 2:
-        if (notes[noteMsg]) {  // If note is on and using last note priority, add to ordered list
-          orderIndx = (orderIndx + 1) % 40;
-          noteOrder[orderIndx] = noteMsg;
-        }
-        commandLastNote();
-        break;
-    }
-  }
+    Serial.println("Note Arrived");
+    MIDI.sendNoteOn(note, velocity, channel);
 }
 
 void myNoteOff(byte channel, byte note, byte velocity) {
-
-  numberOfNotes = numberOfNotes - 1;
-  oldnumberOfNotes = oldnumberOfNotes - 1;
-
-  if (playModeSW == 0) {  //POLYPHONIC mode
-    detune = 1.000;
-    switch (getVoiceNo(note)) {
-      case 1:
-
-        voices[0].note = -1;
-        voiceOn[0] = false;
-        //Serial.println("Voice 1 Off");
-        break;
-
-      case 2:
-
-        voices[1].note = -1;
-        voiceOn[1] = false;
-        //Serial.println("Voice 2 Off");
-        break;
-
-      case 3:
-
-        voices[2].note = -1;
-        voiceOn[2] = false;
-        //Serial.println("Voice 3 Off");
-        break;
-
-      case 4:
-
-        voices[3].note = -1;
-        voiceOn[3] = false;
-        //Serial.println("Voice 4 Off");
-        break;
-
-      case 5:
-
-        voices[4].note = -1;
-        voiceOn[4] = false;
-        //Serial.println("Voice 5 Off");
-        break;
-
-      case 6:
-
-        voices[5].note = -1;
-        voiceOn[5] = false;
-        //Serial.println("Voice 6 Off");
-        break;
-
-      case 7:
-
-        voices[6].note = -1;
-        voiceOn[6] = false;
-        //Serial.println("Voice 7 Off");
-        break;
-
-      case 8:
-
-        voices[7].note = -1;
-        voiceOn[7] = false;
-        //Serial.println("Voice 8 Off");
-        break;
-    }
-  }
-
-  if (playModeSW == 2) {  //UNISON
-
-    noteMsg = note;
-    notes[noteMsg] = false;
-
-    switch (notePrioritySW) {
-      case 1:
-        commandTopNoteUnison();
-        break;
-
-      case 0:
-        commandBottomNoteUnison();
-        break;
-
-      case 2:
-        if (notes[noteMsg]) {  // If note is on and using last note priority, add to ordered list
-          orderIndx = (orderIndx + 1) % 40;
-          noteOrder[orderIndx] = noteMsg;
-        }
-        commandLastNoteUnison();
-        break;
-    }
-  }
-
-  if (playModeSW == 1) {
-
-    noteMsg = note;
-    notes[noteMsg] = false;
-
-    switch (notePrioritySW) {
-      case 1:
-        commandTopNote();
-        break;
-
-      case 0:
-        commandBottomNote();
-        break;
-
-      case 2:
-        if (notes[noteMsg]) {  // If note is on and using last note priority, add to ordered list
-          orderIndx = (orderIndx + 1) % 40;
-          noteOrder[orderIndx] = noteMsg;
-        }
-        commandLastNote();
-        break;
-    }
-  }
+    MIDI.sendNoteOff(note, velocity, channel);
 }
-
-int mod(int a, int b) {
-  int r = a % b;
-  return r < 0 ? r + b : r;
-}
-
-void commandTopNote() {
-  int topNote = 0;
-  bool noteActive = false;
-
-  for (int i = 0; i < 88; i++) {
-    if (notes[i]) {
-      topNote = i;
-      noteActive = true;
-    }
-  }
-
-  if (noteActive) {
-    commandNote(topNote);
-  } else {  // All notes are off, turn off gate
-  }
-}
-
-void commandBottomNote() {
-
-  int bottomNote = 0;
-  bool noteActive = false;
-
-  for (int i = 87; i >= 0; i--) {
-    if (notes[i]) {
-      bottomNote = i;
-      noteActive = true;
-    }
-  }
-
-  if (noteActive) {
-    commandNote(bottomNote);
-  } else {  // All notes are off, turn off gate
-  }
-}
-
-void commandLastNote() {
-
-  int8_t noteIndx;
-
-  for (int i = 0; i < 40; i++) {
-    noteIndx = noteOrder[mod(orderIndx - i, 40)];
-    if (notes[noteIndx]) {
-      commandNote(noteIndx);
-      return;
-    }
-  }
-}
-
-void commandNote(int note) {
-
-  note1freq = note;
-}
-
-void commandTopNoteUnison() {
-  int topNote = 0;
-  bool noteActive = false;
-
-  for (int i = 0; i < 88; i++) {
-    if (notes[i]) {
-      topNote = i;
-      noteActive = true;
-    }
-  }
-
-  if (noteActive) {
-    commandNoteUnison(topNote);
-  } else {  // All notes are off, turn off gate
-  }
-}
-
-void commandBottomNoteUnison() {
-
-  int bottomNote = 0;
-  bool noteActive = false;
-
-  for (int i = 87; i >= 0; i--) {
-    if (notes[i]) {
-      bottomNote = i;
-      noteActive = true;
-    }
-  }
-
-  if (noteActive) {
-    commandNoteUnison(bottomNote);
-  } else {  // All notes are off, turn off gate
-  }
-}
-
-void commandLastNoteUnison() {
-
-  int8_t noteIndx;
-
-  for (int i = 0; i < 40; i++) {
-    noteIndx = noteOrder[mod(orderIndx - i, 40)];
-    if (notes[noteIndx]) {
-      commandNoteUnison(noteIndx);
-      return;
-    }
-  }
-}
-
-void commandNoteUnison(int note) {
-
-  // Limit to available voices
-  if (uniNotes > NO_OF_VOICES) uniNotes = NO_OF_VOICES;
-  if (uniNotes < 1) uniNotes = 1;
-
-  // Set note frequency base
-  for (int i = 0; i < uniNotes; i++) {
-    voices[i].note = note;  // Optional bookkeeping
-  }
-
-  // Calculate detune spread
-  float baseOffset = detune - 1.000;  // e.g. 0.02 for ±2%
-  float spread = baseOffset;          // could later be scaled with uniNotes
-
-  // Center index (for symmetry)
-  int center = uniNotes / 2;  // integer division works for both even/odd
-
-  // Reset all detunes first
-  for (int i = 0; i < NO_OF_VOICES; i++) {
-    voiceDetune[i] = 1.000;
-  }
-
-  // Assign detunes to active voices
-  for (int i = 0; i < uniNotes; i++) {
-    int distance = i - center;
-    voiceDetune[i] = 1.000 + (distance * spread);
-  }
-
-  // Trigger only the voices used by unison
-  for (int i = 0; i < uniNotes; i++) {
-    switch (i) {
-      case 0:
-        note1freq = note;
-
-        break;
-
-      case 1:
-        note2freq = note;
-
-        break;
-
-      case 2:
-        note3freq = note;
-
-        break;
-
-      case 3:
-        note4freq = note;
-
-        break;
-
-      case 4:
-        note5freq = note;
-
-        break;
-
-      case 5:
-        note6freq = note;
-
-        break;
-
-      case 6:
-        note7freq = note;
-
-        break;
-
-      case 7:
-        note8freq = note;
-
-        break;
-    }
-  }
-}
-
 
 void recallPatch(int patchNo) {
   allNotesOff();
@@ -4077,120 +3620,248 @@ void allNotesOff() {
 }
 
 String getCurrentPatchData() {
-  return patchName + "," + String(vcoAWave) + "," + String(vcoBWave) + "," + String(vcoCWave) + "," + String(vcoAPW) + "," + String(vcoBPW) + "," + String(vcoCPW)
-         + "," + String(vcoAPWM) + "," + String(vcoBPWM) + "," + String(vcoCPWM) + "," + String(vcoBDetune) + "," + String(vcoCDetune)
-         + "," + String(vcoAFMDepth) + "," + String(vcoBFMDepth) + "," + String(vcoCFMDepth) + "," + String(vcoALevel) + "," + String(vcoBLevel) + "," + String(vcoCLevel)
-         + "," + String(filterCutoff) + "," + String(filterResonance) + "," + String(filterEGDepth) + "," + String(filterKeyTrack) + "," + String(filterLFODepth)
-         + "," + String(pitchAttack) + "," + String(pitchDecay) + "," + String(pitchSustain) + "," + String(pitchRelease)
-         + "," + String(filterAttack) + "," + String(filterDecay) + "," + String(filterSustain) + "," + String(filterRelease)
-         + "," + String(ampAttack) + "," + String(ampDecay) + "," + String(ampSustain) + "," + String(ampRelease)
-         + "," + String(LFO1Rate) + "," + String(LFO1Delay) + "," + String(LFO1Wave) + "," + String(LFO2Rate)
-         + "," + String(vcoAInterval) + "," + String(vcoBInterval) + "," + String(vcoCInterval)
-         + "," + String(vcoAPWMsource) + "," + String(vcoBPWMsource) + "," + String(vcoCPWMsource) + "," + String(vcoAFMsource) + "," + String(vcoBFMsource) + "," + String(vcoCFMsource)
-         + "," + String(ampLFODepth) + "," + String(XModDepth) + "," + String(LFO2Wave) + "," + String(noiseLevel)
-         + "," + String(effectPot1) + "," + String(effectPot2) + "," + String(effectPot3) + "," + String(effectsMix)
-         + "," + String(volumeLevel) + "," + String(MWDepth) + "," + String(PBDepth) + "," + String(ATDepth) + "," + String(filterType) + "," + String(filterPoleSW)
-         + "," + String(vcoAOctave) + "," + String(vcoBOctave) + "," + String(vcoCOctave) + "," + String(filterKeyTrackSW) + "," + String(filterVelocitySW) + "," + String(ampVelocitySW)
-         + "," + String(multiSW) + "," + String(effectNumberSW) + "," + String(effectBankSW) + "," + String(egInvertSW) + "," + String(vcoATable) + "," + String(vcoBTable) + "," + String(vcoCTable)
-         + "," + String(vcoAWaveNumber) + "," + String(vcoBWaveNumber) + "," + String(vcoCWaveNumber) + "," + String(vcoAWaveBank) + "," + String(vcoBWaveBank) + "," + String(vcoCWaveBank)
-         + "," + String(playModeSW) + "," + String(notePrioritySW) + "," + String(unidetune) + "," + String(uniNotes);
+  return patchName + "," + String(lfo1_waveU) + "," + String(lfo1_waveL) + "," + String(lfo1_rateU) + "," + String(lfo1_rateL) + "," + String(lfo1_delayU) + "," + String(lfo1_delayL) + "," + String(lfo1_lfo2U) + "," + String(lfo1_lfo2L) + "," + String(lfo1_syncU) + "," + String(lfo1_syncL)
+         + "," + String(lfo2_waveU) + "," + String(lfo2_waveL) + "," + String(lfo2_rateU) + "," + String(lfo2_rateL) + "," + String(lfo2_delayU) + "," + String(lfo2_delayL) + "," + String(lfo2_lfo1U) + "," + String(lfo2_lfo1L) + "," + String(lfo2_syncU) + "," + String(lfo2_syncL)
+         + "," + String(dco1_PWU) + "," + String(dco1_PWL) + "," + String(dco1_PWM_envU) + "," + String(dco1_PWM_envL) + "," + String(dco1_PWM_lfoU) + "," + String(dco1_PWM_lfoL) + "," + String(dco1_PWM_dynU) + "," + String(dco1_PWM_dynL) + "," + String(dco1_PWM_env_sourceU) + "," + String(dco1_PWM_env_sourceL)
+         + "," + String(dco1_PWM_env_polU) + "," + String(dco1_PWM_env_polL) + "," + String(dco1_PWM_lfo_sourceU) + "," + String(dco1_PWM_lfo_sourceL) + "," + String(dco1_pitch_envU) + "," + String(dco1_pitch_envL) + "," + String(dco1_pitch_env_sourceU) + "," + String(dco1_pitch_env_sourceL) + "," + String(dco1_pitch_env_polU) + "," + String(dco1_pitch_env_polL)
+         + "," + String(dco1_pitch_lfoU) + "," + String(dco1_pitch_lfoL) + "," + String(dco1_pitch_lfo_sourceU) + "," + String(dco1_pitch_lfo_sourceL) + "," + String(dco1_pitch_dynU) + "," + String(dco1_pitch_dynL) + "," + String(dco1_waveU) + "," + String(dco1_waveL)
+         + "," + String(dco1_rangeU) + "," + String(dco1_rangeL) + "," + String(dco1_tuneU) + "," + String(dco1_tuneL) + "," + String(dco1_modeU) + "," + String(dco1_modeL)
+         + "," + String(dco2_PWU) + "," + String(dco2_PWL) + "," + String(dco2_PWM_envU) + "," + String(dco2_PWM_envL) + "," + String(dco2_PWM_lfoU) + "," + String(dco2_PWM_lfoL) + "," + String(dco2_PWM_dynU) + "," + String(dco2_PWM_dynL) + "," + String(dco2_PWM_env_sourceU) + "," + String(dco2_PWM_env_sourceL)
+         + "," + String(dco2_PWM_env_polU) + "," + String(dco2_PWM_env_polL) + "," + String(dco2_PWM_lfo_sourceU) + "," + String(dco2_PWM_lfo_sourceL) + "," + String(dco2_pitch_envU) + "," + String(dco2_pitch_envL) + "," + String(dco2_pitch_env_sourceU) + "," + String(dco2_pitch_env_sourceL) + "," + String(dco2_pitch_env_polU) + "," + String(dco2_pitch_env_polL)
+         + "," + String(dco2_pitch_lfoU) + "," + String(dco2_pitch_lfoL) + "," + String(dco2_pitch_lfo_sourceU) + "," + String(dco2_pitch_lfo_sourceL) + "," + String(dco2_pitch_dynU) + "," + String(dco2_pitch_dynL) + "," + String(dco2_waveU) + "," + String(dco2_waveL)
+         + "," + String(dco2_rangeU) + "," + String(dco2_rangeL) + "," + String(dco2_tuneU) + "," + String(dco2_tuneL) + "," + String(dco2_fineU) + "," + String(dco2_fineL)
+         + "," + String(dco1_levelU) + "," + String(dco1_levelL) + "," + String(dco2_levelU) + "," + String(dco2_levelL) + "," + String(dco2_modU) + "," + String(dco2_modL) + "," + String(dco_mix_env_polU) + "," + String(dco_mix_env_polL) + "," + String(dco_mix_env_sourceU) + "," + String(dco_mix_env_sourceL) + "," + String(dco_mix_dynU) + "," + String(dco_mix_dynL)
+         + "," + String(vcf_hpfU) + "," + String(vcf_hpfL) + "," + String(vcf_cutoffU) + "," + String(vcf_cutoffL) + "," + String(vcf_resU) + "," + String(vcf_resL) + "," + String(vcf_kbU) + "," + String(vcf_kbL) + "," + String(vcf_envU) + "," + String(vcf_envL)
+         + "," + String(vcf_lfo1U) + "," + String(vcf_lfo1L) + "," + String(vcf_lfo2U) + "," + String(vcf_lfo2L) + "," + String(vcf_env_sourceU) + "," + String(vcf_env_sourceL) + "," + String(vcf_env_polU) + "," + String(vcf_env_polL) + "," + String(vcf_dynU) + "," + String(vcf_dynL)
+         + "," + String(vca_modU) + "," + String(vca_modL) + "," + String(vca_env_sourceU) + "," + String(vca_env_sourceL) + "," + String(vca_dynU) + "," + String(vca_dynL)
+         + "," + String(time1U) + "," + String(time1L) + "," + String(level1U) + "," + String(level1L) + "," + String(time2U) + "," + String(time2L) + "," + String(level2U) + "," + String(level2L) + "," + String(time3U) + "," + String(time3L)
+         + "," + String(level3U) + "," + String(level3L) + "," + String(time4U) + "," + String(time4L) + "," + String(env5stage_modeU) + "," + String(env5stage_modeL)
+         + "," + String(env2_time1U) + "," + String(env2_time1L) + "," + String(env2_level1U) + "," + String(env2_level1L) + "," + String(env2_time2U) + "," + String(env2_time2L) + "," + String(env2_level2U) + "," + String(env2_level2L) + "," + String(env2_time3U) + "," + String(env2_time3L)
+         + "," + String(env2_level3U) + "," + String(env2_level3L) + "," + String(env2_time4U) + "," + String(env2_time4L) + "," + String(env2_5stage_modeU) + "," + String(env2_5stage_modeL)
+         + "," + String(attackU) + "," + String(attackL) + "," + String(decayU) + "," + String(decayL) + "," + String(sustainU) + "," + String(sustainL) + "," + String(releaseU) + "," + String(releaseL) + "," + String(adsr_modeU) + "," + String(adsr_modeL)
+         + "," + String(env4_attackU) + "," + String(env4_attackL) + "," + String(env4_decayU) + "," + String(env4_decayL) + "," + String(env4_sustainU) + "," + String(env4_sustainL) + "," + String(env4_releaseU) + "," + String(env4_releaseL) + "," + String(env4_adsr_modeU) + "," + String(env4_adsr_modeL)
+         + "," + String(chorusU) + "," + String(chorusL) + "," + String(portamento_swU) + "," + String(portamento_swL) + "," + String(octave_downU) + "," + String(octave_downL) + "," + String(octave_upU) + "," + String(octave_upL)
+         + "," + String(mod_lfoU) + "," + String(mod_lfoL) + "," + String(unisondetuneU) + "," + String(unisondetuneL) + "," + String(bend_enableU) + "," + String(bend_enableL) + "," + String(assignU) + "," + String(assignL)
+         + "," + String(keymode) + "," + String(dualdetune) + "," + String(at_vib) + "," + String(at_lpf) + "," + String(at_vol) + "," + String(balance) + "," + String(portamento) + "," + String(volume) + "," + String(bend_range);  
 }
 
 void setCurrentPatchData(String data[]) {
   patchName = data[0];
 
-  vcoAWave = data[1].toInt();
-  vcoBWave = data[2].toInt();
-  vcoCWave = data[3].toInt();
-  vcoAPW = data[4].toFloat();
-  vcoBPW = data[5].toFloat();
-  vcoCPW = data[6].toFloat();
-  vcoAPWM = data[7].toFloat();
-  vcoBPWM = data[8].toFloat();
-  vcoCPWM = data[9].toFloat();
-  vcoBDetune = data[10].toFloat();
+  lfo1_waveU = data[1].toInt();
+  lfo1_waveL = data[2].toInt();
+  lfo1_rateU = data[3].toInt();
+  lfo1_rateL = data[4].toInt();
+  lfo1_delayU = data[5].toInt();
+  lfo1_delayL = data[6].toInt();
+  lfo1_lfo2U = data[7].toInt();
+  lfo1_lfo2L = data[8].toInt();
+  lfo1_syncU = data[9].toInt();
+  lfo1_syncL = data[10].toInt();
+  lfo2_waveU = data[11].toInt();
+  lfo2_waveL = data[12].toInt();
+  lfo2_rateU = data[13].toInt();
+  lfo2_rateL = data[14].toInt();
+  lfo2_delayU = data[15].toInt();
+  lfo2_delayL = data[16].toInt();
+  lfo2_lfo1U = data[17].toInt();
+  lfo2_lfo1L = data[18].toInt();
+  lfo2_syncU = data[19].toInt();
+  lfo2_syncL = data[20].toInt();
 
-  vcoCDetune = data[11].toFloat();
-  vcoAFMDepth = data[12].toFloat();
-  vcoBFMDepth = data[13].toFloat();
-  vcoCFMDepth = data[14].toFloat();
-  vcoALevel = data[15].toFloat();
-  vcoBLevel = data[16].toFloat();
-  vcoCLevel = data[17].toFloat();
-  filterCutoff = data[18].toFloat();
-  filterResonance = data[19].toFloat();
-  filterEGDepth = data[20].toFloat();
+  dco1_PWU = data[21].toInt();
+  dco1_PWL = data[22].toInt();
+  dco1_PWM_envU = data[23].toInt();
+  dco1_PWM_envL = data[24].toInt();
+  dco1_PWM_lfoU = data[25].toInt();
+  dco1_PWM_lfoL = data[26].toInt();
+  dco1_PWM_dynU = data[27].toInt();
+  dco1_PWM_dynL = data[28].toInt();
+  dco1_PWM_env_sourceU = data[29].toInt();
+  dco1_PWM_env_sourceL = data[30].toInt();
+  dco1_PWM_env_polU = data[31].toInt();
+  dco1_PWM_env_polL = data[32].toInt();
+  dco1_PWM_lfo_sourceU = data[33].toInt();
+  dco1_PWM_lfo_sourceL = data[34].toInt();
+  dco1_pitch_envU = data[35].toInt();
+  dco1_pitch_envL = data[36].toInt();
+  dco1_pitch_env_sourceU = data[37].toInt();
+  dco1_pitch_env_sourceL = data[38].toInt();
+  dco1_pitch_env_polU = data[39].toInt();
+  dco1_pitch_env_polL = data[40].toInt();
+  dco1_pitch_lfoU = data[41].toInt();
+  dco1_pitch_lfoL = data[42].toInt();
+  dco1_pitch_lfo_sourceU = data[43].toInt();
+  dco1_pitch_lfo_sourceL = data[44].toInt();
+  dco1_pitch_dynU = data[45].toInt();
+  dco1_pitch_dynL = data[46].toInt();
+  dco1_waveU = data[47].toInt();
+  dco1_waveL = data[48].toInt();
+  dco1_rangeU = data[49].toInt();
+  dco1_rangeL = data[50].toInt();
+  dco1_tuneU = data[51].toInt();
+  dco1_tuneL = data[52].toInt();
+  dco1_modeU = data[53].toInt();
+  dco1_modeL = data[54].toInt();
 
-  filterKeyTrack = data[21].toFloat();
-  filterLFODepth = data[22].toFloat();
-  pitchAttack = data[23].toFloat();
-  pitchDecay = data[24].toFloat();
-  pitchSustain = data[25].toFloat();
-  pitchRelease = data[26].toFloat();
-  filterAttack = data[27].toFloat();
-  filterDecay = data[28].toFloat();
-  filterSustain = data[29].toFloat();
-  filterRelease = data[30].toFloat();
+  dco2_PWU = data[55].toInt();
+  dco2_PWL = data[56].toInt();
+  dco2_PWM_envU = data[57].toInt();
+  dco2_PWM_envL = data[58].toInt();
+  dco2_PWM_lfoU = data[59].toInt();
+  dco2_PWM_lfoL = data[60].toInt();
+  dco2_PWM_dynU = data[61].toInt();
+  dco2_PWM_dynL = data[62].toInt();
+  dco2_PWM_env_sourceU = data[63].toInt();
+  dco2_PWM_env_sourceL = data[64].toInt();
+  dco2_PWM_env_polU = data[65].toInt();
+  dco2_PWM_env_polL = data[66].toInt();
+  dco2_PWM_lfo_sourceU = data[67].toInt();
+  dco2_PWM_lfo_sourceL = data[68].toInt();
+  dco2_pitch_envU = data[69].toInt();
+  dco2_pitch_envL = data[70].toInt();
+  dco2_pitch_env_sourceU = data[71].toInt();
+  dco2_pitch_env_sourceL = data[72].toInt();
+  dco2_pitch_env_polU = data[73].toInt();
+  dco2_pitch_env_polL = data[74].toInt();
+  dco2_pitch_lfoU = data[75].toInt();
+  dco2_pitch_lfoL = data[76].toInt();
+  dco2_pitch_lfo_sourceU = data[77].toInt();
+  dco2_pitch_lfo_sourceL = data[78].toInt();
+  dco2_pitch_dynU = data[79].toInt();
+  dco2_pitch_dynL = data[80].toInt();
+  dco2_waveU = data[81].toInt();
+  dco2_waveL = data[82].toInt();
+  dco2_rangeU = data[83].toInt();
+  dco2_rangeL = data[84].toInt();
+  dco2_tuneU = data[85].toInt();
+  dco2_tuneL = data[86].toInt();
+  dco2_fineU = data[87].toInt();
+  dco2_fineL = data[88].toInt();
 
-  ampAttack = data[31].toFloat();
-  ampDecay = data[32].toFloat();
-  ampSustain = data[33].toFloat();
-  ampRelease = data[34].toFloat();
-  LFO1Rate = data[35].toFloat();
-  LFO1Delay = data[36].toFloat();
-  LFO1Wave = data[37].toInt();
-  LFO2Rate = data[38].toFloat();
-  vcoAInterval = data[39].toInt();
-  vcoBInterval = data[40].toInt();
+  dco1_levelU = data[89].toInt();
+  dco1_levelL = data[90].toInt();
+  dco2_levelU = data[91].toInt();
+  dco2_level = data[92].toInt();
+  dco2_modU = data[93].toInt();
+  dco2_modL = data[94].toInt();
+  dco_mix_env_polU = data[95].toInt();
+  dco_mix_env_polL = data[96].toInt();
+  dco_mix_env_sourceU = data[97].toInt();
+  dco_mix_env_sourceL = data[98].toInt();
+  dco_mix_dynU = data[99].toInt();
+  dco_mix_dynL = data[100].toInt();
 
-  vcoCInterval = data[41].toInt();
-  vcoAPWMsource = data[42].toInt();
-  vcoBPWMsource = data[43].toInt();
-  vcoCPWMsource = data[44].toInt();
-  vcoAFMsource = data[45].toInt();
-  vcoBFMsource = data[46].toInt();
-  vcoCFMsource = data[47].toInt();
-  ampLFODepth = data[48].toFloat();
-  XModDepth = data[49].toFloat();
-  LFO2Wave = data[50].toInt();
+  vcf_hpfU = data[101].toInt();
+  vcf_hpfL = data[102].toInt();
+  vcf_cutoffU = data[103].toInt();
+  vcf_cutoffL = data[104].toInt();
+  vcf_resU = data[105].toInt();
+  vcf_resL = data[106].toInt();
+  vcf_kbU = data[107].toInt();
+  vcf_kbL = data[108].toInt();
+  vcf_envU = data[109].toInt();
+  vcf_envL = data[110].toInt();
+  vcf_lfo1U = data[111].toInt();
+  vcf_lfo1L = data[112].toInt();
+  vcf_lfo2U = data[113].toInt();
+  vcf_lfo2L = data[114].toInt();
+  vcf_env_sourceU = data[115].toInt();
+  vcf_env_sourceL = data[116].toInt();
+  vcf_env_polU = data[117].toInt();
+  vcf_env_polL = data[118].toInt();
+  vcf_dynU = data[119].toInt();
+  vcf_dynL = data[120].toInt();
 
-  noiseLevel = data[51].toFloat();
-  effectPot1 = data[52].toFloat();
-  effectPot2 = data[53].toFloat();
-  effectPot3 = data[54].toFloat();
-  effectsMix = data[55].toFloat();
-  volumeLevel = data[56].toFloat();
-  MWDepth = data[57].toInt();
-  PBDepth = data[58].toInt();
-  ATDepth = data[59].toInt();
-  filterType = data[60].toInt();
-  filterPoleSW = data[61].toInt();
-  vcoAOctave = data[62].toInt();
-  vcoBOctave = data[63].toInt();
-  vcoCOctave = data[64].toInt();
-  filterKeyTrackSW = data[65].toInt();
-  filterVelocitySW = data[66].toInt();
-  ampVelocitySW = data[67].toInt();
-  multiSW = data[68].toInt();
-  effectNumberSW = data[69].toInt();
-  effectBankSW = data[70].toInt();
-  egInvertSW = data[71].toInt();
+  vca_modU = data[121].toInt();
+  vca_modL = data[122].toInt();
+  vca_env_sourceU = data[123].toInt();
+  vca_env_sourceL = data[124].toInt();
+  vca_dynU = data[125].toInt();
+  vca_dynL = data[126].toInt();
 
-  vcoATable = data[72].toInt();
-  vcoBTable = data[73].toInt();
-  vcoCTable = data[74].toInt();
-  vcoAWaveNumber = data[75].toInt();
-  vcoBWaveNumber = data[76].toInt();
-  vcoCWaveNumber = data[77].toInt();
-  vcoAWaveBank = data[78].toInt();
-  vcoBWaveBank = data[79].toInt();
-  vcoCWaveBank = data[80].toInt();
-  playModeSW = data[81].toInt();
-  notePrioritySW = data[82].toInt();
-  unidetune = data[83].toInt();
-  uniNotes = data[84].toInt();
+  time1U = data[127].toInt();
+  time1L = data[128].toInt();
+  level1U = data[129].toInt();
+  level1L = data[130].toInt();
+  time2U = data[131].toInt();
+  time2L = data[132].toInt();
+  level2U = data[133].toInt();
+  level2L = data[134].toInt();
+  time3U = data[135].toInt();
+  time3L = data[136].toInt();
+  level3U = data[137].toInt();
+  level3L = data[138].toInt();
+  time4U = data[139].toInt();
+  time4L = data[140].toInt();
+  env5stage_modeU = data[141].toInt();
+  env5stage_modeL = data[142].toInt();
 
+  env2_time1U = data[143].toInt();
+  env2_time1L = data[144].toInt();
+  env2_level1U = data[145].toInt();
+  env2_level1L = data[146].toInt();
+  env2_time2U = data[147].toInt();
+  env2_time2L = data[148].toInt();
+  env2_level2U = data[149].toInt();
+  env2_level2L = data[150].toInt();
+  env2_time3U = data[151].toInt();
+  env2_time3L = data[152].toInt();
+  env2_level3U = data[153].toInt();
+  env2_level3L = data[154].toInt();
+  env2_time4U = data[155].toInt();
+  env2_time4L = data[156].toInt();
+  env2_5stage_modeU = data[157].toInt();
+  env2_5stage_modeL = data[158].toInt();
 
+  attackU = data[159].toInt();
+  attackL = data[160].toInt();
+  decayU = data[161].toInt();
+  decayL = data[162].toInt();
+  sustainU = data[163].toInt();
+  sustainL = data[164].toInt();
+  releaseU = data[165].toInt();
+  releaseL = data[166].toInt();
+  adsr_modeU = data[167].toInt();
+  adsr_modeL = data[168].toInt();
+
+  env4_attackU = data[169].toInt();
+  env4_attackL = data[170].toInt();
+  env4_decayU = data[171].toInt();
+  env4_decayL = data[172].toInt();
+  env4_sustainU = data[173].toInt();
+  env4_sustainL = data[174].toInt();
+  env4_releaseU = data[175].toInt();
+  env4_releaseL = data[176].toInt();
+  env4_adsr_modeU = data[177].toInt();
+  env4_adsr_modeL = data[178].toInt();
+
+  chorusU = data[179].toInt();
+  chorusL = data[180].toInt();
+  portamento_swU = data[181].toInt();
+  portamento_swL = data[182].toInt();
+  octave_downU = data[183].toInt();
+  octave_downL = data[184].toInt();
+  octave_upU = data[185].toInt();
+  octave_upL = data[186].toInt();
+  mod_lfoU = data[187].toInt();
+  mod_lfoL = data[188].toInt();
+  unisondetuneU = data[189].toInt();
+  unisondetuneL = data[190].toInt();
+  bend_enableU = data[191].toInt();
+  bend_enableL = data[192].toInt();
+  assignU = data[193].toInt();
+  assignL = data[194].toInt(); 
+
+  keymode =  data[195].toInt(); 
+  dualdetune = data[196].toInt();
+  at_vib = data[197].toInt();
+  at_lpf = data[198].toInt();
+  at_vol = data[199].toInt();
+  balance = data[200].toInt();
+  portamento = data[201].toInt();
+  volume = data[202].toInt();
+  bend_range = data[203].toInt();
 
   updateplaymode(0);
   updateenv5stage(0);
@@ -5250,6 +4921,8 @@ void checkMux() {
 
 void loop() {
 
+  myusb.Task();
+  midi1.read();
   usbMIDI.read(midiChannel);
   MIDI.read(midiChannel);
   checkMux();

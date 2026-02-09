@@ -81,6 +81,11 @@ int speed = 1;
 bool updateParams = false;  //(EEPROM)
 int old_value = 0;
 int old_param_offset = 0;
+int displayMode = 0;
+
+bool manualSyncInProgress = false;
+bool suppressParamAnnounce = true;
+bool bootInitInProgress = true;
 
 // ---- UI controls (0..255 unless noted) ----
 uint8_t uiCutoff      = 128;  // base cutoff
@@ -575,6 +580,42 @@ int keymode = 0;
 boolean poly_button;
 boolean mono_button;
 boolean unison_button;
+
+// 5x8 custom chars (each row uses bits 0..4)
+
+byte midBar2[] = {
+  0b00110,
+  0b00110,
+  0b00110,
+  0b00110,  // center bar row 1
+  0b00110,  // center bar row 2
+  0b00110,
+  0b00110,
+  0b00110
+};
+
+byte triUpSolid[] = {
+  0b00100,
+  0b01110,
+  0b11111,
+  0b11111,
+  0b11111,
+  0b00000,
+  0b00000,
+  0b00000
+};
+
+byte triDownSolid[] = {
+  0b00000,
+  0b00000,
+  0b00000,
+  0b11111,
+  0b11111,
+  0b01110,
+  0b00100,
+  0b00000
+};
+
 
 
 

@@ -31,8 +31,8 @@ ADC *adc = new ADC();
 
 #define MUX1_S A17  // ADC1
 #define MUX2_S A16  // ADC1
-#define MUX3_S A12  // ADC1
-#define MUX4_S A13  // ADC1
+#define MUX3_S A13  // ADC1
+#define MUX4_S A12  // ADC1
 
 //Mux 1 Connections
 #define MUX1_MOD_LFO 0

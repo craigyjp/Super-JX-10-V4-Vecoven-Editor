@@ -111,7 +111,7 @@
 #define CCat_vol          0x59
 #define CCenv5stage       0x5A
 #define CCadsr            0x5B
-#define CCplaymode        0x5E
+#define CCeditMode        0x5E
 #define CCvolume          0x5F
 #define CCportamento      0x60
 #define CCportamento_sw   0x61
@@ -126,5 +126,6 @@
 #define CCpoly_button     0x6A
 #define CCmono_button     0x6B
 #define CCunison_button   0x6C
+#define CCkeyMode         0x6D
 
 #define CCallnotesoff 123//Panic button

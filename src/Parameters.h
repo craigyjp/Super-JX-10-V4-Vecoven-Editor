@@ -5,51 +5,55 @@ byte midiOutCh = 1;
 struct VoiceAndNote {
   int note;
   int velocity;
-  long timeOn;
+  unsigned long timeOn;
+  bool sustained;  // Sustain flag
+  bool keyDown;
+  double noteFreq;  // Note frequency
+  int position;
+  bool noteOn;
 };
 
 struct VoiceAndNote voices[NO_OF_VOICES] = {
-  { -1, -1, 0 },
-  { -1, -1, 0 },
-  { -1, -1, 0 },
-  { -1, -1, 0 },
-  { -1, -1, 0 },
-  { -1, -1, 0 },
-  { -1, -1, 0 },
-  { -1, -1, 0 }
+  { -1, -1, 0, false, false, 0, -1, false },
+  { -1, -1, 0, false, false, 0, -1, false },
+  { -1, -1, 0, false, false, 0, -1, false },
+  { -1, -1, 0, false, false, 0, -1, false },
+  { -1, -1, 0, false, false, 0, -1, false },
+  { -1, -1, 0, false, false, 0, -1, false },
+  { -1, -1, 0, false, false, 0, -1, false },
+  { -1, -1, 0, false, false, 0, -1, false },
+  { -1, -1, 0, false, false, 0, -1, false },
+  { -1, -1, 0, false, false, 0, -1, false },
+  { -1, -1, 0, false, false, 0, -1, false },
+  { -1, -1, 0, false, false, 0, -1, false }
 };
 
-bool voiceOn[NO_OF_VOICES] = { false, false, false, false, false, false, false, false };
+// Tracks exactly which note each voice currently plays
+int voiceToNoteLower[6] = { -1, -1, -1, -1, -1, -1 };
+int voiceToNoteUpper[6] = { -1, -1, -1, -1, -1, -1 };
 
-int prevNote = 0;  //Initialised to middle value
-bool notes[88] = { 0 }, initial_loop = 1;
-int8_t noteOrder[80] = { 0 }, orderIndx = { 0 };
+bool voiceOn[NO_OF_VOICES] = { false, false, false, false, false, false, false, false, false, false, false, false };
+
 int noteMsg;
+int prevNote = 0;  //Initialised to middle value
+bool notes[128] = { 0 }, initial_loop = 1;
+int8_t noteOrder[40] = { 0 }, orderIndx = { 0 };
 
-int note1freq;
-int note2freq;
-int note3freq;
-int note4freq;
-int note5freq;
-int note6freq;
-int note7freq;
-int note8freq;
+bool notesWhole[128], notesLower[128], notesUpper[128];
+byte noteOrderWhole[40], noteOrderLower[40], noteOrderUpper[40];
+int orderIndxWhole = 0, orderIndxLower = 0, orderIndxUpper = 0;
 
+int voiceAssignmentLower[128];
+int voiceAssignmentUpper[128];
+
+int noteVel;
+int lastPlayedNote = -1;  // Track the last note played
+int lastPlayedVoice = 0;  // Track the voice of the last note played
+int lastUsedVoice = 0;    // Global variable to store the last used voice
 
 int patchNo = 1;               //Current patch no
 int voiceToReturn = -1;        //Initialise
-long earliestTime = millis();  //For voice allocation - initialise to now
-
-//Delayed LFO
-int numberOfNotes = 0;
-int oldnumberOfNotes = 0;
-unsigned long previousMillis = 0;
-unsigned long interval = 1; //10 seconds
-long delaytime  = 0;
-int LFODelayGo = 0;
-bool LFODelayGoA = false;
-bool LFODelayGoB = false;
-bool LFODelayGoC = false;
+unsigned long earliestTime = millis();  //For voice allocation - initialise to now
 
 int resolutionFrig = 1;
 
@@ -57,12 +61,101 @@ uint32_t noteAgeCounter = 1;
 int nextVoiceRR = 0;
 uint8_t voiceNote[9];  // per-voice note index (0..127 or into noteFreqs)
 
-//Unison Detune
-byte unidetune = 0;
-byte oldunidetune = 0;
-byte uniNotes = 0;
+// JP8 Hold
+// -------------------- HOLD CONFIG --------------------
 
-float voiceDetune[8] = { 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000 };
+bool keyDownLower[128] = {0};
+bool keyDownUpper[128] = {0};
+bool keyDownWhole[128] = {0}; // optional (whole mode convenience)
+
+bool holdManualLower = false;
+bool holdManualUpper = false;
+bool holdPedal = false;     // DP-2 pressed
+
+bool holdLatchedLower[128] = {0}; // notes sustaining because Hold caught their note-off
+bool holdLatchedUpper[128] = {0};
+
+bool sustainPedalDown = false;     // CCsustain >= 64
+
+// JP8 Arpeggiator
+// -------------------- ARP CONFIG --------------------
+
+// External clock pulse handling
+volatile uint16_t arpExtTickCount = 0;
+volatile uint32_t lastExtPulseUs = 0;
+const uint16_t ARP_EXT_CLOCK_LOSS_MS = 250;
+
+// Debounce / minimum pulse spacing (microseconds)
+const uint32_t EXT_PULSE_MIN_US = 1500;
+
+// LED flash request from ISR
+volatile bool extClkLedPulseReq = false;
+volatile uint32_t extClkLedPulseAtMs = 0;
+
+// LED pulse width (ms)
+const uint16_t EXT_LED_PULSE_MS = 30;
+
+enum ArpMode : uint8_t { ARP_OFF=0, ARP_UP, ARP_DOWN, ARP_UPDOWN, ARP_RANDOM };
+enum ArpClockSrc : uint8_t { ARPCLK_INTERNAL=0, ARPCLK_EXTERNAL, ARPCLK_MIDI };
+
+volatile ArpClockSrc arpClockSrc = ARPCLK_INTERNAL;
+
+enum ArpMidiDiv : uint8_t { ARP_DIV_8TH=0, ARP_DIV_8TH_TRIP, ARP_DIV_16TH };
+volatile ArpMidiDiv arpMidiDiv = ARP_DIV_16TH;
+
+// Your existing arpRate (0..255 assumed)
+extern uint8_t arpRate;
+
+// External / MIDI clock step accumulator
+volatile uint16_t arpClkTickCount = 0;     // counts pulses/ticks until a step
+volatile uint8_t arpTicksPerStep = 6;     // default: 16th @ MIDI clock (24ppqn -> 6 ticks)
+bool midiClockRunning = false;          // true after Start/Continue, false after Stop
+// 0 = 8th, 1 = 8th triplet, 2 = 16th
+uint8_t arpMidiDivSW = 2; // pick your default
+
+volatile ArpMode arpMode = ARP_OFF;
+volatile uint8_t arpRange = 4;         // 1..4 octaves
+
+volatile uint16_t arpStepMs = 125;      // step interval in ms (internal clock)
+volatile float arpGate = 0.50f;         // not strictly needed; we do step-boundary note off
+
+// In Split mode, JP-8 assigns arp to LOWER only. We'll honor that.
+bool arpLowerOnlyWhenSplit = true;
+
+// Prevent arp notes from affecting hold/keyDown tracking
+bool arpInjecting = false;
+
+uint8_t arpPattern[8] = {0};
+uint8_t arpLen = 0;
+
+// Transport over unfolded pattern
+int16_t arpPos = -1;    // index into unfolded sequence
+int8_t  arpDir = +1;    // for UPDOWN ping-pong
+
+// Current sounding arp note (so we can note-off at next step)
+bool arpNoteActive = false;
+uint8_t arpCurrentNote = 0;
+uint8_t arpCurrentVel = 100;
+
+// Internal clock
+uint32_t arpLastStepMs = 0;
+bool arpRunning = false;
+
+float arpHzTarget  = 4.0f;   // desired Hz from pot
+float arpHzSmooth  = 4.0f;   // smoothed Hz used by engine
+uint32_t arpNextStepUs = 0;  // absolute time of next step (micros)
+uint32_t arpLastSmoothUs = 0;
+
+// Remember last arp range (JP-8: defaults to 4 after power-up, then remembers last used)
+uint8_t lastArpRange = 4;
+bool arpEverEnabledSinceBoot = false;
+
+// Save/restore keyboard assign modes when arp forces Poly2
+uint8_t savedLowerKBMode = 0;
+uint8_t savedUpperKBMode = 0;
+bool arpForcedPoly2 = false;
+
+// Encoders - is it needed?
 
 // adding encoders
 bool rotaryEncoderChanged(int id, bool clockwise, int speed);
@@ -82,6 +175,8 @@ bool updateParams = false;  //(EEPROM)
 int old_value = 0;
 int old_param_offset = 0;
 int displayMode = 0;
+int editMode = 0;
+int assignMode = 0;
 
 bool manualSyncInProgress = false;
 bool suppressParamAnnounce = true;
@@ -548,7 +643,11 @@ bool octave_up_upwards = true;
 int bend_enableU;
 int bend_enableL;
 int assignU;
-int assignL; 
+int assignL;
+int arpRangeU;
+int arpRangeL;
+int arpModeU;
+int arpModeL;
 
 int at_vib;
 int at_lpf;
@@ -568,7 +667,8 @@ int bend_range;
 int bend_range_str;
 bool set10ctave = false;
 
-int playmode = 0;
+int keyMode = 0;
+int oldkeyMode = 0;
 int adsr = 0;
 int env5stage = 0;
 
@@ -576,10 +676,18 @@ boolean dual_button;
 boolean split_button;
 boolean single_button;
 boolean special_button;
-int keymode = 0;
 boolean poly_button;
 boolean mono_button;
 boolean unison_button;
+
+byte splitPoint = 60;
+byte oldsplitPoint = 0;
+byte newsplitPoint = 0;
+byte splitTrans = 0;
+byte oldsplitTrans = 0;
+int lowerTranspose = 0;
+int lowerSplitVoicePointer = 0;
+int upperSplitVoicePointer = 0;
 
 // 5x8 custom chars (each row uses bits 0..4)
 

@@ -1,5 +1,5 @@
-#define  NO_OF_VOICES 8
-constexpr int VOICES = 8;  // you’re indexing 1..8
+#define  NO_OF_VOICES 12
+constexpr int VOICES = 12;  // you’re indexing 1..8
 
 const char* VERSION = "V1.1";
 #define RE_READ -1

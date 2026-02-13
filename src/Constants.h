@@ -5,6 +5,8 @@ const char* VERSION = "V1.1";
 #define RE_READ -1
 #define NO_OF_PARAMS 210
 const char* INITPATCHNAME = "Initial Patch";
+const char* INITTONEU = "Initial Upper";
+const char* INITTONEL = "Initial Lower";
 #define HOLD_DURATION 1000
 #define PATCHES_LIMIT 999
 const uint32_t CLICK_DURATION = 250;

@@ -193,26 +193,6 @@ void sendInitSequence() {
   delay(100);
 }
 
-void sendSerialOffset(uint8_t extra, uint8_t offset) {
-  if (upperSW) {
-    board = 0xF9;
-  } else {
-    board = 0xF1;
-  }
-  
-  if (keyMode == 1 || keyMode == 2) {
-    board = 0xF4;
-  }
-
-  Serial3.write(board);
-  Serial3.write(extra);
-  Serial3.write(offset);
-}
-
-void sendParamValue(uint8_t param, uint8_t value) {
-  Serial3.write(param);
-  Serial3.write((uint8_t)(value & 0x7F));  // keep 0..127
-}
 
 void primeMuxBaseline() {
   for (int ch = 0; ch < MUXCHANNELS; ch++) {
@@ -405,35 +385,101 @@ void myControlChange(byte channel, byte control, int value) {
       updatedco1_PWM_lfo(1);
       break;
 
-      // case CCdco1_pitch_env:
-      //   dco1_pitch_env = value;
-      //   updatedco1_pitch_env(1);
-      //   break;
+    case CCdco1_pitch_env:
+      if (upperSW) {
+        upperData[P_dco1_pitch_env] = value;
+        if (keyMode == 1) {
+          lowerData[P_dco1_pitch_env] = upperData[P_dco1_pitch_env];
+        }
+      } else {
+        lowerData[P_dco1_pitch_env] = value;
+        if (keyMode == 2) {
+          upperData[P_dco1_pitch_env] = lowerData[P_dco1_pitch_env];
+        }
+      }
+      dco1_pitch_env_str = value;
+      updatedco1_pitch_env(1);
+      break;
 
-      // case CCdco1_pitch_lfo:
-      //   dco1_pitch_lfo = value;
-      //   updatedco1_pitch_lfo(1);
-      //   break;
+    case CCdco1_pitch_lfo:
+      if (upperSW) {
+        upperData[P_dco1_pitch_lfo] = value;
+        if (keyMode == 1) {
+          lowerData[P_dco1_pitch_lfo] = upperData[P_dco1_pitch_lfo];
+        }
+      } else {
+        lowerData[P_dco1_pitch_lfo] = value;
+        if (keyMode == 2) {
+          upperData[P_dco1_pitch_lfo] = lowerData[P_dco1_pitch_lfo];
+        }
+      }
+      dco1_pitch_lfo_str = value;
+      updatedco1_pitch_lfo(1);
+      break;
 
-      // case CCdco1_wave:
-      //   dco1_wave = value;
-      //   updatedco1_wave(1);
-      //   break;
+    case CCdco1_wave:
+      if (upperSW) {
+        upperData[P_dco1_wave] = map(value, 0, 127, 0, 3);
+        if (keyMode == 1) {
+          lowerData[P_dco1_wave] = upperData[P_dco1_wave];
+        }
+      } else {
+        lowerData[P_dco1_wave] = map(value, 0, 127, 0, 3);
+        if (keyMode == 2) {
+          upperData[P_dco1_wave] = lowerData[P_dco1_wave];
+        }
+      }
+      dco1_wave_str = value;
+      updatedco1_wave(1);
+      break;
 
-      // case CCdco1_range:
-      //   dco1_range = value;
-      //   updatedco1_range(1);
-      //   break;
+    case CCdco1_range:
+      if (upperSW) {
+        upperData[P_dco1_range] = map(value, 0, 127, 0, 3);
+        if (keyMode == 1) {
+          lowerData[P_dco1_range] = upperData[P_dco1_range];
+        }
+      } else {
+        lowerData[P_dco1_range] = map(value, 0, 127, 0, 3);
+        if (keyMode == 2) {
+          upperData[P_dco1_range] = lowerData[P_dco1_range];
+        }
+      }
+      dco1_range_str = value;
+      updatedco1_range(1);
+      break;
 
-      // case CCdco1_tune:
-      //   dco1_tune = value;
-      //   updatedco1_tune(1);
-      //   break;
+    case CCdco1_tune:
+      if (upperSW) {
+        upperData[P_dco1_tune] = value;
+        if (keyMode == 1) {
+          lowerData[P_dco1_tune] = upperData[P_dco1_tune];
+        }
+      } else {
+        lowerData[P_dco1_tune] = value;
+        if (keyMode == 2) {
+          upperData[P_dco1_tune] = lowerData[P_dco1_tune];
+        }
+      }
+      dco1_tune_str = value;
+      updatedco1_tune(1);
+      break;
 
-      // case CCdco1_mode:
-      //   dco1_mode = value;
-      //   updatedco1_mode(1);
-      //   break;
+    case CCdco1_xmod:
+      if (upperSW) {
+        upperData[P_dco1_mode] = map(value, 0, 127, 0, 3);
+        if (keyMode == 1) {
+          lowerData[P_dco1_mode] = upperData[P_dco1_mode];
+        }
+      } else {
+        lowerData[P_dco1_mode] = map(value, 0, 127, 0, 3);
+        if (keyMode == 2) {
+          upperData[P_dco1_mode] = lowerData[P_dco1_mode];
+        }
+      }
+      dco1_mode_str = value;
+      updatedco1_xmod(1);
+      break;
 
     case CClfo2_wave:
       if (upperSW) {
@@ -547,240 +593,675 @@ void myControlChange(byte channel, byte control, int value) {
       updatedco2_PWM_lfo(1);
       break;
 
-      // case CCdco2_pitch_env:
-      //   dco2_pitch_env = value;
-      //   updatedco2_pitch_env(1);
-      //   break;
+    case CCdco2_pitch_env:
+      if (upperSW) {
+        upperData[P_dco2_pitch_env] = value;
+        if (keyMode == 1) {
+          lowerData[P_dco2_pitch_env] = upperData[P_dco2_pitch_env];
+        }
+      } else {
+        lowerData[P_dco2_pitch_env] = value;
+        if (keyMode == 2) {
+          upperData[P_dco2_pitch_env] = lowerData[P_dco2_pitch_env];
+        }
+      }
+      dco2_pitch_env_str = value;
+      updatedco2_pitch_env(1);
+      break;
 
-      // case CCdco2_pitch_lfo:
-      //   dco2_pitch_lfo = value;
-      //   updatedco2_pitch_lfo(1);
-      //   break;
+    case CCdco2_pitch_lfo:
+      if (upperSW) {
+        upperData[P_dco2_pitch_lfo] = value;
+        if (keyMode == 1) {
+          lowerData[P_dco2_pitch_lfo] = upperData[P_dco2_pitch_lfo];
+        }
+      } else {
+        lowerData[P_dco2_pitch_lfo] = value;
+        if (keyMode == 2) {
+          upperData[P_dco2_pitch_lfo] = lowerData[P_dco2_pitch_lfo];
+        }
+      }
+      dco2_pitch_lfo_str = value;
+      updatedco2_pitch_lfo(1);
+      break;
 
-      // case CCdco2_wave:
-      //   dco2_wave = value;
-      //   updatedco2_wave(1);
-      //   break;
+    case CCdco2_wave:
+      if (upperSW) {
+        upperData[P_dco2_wave] = map(value, 0, 127, 0, 3);
+        if (keyMode == 1) {
+          lowerData[P_dco2_wave] = upperData[P_dco2_wave];
+        }
+      } else {
+        lowerData[P_dco2_wave] = map(value, 0, 127, 0, 3);
+        if (keyMode == 2) {
+          upperData[P_dco2_wave] = lowerData[P_dco2_wave];
+        }
+      }
+      dco2_wave_str = value;
+      updatedco2_wave(1);
+      break;
 
-      // case CCdco2_range:
-      //   dco2_range = value;
-      //   updatedco2_range(1);
-      //   break;
+    case CCdco2_range:
+      if (upperSW) {
+        upperData[P_dco2_range] = map(value, 0, 127, 0, 3);
+        if (keyMode == 1) {
+          lowerData[P_dco2_range] = upperData[P_dco2_range];
+        }
+      } else {
+        lowerData[P_dco2_range] = map(value, 0, 127, 0, 3);
+        if (keyMode == 2) {
+          upperData[P_dco2_range] = lowerData[P_dco2_range];
+        }
+      }
+      dco2_range_str = value;
+      updatedco2_range(1);
+      break;
 
-      // case CCdco2_tune:
-      //   dco2_tune = value;
-      //   updatedco2_tune(1);
-      //   break;
+    case CCdco2_tune:
+      if (upperSW) {
+        upperData[P_dco2_tune] = value;
+        if (keyMode == 1) {
+          lowerData[P_dco2_tune] = upperData[P_dco2_tune];
+        }
+      } else {
+        lowerData[P_dco2_tune] = value;
+        if (keyMode == 2) {
+          upperData[P_dco2_tune] = lowerData[P_dco2_tune];
+        }
+      }
+      dco2_tune_str = value;
+      updatedco2_tune(1);
+      break;
 
-      // case CCdco2_fine:
-      //   dco2_fine = value;
-      //   updatedco2_fine(1);
-      //   break;
+    case CCdco2_fine:
+      if (upperSW) {
+        upperData[P_dco2_fine] = value;
+        if (keyMode == 1) {
+          lowerData[P_dco2_fine] = upperData[P_dco2_fine];
+        }
+      } else {
+        lowerData[P_dco2_fine] = value;
+        if (keyMode == 2) {
+          upperData[P_dco2_fine] = lowerData[P_dco2_fine];
+        }
+      }
+      dco2_fine_str = value;
+      updatedco2_fine(1);
+      break;
 
-      // case CCdco1_level:
-      //   dco1_level = value;
-      //   updatedco1_level(1);
-      //   break;
+    case CCdco1_level:
+      if (upperSW) {
+        upperData[P_dco1_level] = value;
+        if (keyMode == 1) {
+          lowerData[P_dco1_level] = upperData[P_dco1_level];
+        }
+      } else {
+        lowerData[P_dco1_level] = value;
+        if (keyMode == 2) {
+          upperData[P_dco1_level] = lowerData[P_dco1_level];
+        }
+      }
+      dco1_level_str = value;
+      updatedco1_level(1);
+      break;
 
-      // case CCdco2_level:
-      //   dco2_level = value;
-      //   updatedco2_level(1);
-      //   break;
+    case CCdco2_level:
+      if (upperSW) {
+        upperData[P_dco2_level] = value;
+        if (keyMode == 1) {
+          lowerData[P_dco2_level] = upperData[P_dco2_level];
+        }
+      } else {
+        lowerData[P_dco2_level] = value;
+        if (keyMode == 2) {
+          upperData[P_dco2_level] = lowerData[P_dco2_level];
+        }
+      }
+      dco2_level_str = value;
+      updatedco2_level(1);
+      break;
 
-      // case CCdco2_mod:
-      //   dco2_mod = value;
-      //   updatedco2_mod(1);
-      //   break;
+    case CCdco2_mod:
+      if (upperSW) {
+        upperData[P_dco2_mod] = value;
+        if (keyMode == 1) {
+          lowerData[P_dco2_mod] = upperData[P_dco2_mod];
+        }
+      } else {
+        lowerData[P_dco2_mod] = value;
+        if (keyMode == 2) {
+          upperData[P_dco2_mod] = lowerData[P_dco2_mod];
+        }
+      }
+      dco2_mod_str = value;
+      updatedco2_mod(1);
+      break;
 
-      // case CCvcf_hpf:
-      //   vcf_hpf = value;
-      //   updatevcf_hpf(1);
-      //   break;
+    case CCvcf_hpf:
+      if (upperSW) {
+        upperData[P_vcf_hpf] = value;
+        if (keyMode == 1) {
+          lowerData[P_vcf_hpf] = upperData[P_vcf_hpf];
+        }
+      } else {
+        lowerData[P_vcf_hpf] = value;
+        if (keyMode == 2) {
+          upperData[P_vcf_hpf] = lowerData[P_vcf_hpf];
+        }
+      }
+      vcf_hpf_str = value;
+      updatevcf_hpf(1);
+      break;
 
-      // case CCvcf_cutoff:
-      //   vcf_cutoff = value;
-      //   updatevcf_cutoff(1);
-      //   break;
+    case CCvcf_cutoff:
+      if (upperSW) {
+        upperData[P_vcf_cutoff] = value;
+        if (keyMode == 1) {
+          lowerData[P_vcf_cutoff] = upperData[P_vcf_cutoff];
+        }
+      } else {
+        lowerData[P_vcf_cutoff] = value;
+        if (keyMode == 2) {
+          upperData[P_vcf_cutoff] = lowerData[P_vcf_cutoff];
+        }
+      }
+      vcf_cutoff_str = value;
+      updatevcf_cutoff(1);
+      break;
 
-      // case CCvcf_res:
-      //   vcf_res = value;
-      //   updatevcf_res(1);
-      //   break;
+    case CCvcf_res:
+      if (upperSW) {
+        upperData[P_vcf_res] = value;
+        if (keyMode == 1) {
+          lowerData[P_vcf_res] = upperData[P_vcf_res];
+        }
+      } else {
+        lowerData[P_vcf_res] = value;
+        if (keyMode == 2) {
+          upperData[P_vcf_res] = lowerData[P_vcf_res];
+        }
+      }
+      vcf_res_str = value;
+      updatevcf_res(1);
+      break;
 
-      // case CCvcf_kb:
-      //   vcf_kb = value;
-      //   updatevcf_kb(1);
-      //   break;
+    case CCvcf_kb:
+      if (upperSW) {
+        upperData[P_vcf_kb] = value;
+        if (keyMode == 1) {
+          lowerData[P_vcf_kb] = upperData[P_vcf_kb];
+        }
+      } else {
+        lowerData[P_vcf_kb] = value;
+        if (keyMode == 2) {
+          upperData[P_vcf_kb] = lowerData[P_vcf_kb];
+        }
+      }
+      vcf_kb_str = value;
+      updatevcf_kb(1);
+      break;
 
-      // case CCvcf_env:
-      //   vcf_env = value;
-      //   updatevcf_env(1);
-      //   break;
+    case CCvcf_env:
+      if (upperSW) {
+        upperData[P_vcf_env] = value;
+        if (keyMode == 1) {
+          lowerData[P_vcf_env] = upperData[P_vcf_env];
+        }
+      } else {
+        lowerData[P_vcf_env] = value;
+        if (keyMode == 2) {
+          upperData[P_vcf_env] = lowerData[P_vcf_env];
+        }
+      }
+      vcf_env_str = value;
+      updatevcf_env(1);
+      break;
 
-      // case CCvcf_lfo1:
-      //   vcf_lfo1 = value;
-      //   updatevcf_lfo1(1);
-      //   break;
+    case CCvcf_lfo1:
+      if (upperSW) {
+        upperData[P_vcf_lfo1] = value;
+        if (keyMode == 1) {
+          lowerData[P_vcf_lfo1] = upperData[P_vcf_lfo1];
+        }
+      } else {
+        lowerData[P_vcf_lfo1] = value;
+        if (keyMode == 2) {
+          upperData[P_vcf_lfo1] = lowerData[P_vcf_lfo1];
+        }
+      }
+      vcf_lfo1_str = value;
+      updatevcf_lfo1(1);
+      break;
 
-      // case CCvcf_lfo2:
-      //   vcf_lfo2 = value;
-      //   updatevcf_lfo2(1);
-      //   break;
+    case CCvcf_lfo2:
+      if (upperSW) {
+        upperData[P_vcf_lfo2] = value;
+        if (keyMode == 1) {
+          lowerData[P_vcf_lfo2] = upperData[P_vcf_lfo2];
+        }
+      } else {
+        lowerData[P_vcf_lfo2] = value;
+        if (keyMode == 2) {
+          upperData[P_vcf_lfo2] = lowerData[P_vcf_lfo2];
+        }
+      }
+      vcf_lfo2_str = value;
+      updatevcf_lfo2(1);
+      break;
 
-      // case CCvca_mod:
-      //   vca_mod = value;
-      //   updatevca_mod(1);
-      //   break;
+    case CCvca_mod:
+      if (upperSW) {
+        upperData[P_vca_mod] = value;
+        if (keyMode == 1) {
+          lowerData[P_vca_mod] = upperData[P_vca_mod];
+        }
+      } else {
+        lowerData[P_vca_mod] = value;
+        if (keyMode == 2) {
+          upperData[P_vca_mod] = lowerData[P_vca_mod];
+        }
+      }
+      vca_mod_str = value;
+      updatevca_mod(1);
+      break;
 
-      // case CCat_vib:
-      //   at_vib = value;
-      //   updateat_vib(1);
-      //   break;
+    case CCat_vib:
+      at_vib = value;
+      at_vib_str = value;
+      updateat_vib(1);
+      break;
 
-      // case CCat_lpf:
-      //   at_lpf = value;
-      //   updateat_lpf(1);
-      //   break;
+    case CCat_lpf:
+      at_lpf = value;
+      at_lpf_str = value;
+      updateat_lpf(1);
+      break;
 
-      // case CCat_vol:
-      //   at_vol = value;
-      //   updateat_vol(1);
-      //   break;
+    case CCat_vol:
+      at_vol = value;
+      at_vol_str = value;
+      updateat_vol(1);
+      break;
 
-      // case CCbalance:
-      //   balance = value;
-      //   updatebalance(1);
-      //   break;
+    case CCbalance:
+      balance = value;
+      balance_str = value;
+      updatebalance(1);
+      break;
 
-      // case CCvolume:
-      //   volume = value;
-      //   updatevolume(1);
-      //   break;
+    case CCvolume:
+      volume = value;
+      volume_str = value;
+      updatevolume(1);
+      break;
 
-      // case CCportamento:
-      //   portamento = value;
-      //   updateportamento(1);
-      //   break;
+    case CCportamento:
+      portamento = value;
+      portamento_str = value;
+      updateportamento(1);
+      break;
 
-      // case CCtime1:
-      //   time1 = value;
-      //   updatetime1(1);
-      //   break;
+    case CCtime1:
+      if (upperSW) {
+        upperData[P_time1] = value;
+        if (keyMode == 1) {
+          lowerData[P_time1] = upperData[P_time1];
+        }
+      } else {
+        lowerData[P_time1] = value;
+        if (keyMode == 2) {
+          upperData[P_time1] = lowerData[P_time1];
+        }
+      }
+      time1_str = value;
+      updatetime1(1);
+      break;
 
-      // case CClevel1:
-      //   level1 = value;
-      //   updatelevel1(1);
-      //   break;
+    case CClevel1:
+      if (upperSW) {
+        upperData[P_level1] = value;
+        if (keyMode == 1) {
+          lowerData[P_level1] = upperData[P_level1];
+        }
+      } else {
+        lowerData[P_level1] = value;
+        if (keyMode == 2) {
+          upperData[P_level1] = lowerData[P_level1];
+        }
+      }
+      level1_str = value;
+      updatelevel1(1);
+      break;
 
-      // case CCtime2:
-      //   time2 = value;
-      //   updatetime2(1);
-      //   break;
+    case CCtime2:
+      if (upperSW) {
+        upperData[P_time2] = value;
+        if (keyMode == 1) {
+          lowerData[P_time2] = upperData[P_time2];
+        }
+      } else {
+        lowerData[P_time2] = value;
+        if (keyMode == 2) {
+          upperData[P_time2] = lowerData[P_time2];
+        }
+      }
+      time2_str = value;
+      updatetime2(1);
+      break;
 
-      // case CClevel2:
-      //   level2 = value;
-      //   updatelevel2(1);
-      //   break;
+    case CClevel2:
+      if (upperSW) {
+        upperData[P_level2] = value;
+        if (keyMode == 1) {
+          lowerData[P_level2] = upperData[P_level2];
+        }
+      } else {
+        lowerData[P_level2] = value;
+        if (keyMode == 2) {
+          upperData[P_level2] = lowerData[P_level2];
+        }
+      }
+      level2_str = value;
+      updatelevel2(1);
+      break;
 
-      // case CCtime3:
-      //   time3 = value;
-      //   updatetime3(1);
-      //   break;
+    case CCtime3:
+      if (upperSW) {
+        upperData[P_time3] = value;
+        if (keyMode == 1) {
+          lowerData[P_time3] = upperData[P_time3];
+        }
+      } else {
+        lowerData[P_time3] = value;
+        if (keyMode == 2) {
+          upperData[P_time3] = lowerData[P_time3];
+        }
+      }
+      time3_str = value;
+      updatetime3(1);
+      break;
 
-      // case CClevel3:
-      //   level3 = value;
-      //   updatelevel3(1);
-      //   break;
+    case CClevel3:
+      if (upperSW) {
+        upperData[P_level3] = value;
+        if (keyMode == 1) {
+          lowerData[P_level3] = upperData[P_level3];
+        }
+      } else {
+        lowerData[P_level3] = value;
+        if (keyMode == 2) {
+          upperData[P_level3] = lowerData[P_level3];
+        }
+      }
+      level3_str = value;
+      updatelevel3(1);
+      break;
 
-      // case CCtime4:
-      //   time4 = value;
-      //   updatetime4(1);
-      //   break;
+    case CCtime4:
+      if (upperSW) {
+        upperData[P_time4] = value;
+        if (keyMode == 1) {
+          lowerData[P_time4] = upperData[P_time4];
+        }
+      } else {
+        lowerData[P_time4] = value;
+        if (keyMode == 2) {
+          upperData[P_time4] = lowerData[P_time4];
+        }
+      }
+      time4_str = value;
+      updatetime4(1);
+      break;
 
       // case CC5stage_mode:
       //   env5stage_mode = value;
       //   updateenv5stage_mode(1);
       //   break;
 
-      // case CC2time1:
-      //   env2_time1 = value;
-      //   updateenv2_time1(1);
-      //   break;
+    case CC2time1:
+      if (upperSW) {
+        upperData[P_env2_time1] = value;
+        if (keyMode == 1) {
+          lowerData[P_env2_time1] = upperData[P_env2_time1];
+        }
+      } else {
+        lowerData[P_env2_time1] = value;
+        if (keyMode == 2) {
+          upperData[P_env2_time1] = lowerData[P_env2_time1];
+        }
+      }
+      env2_time1_str = value;
+      updateenv2_time1(1);
+      break;
 
-      // case CC2level1:
-      //   env2_level1 = value;
-      //   updateenv2_level1(1);
-      //   break;
+    case CC2level1:
+      if (upperSW) {
+        upperData[P_env2_level1] = value;
+        if (keyMode == 1) {
+          lowerData[P_env2_level1] = upperData[P_env2_level1];
+        }
+      } else {
+        lowerData[P_env2_level1] = value;
+        if (keyMode == 2) {
+          upperData[P_env2_level1] = lowerData[P_env2_level1];
+        }
+      }
+      env2_level1_str = value;
+      updateenv2_level1(1);
+      break;
 
-      // case CC2time2:
-      //   env2_time2 = value;
-      //   updateenv2_time2(1);
-      //   break;
+    case CC2time2:
+      if (upperSW) {
+        upperData[P_env2_time2] = value;
+        if (keyMode == 1) {
+          lowerData[P_env2_time2] = upperData[P_env2_time2];
+        }
+      } else {
+        lowerData[P_env2_time2] = value;
+        if (keyMode == 2) {
+          upperData[P_env2_time2] = lowerData[P_env2_time2];
+        }
+      }
+      env2_time2_str = value;
+      updateenv2_time2(1);
+      break;
 
-      // case CC2level2:
-      //   env2_level2 = value;
-      //   updateenv2_level2(1);
-      //   break;
+    case CC2level2:
+      if (upperSW) {
+        upperData[P_env2_level2] = value;
+        if (keyMode == 1) {
+          lowerData[P_env2_level2] = upperData[P_env2_level2];
+        }
+      } else {
+        lowerData[P_env2_level2] = value;
+        if (keyMode == 2) {
+          upperData[P_env2_level2] = lowerData[P_env2_level2];
+        }
+      }
+      env2_level2_str = value;
+      updateenv2_level2(1);
+      break;
 
-      // case CC2time3:
-      //   env2_time3 = value;
-      //   updateenv2_time3(1);
-      //   break;
+    case CC2time3:
+      if (upperSW) {
+        upperData[P_env2_time3] = value;
+        if (keyMode == 1) {
+          lowerData[P_env2_time3] = upperData[P_env2_time3];
+        }
+      } else {
+        lowerData[P_env2_time3] = value;
+        if (keyMode == 2) {
+          upperData[P_env2_time3] = lowerData[P_env2_time3];
+        }
+      }
+      env2_time3_str = value;
+      updateenv2_time3(1);
+      break;
 
-      // case CC2level3:
-      //   env2_level3 = value;
-      //   updateenv2_level3(1);
-      //   break;
+    case CC2level3:
+      if (upperSW) {
+        upperData[P_env2_level3] = value;
+        if (keyMode == 1) {
+          lowerData[P_env2_level3] = upperData[P_env2_level3];
+        }
+      } else {
+        lowerData[P_env2_level3] = value;
+        if (keyMode == 2) {
+          upperData[P_env2_level3] = lowerData[P_env2_level3];
+        }
+      }
+      env2_level3_str = value;
+      updateenv2_level3(1);
+      break;
 
-      // case CC2time4:
-      //   env2_time4 = value;
-      //   updateenv2_time4(1);
-      //   break;
+    case CC2time4:
+      if (upperSW) {
+        upperData[P_env2_time4] = value;
+        if (keyMode == 1) {
+          lowerData[P_env2_time4] = upperData[P_env2_time4];
+        }
+      } else {
+        lowerData[P_env2_time4] = value;
+        if (keyMode == 2) {
+          upperData[P_env2_time4] = lowerData[P_env2_time4];
+        }
+      }
+      env2_time4_str = value;
+      updateenv2_time4(1);
+      break;
 
       // case CC25stage_mode:
       //   env2_5stage_mode = value;
       //   updateenv2_env5stage_mode(1);
       //   break;
 
-      // case CCattack:
-      //   attack = value;
-      //   updateattack(1);
-      //   break;
+    case CCattack:
+      if (upperSW) {
+        upperData[P_attack] = value;
+        if (keyMode == 1) {
+          lowerData[P_attack] = upperData[P_attack];
+        }
+      } else {
+        lowerData[P_attack] = value;
+        if (keyMode == 2) {
+          upperData[P_attack] = lowerData[P_attack];
+        }
+      }
+      attack_str = value;
+      updateattack(1);
+      break;
 
-      // case CC4attack:
-      //   env4_attack = value;
-      //   updateenv4_attack(1);
-      //   break;
+    case CCdecay:
+      if (upperSW) {
+        upperData[P_decay] = value;
+        if (keyMode == 1) {
+          lowerData[P_decay] = upperData[P_decay];
+        }
+      } else {
+        lowerData[P_decay] = value;
+        if (keyMode == 2) {
+          upperData[P_decay] = lowerData[P_decay];
+        }
+      }
+      decay_str = value;
+      updatedecay(1);
+      break;
 
-      // case CCdecay:
-      //   decay = value;
-      //   updatedecay(1);
-      //   break;
+    case CCsustain:
+      if (upperSW) {
+        upperData[P_sustain] = value;
+        if (keyMode == 1) {
+          lowerData[P_sustain] = upperData[P_sustain];
+        }
+      } else {
+        lowerData[P_sustain] = value;
+        if (keyMode == 2) {
+          upperData[P_sustain] = lowerData[P_sustain];
+        }
+      }
+      sustain_str = value;
+      updatesustain(1);
+      break;
 
-      // case CC4decay:
-      //   env4_decay = value;
-      //   updateenv4_decay(1);
-      //   break;
+    case CCrelease:
+      if (upperSW) {
+        upperData[P_release] = value;
+        if (keyMode == 1) {
+          lowerData[P_release] = upperData[P_release];
+        }
+      } else {
+        lowerData[P_release] = value;
+        if (keyMode == 2) {
+          upperData[P_release] = lowerData[P_release];
+        }
+      }
+      release_str = value;
+      updaterelease(1);
+      break;
 
-      // case CCsustain:
-      //   sustain = value;
-      //   updatesustain(1);
-      //   break;
+    case CC4attack:
+      if (upperSW) {
+        upperData[P_env4_attack] = value;
+        if (keyMode == 1) {
+          lowerData[P_env4_attack] = upperData[P_env4_attack];
+        }
+      } else {
+        lowerData[P_env4_attack] = value;
+        if (keyMode == 2) {
+          upperData[P_env4_attack] = lowerData[P_env4_attack];
+        }
+      }
+      env4_attack_str = value;
+      updateenv4_attack(1);
+      break;
 
-      // case CC4sustain:
-      //   env4_sustain = value;
-      //   updateenv4_sustain(1);
-      //   break;
+    case CC4decay:
+      if (upperSW) {
+        upperData[P_env4_decay] = value;
+        if (keyMode == 1) {
+          lowerData[P_env4_decay] = upperData[P_env4_decay];
+        }
+      } else {
+        lowerData[P_env4_decay] = value;
+        if (keyMode == 2) {
+          upperData[P_env4_decay] = lowerData[P_env4_decay];
+        }
+      }
+      env4_decay_str = value;
+      updateenv4_decay(1);
+      break;
 
-      // case CCrelease:
-      //   release = value;
-      //   updaterelease(1);
-      //   break;
+    case CC4sustain:
+      if (upperSW) {
+        upperData[P_env4_sustain] = value;
+        if (keyMode == 1) {
+          lowerData[P_env4_sustain] = upperData[P_env4_sustain];
+        }
+      } else {
+        lowerData[P_env4_sustain] = value;
+        if (keyMode == 2) {
+          upperData[P_env4_sustain] = lowerData[P_env4_sustain];
+        }
+      }
+      env4_sustain_str = value;
+      updateenv4_sustain(1);
+      break;
 
-      // case CC4release:
-      //   env4_release = value;
-      //   updateenv4_release(1);
-      //   break;
+    case CC4release:
+      if (upperSW) {
+        upperData[P_env4_release] = value;
+        if (keyMode == 1) {
+          lowerData[P_env4_release] = upperData[P_env4_release];
+        }
+      } else {
+        lowerData[P_env4_release] = value;
+        if (keyMode == 2) {
+          upperData[P_env4_release] = lowerData[P_env4_release];
+        }
+      }
+      env4_release_str = value;
+      updateenv4_release(1);
+      break;
 
       // case CCadsr_mode:
       //   adsr_mode = value;
@@ -840,105 +1321,105 @@ void myControlChange(byte channel, byte control, int value) {
       updateunison_button(1);
       break;
 
-    // case CClfo1_sync:
-    //   updatelfo1_sync(1);
-    //   break;
+      // case CClfo1_sync:
+      //   updatelfo1_sync(1);
+      //   break;
 
-    // case CClfo2_sync:
-    //   updatelfo2_sync(1);
-    //   break;
+      // case CClfo2_sync:
+      //   updatelfo2_sync(1);
+      //   break;
 
-    // case CCdco1_PWM_dyn:
-    //   updatedco1_PWM_dyn(1);
-    //   break;
+      // case CCdco1_PWM_dyn:
+      //   updatedco1_PWM_dyn(1);
+      //   break;
 
-    // case CCdco2_PWM_dyn:
-    //   updatedco2_PWM_dyn(1);
-    //   break;
+      // case CCdco2_PWM_dyn:
+      //   updatedco2_PWM_dyn(1);
+      //   break;
 
-    // case CCdco1_PWM_env_source:
-    //   updatedco1_PWM_env_source(1);
-    //   break;
+      // case CCdco1_PWM_env_source:
+      //   updatedco1_PWM_env_source(1);
+      //   break;
 
-    // case CCdco2_PWM_env_source:
-    //   updatedco2_PWM_env_source(1);
-    //   break;
+      // case CCdco2_PWM_env_source:
+      //   updatedco2_PWM_env_source(1);
+      //   break;
 
-    // case CCdco1_PWM_lfo_source:
-    //   updatedco1_PWM_lfo_source(1);
-    //   break;
+      // case CCdco1_PWM_lfo_source:
+      //   updatedco1_PWM_lfo_source(1);
+      //   break;
 
-    // case CCdco2_PWM_lfo_source:
-    //   updatedco2_PWM_lfo_source(1);
-    //   break;
+      // case CCdco2_PWM_lfo_source:
+      //   updatedco2_PWM_lfo_source(1);
+      //   break;
 
-    // case CCdco1_pitch_dyn:
-    //   updatedco1_pitch_dyn(1);
-    //   break;
+      // case CCdco1_pitch_dyn:
+      //   updatedco1_pitch_dyn(1);
+      //   break;
 
-    // case CCdco2_pitch_dyn:
-    //   updatedco2_pitch_dyn(1);
-    //   break;
+      // case CCdco2_pitch_dyn:
+      //   updatedco2_pitch_dyn(1);
+      //   break;
 
-    // case CCdco1_pitch_lfo_source:
-    //   updatedco1_pitch_lfo_source(1);
-    //   break;
+      // case CCdco1_pitch_lfo_source:
+      //   updatedco1_pitch_lfo_source(1);
+      //   break;
 
-    // case CCdco2_pitch_lfo_source:
-    //   updatedco2_pitch_lfo_source(1);
-    //   break;
+      // case CCdco2_pitch_lfo_source:
+      //   updatedco2_pitch_lfo_source(1);
+      //   break;
 
-    // case CCdco1_pitch_env_source:
-    //   updatedco1_pitch_env_source(1);
-    //   break;
+      // case CCdco1_pitch_env_source:
+      //   updatedco1_pitch_env_source(1);
+      //   break;
 
-    // case CCdco2_pitch_env_source:
-    //   updatedco2_pitch_env_source(1);
-    //   break;
+      // case CCdco2_pitch_env_source:
+      //   updatedco2_pitch_env_source(1);
+      //   break;
 
     case CCeditMode:
       updateeditMode(1);
       break;
 
-    // case CCdco_mix_env_source:
-    //   updatedco_mix_env_source(1);
-    //   break;
+      // case CCdco_mix_env_source:
+      //   updatedco_mix_env_source(1);
+      //   break;
 
-    // case CCdco_mix_dyn:
-    //   updatedco_mix_dyn(1);
-    //   break;
+      // case CCdco_mix_dyn:
+      //   updatedco_mix_dyn(1);
+      //   break;
 
-    // case CCvcf_env_source:
-    //   updatevcf_env_source(1);
-    //   break;
+      // case CCvcf_env_source:
+      //   updatevcf_env_source(1);
+      //   break;
 
-    // case CCvcf_dyn:
-    //   updatevcf_dyn(1);
-    //   break;
+      // case CCvcf_dyn:
+      //   updatevcf_dyn(1);
+      //   break;
 
-    // case CCvca_env_source:
-    //   updatevca_env_source(1);
-    //   break;
+      // case CCvca_env_source:
+      //   updatevca_env_source(1);
+      //   break;
 
-    // case CCvca_dyn:
-    //   updatevca_dyn(1);
-    //   break;
+      // case CCvca_dyn:
+      //   updatevca_dyn(1);
+      //   break;
 
-    // case CCchorus_sw:
-    //   updatechorus(1);
-    //   break;
+      // case CCchorus_sw:
+      //   updatechorus(1);
+      //   break;
 
-    // case CCportamento_sw:
-    //   updateportamento_sw(1);
-    //   break;
+      // case CCportamento_sw:
+      //   updateportamento_sw(1);
+      //   break;
 
-    // case CCenv5stage:
-    //   updateenv5stage(1);
-    //   break;
+      // case CCenv5stage:
+      //   updateenv5stage(1);
+      //   break;
 
-    // case CCadsr:
-    //   updateadsr(1);
-    //   break;
+      // case CCadsr:
+      //   updateadsr(1);
+      //   break;
   }
 }
 
@@ -950,6 +1431,69 @@ void sendOffset(uint8_t offset, uint8_t parameter) {
     oldkeyMode = keyMode;
     oldupperSW = upperSW;
   }
+}
+
+void sendSerialOffset(uint8_t extra, uint8_t offset) {
+  if (upperSW) {
+    board = 0xF9;
+  } else {
+    board = 0xF1;
+  }
+
+  if (keyMode == 1 || keyMode == 2) {
+    board = 0xF4;
+  }
+
+  Serial3.write(board);
+  Serial3.write(extra);
+  Serial3.write(offset);
+  Serial3.flush();
+}
+
+void sendExtraOffset(uint8_t offset, uint8_t parameter) {
+  if (EXTRA_OFFSET != offset || LAST_PARAM != parameter || keyMode != oldkeyMode || upperSW != oldupperSW) {
+    sendExtraOffsetSerial(0xFD, offset);
+    EXTRA_OFFSET = offset;
+    LAST_PARAM = parameter;
+    oldkeyMode = keyMode;
+    oldupperSW = upperSW;
+  }
+}
+
+void sendExtraOffsetSerial(uint8_t extra, uint8_t offset) {
+  Serial3.write(extra);
+  Serial3.write(offset);
+  Serial3.flush();
+}
+
+void sendNoOffset(uint8_t parameter) {
+  if (LAST_PARAM != parameter || keyMode != oldkeyMode || upperSW != oldupperSW) {
+    sendSerialBoard(parameter);
+    LAST_PARAM = parameter;
+    oldkeyMode = keyMode;
+    oldupperSW = upperSW;
+  }
+}
+
+void sendSerialBoard(uint8_t parameter) {
+  if (upperSW) {
+    board = 0xF9;
+  } else {
+    board = 0xF1;
+  }
+
+  if (keyMode == 1 || keyMode == 2 || parameter == 0xB0) {
+    board = 0xF4;
+  }
+
+  Serial3.write(board);
+  Serial3.flush();
+}
+
+void sendParamValue(uint8_t param, uint8_t value) {
+  Serial3.write(param);
+  Serial3.write((uint8_t)(value & 0x7F));  // keep 0..127
+  Serial3.flush();
 }
 
 FLASHMEM void updatelfo1_wave(bool announce) {
@@ -1197,161 +1741,239 @@ FLASHMEM void updatedco1_PWM_lfo(bool announce) {
   }
 }
 
-// FLASHMEM void updatedco1_pitch_env(bool announce) {
-//   dco1_pitch_env_str = map(dco1_pitch_env, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("DCO1 ENV", String(dco1_pitch_env_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CCdco1_pitch_env, dco1_pitch_env);
-// }
+FLASHMEM void updatedco1_pitch_env(bool announce) {
+  sendOffset(0x0C, 0x85);
+  dco1_pitch_env_str = map(dco1_pitch_env_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("DCO1 PITCH ENV", String(dco1_pitch_env_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0x85, (uint8_t)upperData[P_dco1_pitch_env]);
+  } else {
+    sendParamValue(0x85, (uint8_t)lowerData[P_dco1_pitch_env]);
+  }
+}
 
-// FLASHMEM void updatedco1_pitch_lfo(bool announce) {
-//   dco1_pitch_lfo_str = map(dco1_pitch_lfo, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("DCO1 LFO", String(dco1_pitch_lfo));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CCdco1_pitch_lfo, dco1_pitch_lfo);
-// }
+FLASHMEM void updatedco1_pitch_lfo(bool announce) {
+  sendOffset(0x0C, 0x83);
+  dco1_pitch_lfo_str = map(dco1_pitch_lfo_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("DCO1 PITCH LFO", String(dco1_pitch_lfo_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0x83, (uint8_t)upperData[P_dco1_pitch_lfo]);
+  } else {
+    sendParamValue(0x83, (uint8_t)lowerData[P_dco1_pitch_lfo]);
+  }
+}
 
-// FLASHMEM void updatedco1_wave(bool announce) {
-//   dco1_wave_str = map(dco1_wave, 0, 127, 0, 3);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (dco1_wave_str) {
-//       case 0:
-//         showCurrentParameterPage("DCO1 WAVEFORM", "NOIS");
-//         break;
+FLASHMEM void updatedco1_wave(bool announce) {
+  sendOffset(0x0C, 0x81);
+  if (announce && !suppressParamAnnounce) {
+    dco1_wave_str = map(dco1_wave_str, 0, 127, 0, 3);
+    displayMode = 0;
+    switch (dco1_wave_str) {
+      case 0:
+        showCurrentParameterPage("DCO1 WAVEFORM", "NOIS");
+        break;
 
-//       case 1:
-//         showCurrentParameterPage("DCO1 WAVEFORM", "SQR");
-//         break;
+      case 1:
+        showCurrentParameterPage("DCO1 WAVEFORM", "SQR");
+        break;
 
-//       case 2:
-//         showCurrentParameterPage("DCO1 WAVEFORM", "PWM");
-//         break;
+      case 2:
+        showCurrentParameterPage("DCO1 WAVEFORM", "PWM");
+        break;
 
-//       case 3:
-//         showCurrentParameterPage("DCO1 WAVEFORM", "SAW");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (dco1_wave_str) {
-//     case 0:
-//       midiCCOut(CCdco1_wave, 0x00);
-//       break;
+      case 3:
+        showCurrentParameterPage("DCO1 WAVEFORM", "SAW");
+        break;
+    }
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    switch (upperData[P_dco1_wave]) {
+      case 0:
+        sendParamValue(0x81, 0x00);
+        break;
 
-//     case 1:
-//       midiCCOut(CCdco1_wave, 0x20);
-//       break;
+      case 1:
+        sendParamValue(0x81, 0x20);
+        break;
 
-//     case 2:
-//       midiCCOut(CCdco1_wave, 0x40);
-//       break;
+      case 2:
+        sendParamValue(0x81, 0x40);
+        break;
 
-//     case 3:
-//       midiCCOut(CCdco1_wave, 0x60);
-//       break;
-//   }
-// }
+      case 3:
+        sendParamValue(0x81, 0x60);
+        break;
+    }
+  } else {
+    switch (lowerData[P_dco1_wave]) {
+      case 0:
+        sendParamValue(0x81, 0x00);
+        break;
 
-// FLASHMEM void updatedco1_range(bool announce) {
-//   dco1_range_str = map(dco1_range, 0, 127, 0, 3);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (dco1_range_str) {
-//       case 0:
-//         showCurrentParameterPage("DCO1 RANGE", "16");
-//         break;
+      case 1:
+        sendParamValue(0x81, 0x20);
+        break;
 
-//       case 1:
-//         showCurrentParameterPage("DCO1 RANGE", "8");
-//         break;
+      case 2:
+        sendParamValue(0x81, 0x40);
+        break;
 
-//       case 2:
-//         showCurrentParameterPage("DCO1 RANGE", "4");
-//         break;
+      case 3:
+        sendParamValue(0x81, 0x60);
+        break;
+    }
+  }
+}
 
-//       case 3:
-//         showCurrentParameterPage("DCO1 RANGE", "2");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (dco1_range_str) {
-//     case 0:
-//       midiCCOut(CCdco1_range, 0x00);
-//       break;
+FLASHMEM void updatedco1_range(bool announce) {
+  sendOffset(0x0C, 0x80);
+  if (announce && !suppressParamAnnounce) {
+    dco1_range_str = map(dco1_range_str, 0, 127, 0, 3);
+    displayMode = 0;
+    switch (dco1_range_str) {
+      case 0:
+        showCurrentParameterPage("DCO1 RANGE", "16");
+        break;
 
-//     case 1:
-//       midiCCOut(CCdco1_range, 0x20);
-//       break;
+      case 1:
+        showCurrentParameterPage("DCO1 RANGE", "8");
+        break;
 
-//     case 2:
-//       midiCCOut(CCdco1_range, 0x40);
-//       break;
+      case 2:
+        showCurrentParameterPage("DCO1 RANGE", "4");
+        break;
 
-//     case 3:
-//       midiCCOut(CCdco1_range, 0x60);
-//       break;
-//   }
-// }
+      case 3:
+        showCurrentParameterPage("DCO1 RANGE", "2");
+        break;
+    }
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    switch (upperData[P_dco1_range]) {
+      case 0:
+        sendParamValue(0x80, 0x00);
+        break;
 
-// FLASHMEM void updatedco1_tune(bool announce) {
-//   dco1_tune_str = map(dco1_tune, 0, 127, -12, 12);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("DCO1 TUNING", String(dco1_tune_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CCdco1_tune, dco1_tune);
-// }
+      case 1:
+        sendParamValue(0x80, 0x20);
+        break;
 
-// FLASHMEM void updatedco1_mode(bool announce) {
-//   dco1_mode_str = map(dco1_mode, 0, 127, 0, 3);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (dco1_mode_str) {
-//       case 0:
-//         showCurrentParameterPage("DCO XMOD", "OFF");
-//         break;
+      case 2:
+        sendParamValue(0x80, 0x40);
+        break;
 
-//       case 1:
-//         showCurrentParameterPage("DCO XMOD", "SYN1");
-//         break;
+      case 3:
+        sendParamValue(0x80, 0x60);
+        break;
+    }
+  } else {
+    switch (lowerData[P_dco1_range]) {
+      case 0:
+        sendParamValue(0x80, 0x00);
+        break;
 
-//       case 2:
-//         showCurrentParameterPage("DCO XMOD", "SYN2");
-//         break;
+      case 1:
+        sendParamValue(0x80, 0x20);
+        break;
 
-//       case 3:
-//         showCurrentParameterPage("DCO XMOD", "XMOD");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (dco1_mode_str) {
-//     case 0:
-//       midiCCOut(CCdco1_mode, 0x00);
-//       break;
+      case 2:
+        sendParamValue(0x80, 0x40);
+        break;
 
-//     case 1:
-//       midiCCOut(CCdco1_mode, 0x20);
-//       break;
+      case 3:
+        sendParamValue(0x80, 0x60);
+        break;
+    }
+  }
+}
 
-//     case 2:
-//       midiCCOut(CCdco1_mode, 0x40);
-//       break;
+FLASHMEM void updatedco1_tune(bool announce) {
+  sendOffset(0x0C, 0x82);
+  dco1_tune_str = map(dco1_tune_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("DCO1 COARSE", String(dco1_tune_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0x82, (uint8_t)upperData[P_dco1_tune]);
+  } else {
+    sendParamValue(0x82, (uint8_t)lowerData[P_dco1_tune]);
+  }
+}
 
-//     case 3:
-//       midiCCOut(CCdco1_mode, 0x60);
-//       break;
-//   }
-// }
+FLASHMEM void updatedco1_xmod(bool announce) {
+  sendOffset(0x0C, 0x88);
+  if (announce && !suppressParamAnnounce) {
+    dco1_mode_str = map(dco1_mode_str, 0, 127, 0, 3);
+    displayMode = 0;
+    switch (dco1_mode_str) {
+      case 0:
+        showCurrentParameterPage("DCO X-MOD", "OFF");
+        break;
+
+      case 1:
+        showCurrentParameterPage("DCO X-MOD", "SYNC1");
+        break;
+
+      case 2:
+        showCurrentParameterPage("DCO X-MOD", "SYNC2");
+        break;
+
+      case 3:
+        showCurrentParameterPage("DCO X-MOD", "X-MOD");
+        break;
+    }
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    switch (upperData[P_dco1_mode]) {
+      case 0:
+        sendParamValue(0x88, 0x00);
+        break;
+
+      case 1:
+        sendParamValue(0x88, 0x20);
+        break;
+
+      case 2:
+        sendParamValue(0x88, 0x40);
+        break;
+
+      case 3:
+        sendParamValue(0x88, 0x60);
+        break;
+    }
+  } else {
+    switch (lowerData[P_dco1_mode]) {
+      case 0:
+        sendParamValue(0x88, 0x00);
+        break;
+
+      case 1:
+        sendParamValue(0x88, 0x20);
+        break;
+
+      case 2:
+        sendParamValue(0x88, 0x40);
+        break;
+
+      case 3:
+        sendParamValue(0x88, 0x60);
+        break;
+    }
+  }
+}
 
 FLASHMEM void updatelfo2_wave(bool announce) {
   sendOffset(0x0D, 0xA1);
@@ -1518,373 +2140,609 @@ FLASHMEM void updatedco2_PWM_lfo(bool announce) {
   }
 }
 
-// FLASHMEM void updatedco2_pitch_env(bool announce) {
-//   dco2_pitch_env_str = map(dco2_pitch_env, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("DCO2 ENV", String(dco2_pitch_env_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CCdco2_pitch_env, dco2_pitch_env);
-// }
+FLASHMEM void updatedco2_pitch_env(bool announce) {
+  sendOffset(0x0D, 0x85);
+  dco2_pitch_env_str = map(dco2_pitch_env_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("DCO2 PITCH ENV", String(dco2_pitch_env_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0x85, (uint8_t)upperData[P_dco2_pitch_env]);
+  } else {
+    sendParamValue(0x85, (uint8_t)lowerData[P_dco2_pitch_env]);
+  }
+}
 
-// FLASHMEM void updatedco2_pitch_lfo(bool announce) {
-//   dco2_pitch_lfo_str = map(dco2_pitch_lfo, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("DCO2 LFO", String(dco2_pitch_lfo_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CCdco2_pitch_lfo, dco2_pitch_lfo);
-// }
+FLASHMEM void updatedco2_pitch_lfo(bool announce) {
+  sendOffset(0x0D, 0x83);
+  dco2_pitch_lfo_str = map(dco2_pitch_lfo_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("DCO2 PITCH LFO", String(dco2_pitch_lfo_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0x83, (uint8_t)upperData[P_dco2_pitch_lfo]);
+  } else {
+    sendParamValue(0x83, (uint8_t)lowerData[P_dco2_pitch_lfo]);
+  }
+}
 
-// FLASHMEM void updatedco2_wave(bool announce) {
-//   dco2_wave_str = map(dco2_wave, 0, 127, 0, 3);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (dco2_wave_str) {
-//       case 0:
-//         showCurrentParameterPage("DCO2 WAVEFORM", "NOIS");
-//         break;
+FLASHMEM void updatedco2_wave(bool announce) {
+  sendOffset(0x0D, 0x81);
+  if (announce && !suppressParamAnnounce) {
+    dco2_wave_str = map(dco2_wave_str, 0, 127, 0, 3);
+    displayMode = 0;
+    switch (dco2_wave_str) {
+      case 0:
+        showCurrentParameterPage("DCO2 WAVEFORM", "NOIS");
+        break;
 
-//       case 1:
-//         showCurrentParameterPage("DCO2 WAVEFORM", "SQR");
-//         break;
+      case 1:
+        showCurrentParameterPage("DCO2 WAVEFORM", "SQR");
+        break;
 
-//       case 2:
-//         showCurrentParameterPage("DCO2 WAVEFORM", "PWM");
-//         break;
+      case 2:
+        showCurrentParameterPage("DCO2 WAVEFORM", "PWM");
+        break;
 
-//       case 3:
-//         showCurrentParameterPage("DCO2 WAVEFORM", "SAW");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (dco2_wave_str) {
-//     case 0:
-//       midiCCOut(CCdco2_wave, 0x00);
-//       break;
+      case 3:
+        showCurrentParameterPage("DCO2 WAVEFORM", "SAW");
+        break;
+    }
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    switch (upperData[P_dco2_wave]) {
+      case 0:
+        sendParamValue(0x81, 0x00);
+        break;
 
-//     case 1:
-//       midiCCOut(CCdco2_wave, 0x20);
-//       break;
+      case 1:
+        sendParamValue(0x81, 0x20);
+        break;
 
-//     case 2:
-//       midiCCOut(CCdco2_wave, 0x40);
-//       break;
+      case 2:
+        sendParamValue(0x81, 0x40);
+        break;
 
-//     case 3:
-//       midiCCOut(CCdco2_wave, 0x60);
-//       break;
-//   }
-// }
+      case 3:
+        sendParamValue(0x81, 0x60);
+        break;
+    }
+  } else {
+    switch (lowerData[P_dco2_wave]) {
+      case 0:
+        sendParamValue(0x81, 0x00);
+        break;
 
-// FLASHMEM void updatedco2_range(bool announce) {
-//   dco2_range_str = map(dco2_range, 0, 127, 0, 3);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (dco2_range_str) {
-//       case 0:
-//         showCurrentParameterPage("DCO2 RANGE", "16");
-//         break;
+      case 1:
+        sendParamValue(0x81, 0x20);
+        break;
 
-//       case 1:
-//         showCurrentParameterPage("DCO2 RANGE", "8");
-//         break;
+      case 2:
+        sendParamValue(0x81, 0x40);
+        break;
 
-//       case 2:
-//         showCurrentParameterPage("DCO2 RANGE", "4");
-//         break;
+      case 3:
+        sendParamValue(0x81, 0x60);
+        break;
+    }
+  }
+}
 
-//       case 3:
-//         showCurrentParameterPage("DCO2 RANGE", "2");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (dco2_range_str) {
-//     case 0:
-//       midiCCOut(CCdco2_range, 0x00);
-//       break;
+FLASHMEM void updatedco2_range(bool announce) {
+  sendOffset(0x0D, 0x80);
+  if (announce && !suppressParamAnnounce) {
+    dco2_range_str = map(dco2_range_str, 0, 127, 0, 3);
+    displayMode = 0;
+    switch (dco2_range_str) {
+      case 0:
+        showCurrentParameterPage("DCO2 RANGE", "16");
+        break;
 
-//     case 1:
-//       midiCCOut(CCdco2_range, 0x20);
-//       break;
+      case 1:
+        showCurrentParameterPage("DCO2 RANGE", "8");
+        break;
 
-//     case 2:
-//       midiCCOut(CCdco2_range, 0x40);
-//       break;
+      case 2:
+        showCurrentParameterPage("DCO2 RANGE", "4");
+        break;
 
-//     case 3:
-//       midiCCOut(CCdco2_range, 0x60);
-//       break;
-//   }
-// }
+      case 3:
+        showCurrentParameterPage("DCO2 RANGE", "2");
+        break;
+    }
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    switch (upperData[P_dco2_range]) {
+      case 0:
+        sendParamValue(0x80, 0x00);
+        break;
 
-// FLASHMEM void updatedco2_tune(bool announce) {
-//   dco2_tune_str = map(dco2_tune, 0, 127, -12, 12);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("DCO2 TUNING", String(dco2_tune_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CCdco2_tune, dco2_tune);
-// }
+      case 1:
+        sendParamValue(0x80, 0x20);
+        break;
 
-// FLASHMEM void updatedco2_fine(bool announce) {
-//   dco2_fine_str = map(dco2_fine, 0, 127, -50, 50);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     if (dco2_fine_str > 0) {
-//       showCurrentParameterPage("DCO2 FINE", "+" + String(dco2_fine_str));
-//     } else {
-//       showCurrentParameterPage("DCO2 FINE", String(dco2_fine_str));
-//     }
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CCdco2_fine, dco2_fine);
-// }
+      case 2:
+        sendParamValue(0x80, 0x40);
+        break;
 
-// FLASHMEM void updatedco1_level(bool announce) {
-//   dco1_level_str = map(dco1_level, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("MIX DCO1", String(dco1_level_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CCdco1_level, dco1_level);
-// }
+      case 3:
+        sendParamValue(0x80, 0x60);
+        break;
+    }
+  } else {
+    switch (lowerData[P_dco2_range]) {
+      case 0:
+        sendParamValue(0x80, 0x00);
+        break;
 
-// FLASHMEM void updatedco2_level(bool announce) {
-//   dco2_level_str = map(dco2_level, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("MIX DCO2", String(dco2_level_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CCdco2_level, dco2_level);
-// }
+      case 1:
+        sendParamValue(0x80, 0x20);
+        break;
 
-// FLASHMEM void updatedco2_mod(bool announce) {
-//   dco2_mod_str = map(dco2_mod, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("MIX ENV", String(dco2_mod_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CCdco2_mod, dco2_mod);
-// }
+      case 2:
+        sendParamValue(0x80, 0x40);
+        break;
 
-// FLASHMEM void updatevcf_hpf(bool announce) {
-//   vcf_hpf_str = map(vcf_hpf, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("VCF HPF", String(vcf_hpf_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CCvcf_hpf, vcf_hpf);
-// }
+      case 3:
+        sendParamValue(0x80, 0x60);
+        break;
+    }
+  }
+}
 
-// FLASHMEM void updatevcf_cutoff(bool announce) {
-//   vcf_cutoff_str = map(vcf_cutoff, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("VCF FREQ", String(vcf_cutoff_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CCvcf_cutoff, vcf_cutoff);
-// }
+FLASHMEM void updatedco2_tune(bool announce) {
+  sendOffset(0x0D, 0x82);
+  dco2_tune_str = map(dco2_tune_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("DCO2 COARSE", String(dco2_tune_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0x82, (uint8_t)upperData[P_dco2_tune]);
+  } else {
+    sendParamValue(0x82, (uint8_t)lowerData[P_dco2_tune]);
+  }
+}
 
-// FLASHMEM void updatevcf_res(bool announce) {
-//   vcf_res_str = map(vcf_res, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("VCF RES", String(vcf_res_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CCvcf_res, vcf_res);
-// }
+FLASHMEM void updatedco2_fine(bool announce) {
+  sendOffset(0x0D, 0x89);
+  dco2_fine_str = map(dco2_fine_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("DCO2 FINE", String(dco2_fine_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0x89, (uint8_t)upperData[P_dco2_fine]);
+  } else {
+    sendParamValue(0x89, (uint8_t)lowerData[P_dco2_fine]);
+  }
+}
 
-// FLASHMEM void updatevcf_kb(bool announce) {
-//   vcf_kb_str = map(vcf_kb, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("VCF KEY", String(vcf_kb_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CCvcf_kb, vcf_kb);
-// }
+FLASHMEM void updatedco1_level(bool announce) {
+  sendNoOffset(0x90);
+  dco1_level_str = map(dco1_level_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("DCO1 LEVEL", String(dco1_level_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0x90, (uint8_t)upperData[P_dco1_level]);
+  } else {
+    sendParamValue(0x90, (uint8_t)lowerData[P_dco1_level]);
+  }
+}
 
-// FLASHMEM void updatevcf_env(bool announce) {
-//   vcf_env_str = map(vcf_env, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("VCF ENV", String(vcf_env_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CCvcf_env, vcf_env);
-// }
+FLASHMEM void updatedco2_level(bool announce) {
+  sendNoOffset(0x91);
+  dco2_level_str = map(dco2_level_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("DCO2 LEVEL", String(dco2_level_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0x91, (uint8_t)upperData[P_dco2_level]);
+  } else {
+    sendParamValue(0x91, (uint8_t)lowerData[P_dco2_level]);
+  }
+}
 
-// FLASHMEM void updatevcf_lfo1(bool announce) {
-//   vcf_lfo1_str = map(vcf_lfo1, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("VCF LFO1", String(vcf_lfo1_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CCvcf_lfo1, vcf_lfo1);
-// }
+FLASHMEM void updatedco2_mod(bool announce) {
+  sendNoOffset(0x87);
+  dco2_mod_str = map(dco2_mod_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("MIX ENV", String(dco2_mod_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0x87, (uint8_t)upperData[P_dco2_mod]);
+  } else {
+    sendParamValue(0x87, (uint8_t)lowerData[P_dco2_mod]);
+  }
+}
 
-// FLASHMEM void updatevcf_lfo2(bool announce) {
-//   vcf_lfo2_str = map(vcf_lfo2, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("VCF LFO2", String(vcf_lfo2_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CCvcf_lfo2, vcf_lfo2);
-// }
+FLASHMEM void updatevcf_hpf(bool announce) {
+  sendNoOffset(0x95);
+  vcf_hpf_str = map(vcf_hpf_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("VCF HPF", String(vcf_hpf_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0x95, (uint8_t)upperData[P_vcf_hpf]);
+  } else {
+    sendParamValue(0x95, (uint8_t)lowerData[P_vcf_hpf]);
+  }
+}
 
-// FLASHMEM void updatevca_mod(bool announce) {
-//   vca_mod_str = map(vca_mod, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("VCA LEVEL", String(vca_mod_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CCvca_mod, vca_mod);
-// }
+FLASHMEM void updatevcf_cutoff(bool announce) {
+  sendNoOffset(0x96);
+  vcf_cutoff_str = map(vcf_cutoff_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("VCF FREQ", String(vcf_cutoff_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0x96, (uint8_t)upperData[P_vcf_cutoff]);
+  } else {
+    sendParamValue(0x96, (uint8_t)lowerData[P_vcf_cutoff]);
+  }
+}
 
-// FLASHMEM void updateat_vib(bool announce) {
-//   at_vib_str = map(at_vib, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 1;
-//     showCurrentParameterPage("AT VIB", String(at_vib_str));
-//     startParameterDisplay();
-//   }
-//   sendCustomSysEx((midiOutCh - 1), 0x1A, at_vib);
-// }
+FLASHMEM void updatevcf_res(bool announce) {
+  sendNoOffset(0x97);
+  vcf_res_str = map(vcf_res_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("VCF RES", String(vcf_res_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0x97, (uint8_t)upperData[P_vcf_res]);
+  } else {
+    sendParamValue(0x97, (uint8_t)lowerData[P_vcf_res]);
+  }
+}
 
-// FLASHMEM void updateat_lpf(bool announce) {
-//   at_lpf_str = map(at_lpf, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 1;
-//     showCurrentParameterPage("AT VCF", String(at_lpf_str));
-//     startParameterDisplay();
-//   }
-//   sendCustomSysEx((midiOutCh - 1), 0x1B, at_lpf);
-// }
+FLASHMEM void updatevcf_kb(bool announce) {
+  sendNoOffset(0x9B);
+  vcf_kb_str = map(vcf_kb_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("VCF KEYTRACK", String(vcf_kb_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0x9B, (uint8_t)upperData[P_vcf_kb]);
+  } else {
+    sendParamValue(0x9B, (uint8_t)lowerData[P_vcf_kb]);
+  }
+}
 
-// FLASHMEM void updateat_vol(bool announce) {
-//   at_vol_str = map(at_vol, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 1;
-//     showCurrentParameterPage("AT VOL", String(at_vol_str));
-//     startParameterDisplay();
-//   }
-//   sendCustomSysEx((midiOutCh - 1), 0x1C, at_vol);
-// }
+FLASHMEM void updatevcf_env(bool announce) {
+  sendNoOffset(0x9A);
+  vcf_env_str = map(vcf_env_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("VCF ENVELOPE", String(vcf_env_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0x9A, (uint8_t)upperData[P_vcf_env]);
+  } else {
+    sendParamValue(0x9A, (uint8_t)lowerData[P_vcf_env]);
+  }
+}
 
-// FLASHMEM void updatebalance(bool announce) {
-//   balance_str = map(balance, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 1;
-//     showCurrentParameterPage("BALANCE", String(balance_str));
-//     startParameterDisplay();
-//   }
-//   sendCustomSysEx((midiOutCh - 1), 0x12, balance);
-// }
+FLASHMEM void updatevcf_lfo1(bool announce) {
+  sendNoOffset(0x98);
+  vcf_lfo1_str = map(vcf_lfo1_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("VCF LFO1", String(vcf_lfo1_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0x98, (uint8_t)upperData[P_vcf_lfo1]);
+  } else {
+    sendParamValue(0x98, (uint8_t)lowerData[P_vcf_lfo1]);
+  }
+}
 
-// FLASHMEM void updateportamento(bool announce) {
-//   portamento_str = map(portamento, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 1;
-//     showCurrentParameterPage("PORTAMENTO", String(portamento_str));
-//     startParameterDisplay();
-//   }
-//   sendCustomSysEx((midiOutCh - 1), 0x16, portamento);
-// }
+FLASHMEM void updatevcf_lfo2(bool announce) {
+  sendNoOffset(0x99);
+  vcf_lfo2_str = map(vcf_lfo2_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("VCF LFO2", String(vcf_lfo2_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0x99, (uint8_t)upperData[P_vcf_lfo2]);
+  } else {
+    sendParamValue(0x99, (uint8_t)lowerData[P_vcf_lfo2]);
+  }
+}
 
-// FLASHMEM void updatevolume(bool announce) {
-//   volume_str = map(volume, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 1;
-//     showCurrentParameterPage("VOLUME", String(volume_str));
-//     startParameterDisplay();
-//   }
-//   sendCustomSysEx((midiOutCh - 1), 0x19, volume);
-// }
+FLASHMEM void updatevca_mod(bool announce) {
+  sendNoOffset(0x9E);
+  vca_mod_str = map(vca_mod_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("VCA MODULATION", String(vca_mod_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0x9E, (uint8_t)upperData[P_vca_mod]);
+  } else {
+    sendParamValue(0x9E, (uint8_t)lowerData[P_vca_mod]);
+  }
+}
 
-// FLASHMEM void updatetime1(bool announce) {
-//   time1_str = map(time1, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("ENV1 T1", String(time1_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CCtime1, time1);
-// }
+FLASHMEM void updateat_vib(bool announce) {
+  sendExtraOffset(0x01, 0xB8);
+  at_vib_str = map(at_vib_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 1;
+    showCurrentParameterPage("AT VIB", String(at_vib_str));
+    startParameterDisplay();
+  }
+  sendParamValue(0xB8, (uint8_t)at_vib);
+}
 
-// FLASHMEM void updatelevel1(bool announce) {
-//   level1_str = map(level1, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("ENV1 L1", String(level1_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CClevel1, level1);
-// }
+FLASHMEM void updateat_lpf(bool announce) {
+  sendExtraOffset(0x03, 0xB9);
+  at_lpf_str = map(at_lpf_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 1;
+    showCurrentParameterPage("AT VCF", String(at_lpf_str));
+    startParameterDisplay();
+  }
+  sendParamValue(0xB9, (uint8_t)at_lpf);
+}
 
-// FLASHMEM void updatetime2(bool announce) {
-//   time2_str = map(time2, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("ENV1 T2", String(time2_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CCtime2, time2);
-// }
+FLASHMEM void updateat_vol(bool announce) {
+  sendExtraOffset(0x05, 0xBA);
+  at_vol_str = map(at_vol_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 1;
+    showCurrentParameterPage("AT VOL", String(at_vol_str));
+    startParameterDisplay();
+  }
+  sendParamValue(0xBA, (uint8_t)at_vol);
+}
 
-// FLASHMEM void updatelevel2(bool announce) {
-//   level2_str = map(level2, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("ENV1 L2", String(level2_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CClevel2, level2);
-// }
+// File: balance.cpp (or wherever your parameter handlers live)
 
-// FLASHMEM void updatetime3(bool announce) {
-//   time3_str = map(time3, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("ENV1 T3", String(time3_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CCtime3, time3);
-// }
+static inline uint8_t clamp_u8(uint16_t v, uint8_t lo, uint8_t hi) {
+  if (v < lo) return lo;
+  if (v > hi) return hi;
+  return static_cast<uint8_t>(v);
+}
 
-// FLASHMEM void updatelevel3(bool announce) {
-//   level3_str = map(level3, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("ENV1 L3", String(level3_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CClevel3, level3);
-// }
+static inline uint8_t map_u8(uint8_t x, uint8_t in_min, uint8_t in_max, uint8_t out_min, uint8_t out_max) {
+  if (in_max == in_min) return out_min;
+  const uint16_t num = static_cast<uint16_t>(x - in_min) * static_cast<uint16_t>(out_max - out_min);
+  const uint16_t den = static_cast<uint16_t>(in_max - in_min);
+  const uint16_t y = static_cast<uint16_t>(out_min) + (num + den / 2) / den;  // rounded
+  return clamp_u8(y, out_min, out_max);
+}
 
-// FLASHMEM void updatetime4(bool announce) {
-//   time4_str = map(time4, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("ENV1 T4", String(time4_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CCtime4, time4);
-// }
+static void sendParamRaw(uint8_t param, uint8_t value) {
+  Serial3.write(param);
+  Serial3.write(static_cast<uint8_t>(value & 0x7F));
+  Serial3.flush();
+}
+
+// For 0xF4 only: once sent, it can be omitted while updating the same parameter.
+// For other prefixes, always send the prefix (safer / matches your requirement for F1/F9).
+static void sendParamValueWithPrefixLatched(uint8_t prefix, uint8_t param, uint8_t value) {
+  static uint8_t lastLatchedPrefix = 0x00;
+  static uint8_t lastLatchedParam = 0x00;
+
+  const bool isLatchable = (prefix == kBoardBothPrefix);
+  const bool needPrefix =
+    (!isLatchable) || (lastLatchedPrefix != prefix) || (lastLatchedParam != param);
+
+  if (needPrefix) {
+    Serial3.write(prefix);
+    if (isLatchable) {
+      lastLatchedPrefix = prefix;
+      lastLatchedParam = param;
+    } else {
+      // Don't latch non-F4 prefixes.
+      lastLatchedPrefix = 0x00;
+      lastLatchedParam = 0x00;
+    }
+  }
+
+  sendParamRaw(param, value);
+}
+
+static void computeBalanceBoardValues(uint8_t balance, uint8_t keymode, uint8_t &lowerOut, uint8_t &upperOut) {
+  balance = clamp_u8(balance, 0, 127);
+
+  if (keymode == 1 || keymode == 2) {
+    // 0..63 => 0..0x60, then hold 0x60 for 64..127
+    const uint8_t b = (balance > 63) ? 63 : balance;
+    const uint8_t level = map_u8(b, 0, 63, 0x00, kMaxLevel);
+    lowerOut = level;
+    upperOut = level;
+    return;
+  }
+
+  // keymode == 0: crossfade across full range 0..127 => 0..0x60
+  const uint8_t level = map_u8(balance, 0, 127, 0x00, kMaxLevel);
+  upperOut = level;
+  lowerOut = static_cast<uint8_t>(kMaxLevel - level);
+}
+
+FLASHMEM void updatebalance(bool announce) {
+  sendNoOffset(kBalanceParam);
+
+  balance_str = map(balance_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 1;
+    showCurrentParameterPage("BALANCE", String(balance_str));
+    startParameterDisplay();
+  }
+
+  const uint8_t km = static_cast<uint8_t>(keyMode);
+  const uint8_t bal = static_cast<uint8_t>(balance);
+
+  uint8_t lowerVal = 0, upperVal = 0;
+  computeBalanceBoardValues(bal, km, lowerVal, upperVal);
+
+  if (km == 1 || km == 2) {
+    // Broadcast (both boards), with "latched" 0xF4 prefix for this param.
+    sendParamValueWithPrefixLatched(kBoardBothPrefix, kBalanceParam, lowerVal);
+    return;
+  }
+
+  // Leaving broadcast mode: ensure we don't accidentally keep relying on old latch.
+  // (Next call will send F1/F9 prefixes anyway, and our helper doesn't latch them.)
+  sendParamValueWithPrefixLatched(kBoardLowerPrefix, kBalanceParam, lowerVal);
+  sendParamValueWithPrefixLatched(kBoardUpperPrefix, kBalanceParam, upperVal);
+}
+
+FLASHMEM void updateportamento(bool announce) {
+  sendNoOffset(0xB0);
+  portamento_str = map(portamento_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("PORTAMENTO TIME", String(portamento_str));
+    startParameterDisplay();
+  }
+  sendParamValueWithPrefixLatched(0xF4, 0xB0, portamento);
+}
+
+FLASHMEM void updatevolume(bool announce) {
+  sendNoOffset(0xB1);
+  volume_str = map(volume_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("MIDI VOLUME", String(volume_str));
+    startParameterDisplay();
+  }
+  sendParamValueWithPrefixLatched(0xF4, 0xB1, volume);
+}
+
+FLASHMEM void updatetime1(bool announce) {
+  sendOffset(0x0C, 0xA6);
+  time1_str = map(time1_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("ENV1 T1", String(time1_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0xA6, (uint8_t)upperData[P_time1]);
+  } else {
+    sendParamValue(0xA6, (uint8_t)lowerData[P_time1]);
+  }
+}
+
+FLASHMEM void updatelevel1(bool announce) {
+  sendOffset(0x0C, 0xA7);
+  level1_str = map(level1_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("ENV1 L1", String(level1_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0xA7, (uint8_t)upperData[P_level1]);
+  } else {
+    sendParamValue(0xA7, (uint8_t)lowerData[P_level1]);
+  }
+}
+
+FLASHMEM void updatetime2(bool announce) {
+  sendOffset(0x0C, 0xA8);
+  time2_str = map(time2_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("ENV1 T2", String(time2_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0xA8, (uint8_t)upperData[P_time2]);
+  } else {
+    sendParamValue(0xA8, (uint8_t)lowerData[P_time2]);
+  }
+}
+
+FLASHMEM void updatelevel2(bool announce) {
+  sendOffset(0x0C, 0xA9);
+  level2_str = map(level2_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("ENV1 L2", String(level2_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0xA9, (uint8_t)upperData[P_level2]);
+  } else {
+    sendParamValue(0xA9, (uint8_t)lowerData[P_level2]);
+  }
+}
+
+FLASHMEM void updatetime3(bool announce) {
+  sendOffset(0x0C, 0xAA);
+  time3_str = map(time3_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("ENV1 T3", String(time3_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0xAA, (uint8_t)upperData[P_time3]);
+  } else {
+    sendParamValue(0xAA, (uint8_t)lowerData[P_time3]);
+  }
+}
+
+FLASHMEM void updatelevel3(bool announce) {
+  sendOffset(0x0C, 0xAB);
+  level3_str = map(level3_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("ENV1 L3", String(level3_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0xAB, (uint8_t)upperData[P_level3]);
+  } else {
+    sendParamValue(0xAB, (uint8_t)lowerData[P_level3]);
+  }
+}
+
+FLASHMEM void updatetime4(bool announce) {
+  sendOffset(0x0C, 0xAC);
+  time4_str = map(time4_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("ENV1 T4", String(time4_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0xAC, (uint8_t)upperData[P_time4]);
+  } else {
+    sendParamValue(0xAC, (uint8_t)lowerData[P_time4]);
+  }
+}
 
 // FLASHMEM void updateenv5stage_mode(bool announce) {
 //   env5stage_mode_str = map(env5stage_mode, 0, 127, 0, 7);
@@ -1960,75 +2818,110 @@ FLASHMEM void updatedco2_PWM_lfo(bool announce) {
 //   }
 // }
 
-// FLASHMEM void updateenv2_time1(bool announce) {
-//   env2_time1_str = map(env2_time1, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("ENV2 T1", String(env2_time1_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CC2time1, env2_time1);
-// }
+FLASHMEM void updateenv2_time1(bool announce) {
+  sendOffset(0x0D, 0xA6);
+  env2_time1_str = map(env2_time1_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("ENV2 T1", String(env2_time1_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0xA6, (uint8_t)upperData[P_env2_time1]);
+  } else {
+    sendParamValue(0xA6, (uint8_t)lowerData[P_env2_time1]);
+  }
+}
 
-// FLASHMEM void updateenv2_level1(bool announce) {
-//   env2_level1_str = map(env2_level1, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("ENV2 L1", String(env2_level1_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CC2level1, env2_level1);
-// }
+FLASHMEM void updateenv2_level1(bool announce) {
+  sendOffset(0x0D, 0xA7);
+  env2_level1_str = map(env2_level1_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("ENV2 L1", String(env2_level1_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0xA7, (uint8_t)upperData[P_env2_level1]);
+  } else {
+    sendParamValue(0xA7, (uint8_t)lowerData[P_env2_level1]);
+  }
+}
 
-// FLASHMEM void updateenv2_time2(bool announce) {
-//   env2_time2_str = map(env2_time2, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("ENV2 T2", String(env2_time2_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CC2time2, env2_time2);
-// }
+FLASHMEM void updateenv2_time2(bool announce) {
+  sendOffset(0x0D, 0xA8);
+  env2_time2_str = map(env2_time2_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("ENV2 T2", String(env2_time2_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0xA8, (uint8_t)upperData[P_env2_time2]);
+  } else {
+    sendParamValue(0xA8, (uint8_t)lowerData[P_env2_time2]);
+  }
+}
 
-// FLASHMEM void updateenv2_level2(bool announce) {
-//   env2_level2_str = map(env2_level2, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("ENV2 L2", String(env2_level2_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CC2level2, env2_level2);
-// }
+FLASHMEM void updateenv2_level2(bool announce) {
+  sendOffset(0x0D, 0xA9);
+  env2_level2_str = map(env2_level2_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("ENV2 L2", String(env2_level2_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0xA9, (uint8_t)upperData[P_env2_level2]);
+  } else {
+    sendParamValue(0xA9, (uint8_t)lowerData[P_env2_level2]);
+  }
+}
 
-// FLASHMEM void updateenv2_time3(bool announce) {
-//   env2_time3_str = map(env2_time3, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("ENV2 T3", String(env2_time3_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CC2time3, env2_time3);
-// }
+FLASHMEM void updateenv2_time3(bool announce) {
+  sendOffset(0x0D, 0xAA);
+  env2_time3_str = map(env2_time3_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("ENV2 T3", String(env2_time3_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0xAA, (uint8_t)upperData[P_env2_time3]);
+  } else {
+    sendParamValue(0xAA, (uint8_t)lowerData[P_env2_time3]);
+  }
+}
 
-// FLASHMEM void updateenv2_level3(bool announce) {
-//   env2_level3_str = map(env2_level3, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("ENV2 L3", String(env2_level3_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CC2level3, env2_level3);
-// }
+FLASHMEM void updateenv2_level3(bool announce) {
+  sendOffset(0x0D, 0xAB);
+  env2_level3_str = map(env2_level3_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("ENV2 L3", String(env2_level3_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0xAB, (uint8_t)upperData[P_env2_level3]);
+  } else {
+    sendParamValue(0xAB, (uint8_t)lowerData[P_env2_level3]);
+  }
+}
 
-// FLASHMEM void updateenv2_time4(bool announce) {
-//   env2_time4_str = map(env2_time4, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("ENV2 T4", String(env2_time4_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CC2time4, env2_time4);
-// }
+FLASHMEM void updateenv2_time4(bool announce) {
+  sendOffset(0x0D, 0xAC);
+  env2_time4_str = map(env2_time4_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("ENV2 T4", String(env2_time4_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0xAC, (uint8_t)upperData[P_env2_time4]);
+  } else {
+    sendParamValue(0xAC, (uint8_t)lowerData[P_env2_time4]);
+  }
+}
 
 // FLASHMEM void updateenv2_env5stage_mode(bool announce) {
 //   env2_5stage_mode_str = map(env2_5stage_mode, 0, 127, 0, 7);
@@ -2104,45 +2997,65 @@ FLASHMEM void updatedco2_PWM_lfo(bool announce) {
 //   }
 // }
 
-// FLASHMEM void updateattack(bool announce) {
-//   attack_str = map(attack, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("ENV3 ATTACK", String(attack_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CCattack, attack);
-// }
+FLASHMEM void updateattack(bool announce) {
+  sendOffset(0x0E, 0xA6);
+  attack_str = map(attack_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("ENV3 ATTACK", String(attack_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0xA6, (uint8_t)upperData[P_attack]);
+  } else {
+    sendParamValue(0xA6, (uint8_t)lowerData[P_attack]);
+  }
+}
 
-// FLASHMEM void updatedecay(bool announce) {
-//   decay_str = map(decay, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("ENV3 DECAY", String(decay_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CCdecay, decay);
-// }
+FLASHMEM void updatedecay(bool announce) {
+  sendOffset(0x0E, 0xAA);
+  decay_str = map(decay_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("ENV3 DECAY", String(decay_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0xAA, (uint8_t)upperData[P_decay]);
+  } else {
+    sendParamValue(0xAA, (uint8_t)lowerData[P_decay]);
+  }
+}
 
-// FLASHMEM void updatesustain(bool announce) {
-//   sustain_str = map(sustain, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("ENV3 SUSTAIN", String(sustain_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CCsustain, sustain);
-// }
+FLASHMEM void updatesustain(bool announce) {
+  sendOffset(0x0E, 0xAB);
+  sustain_str = map(sustain_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("ENV3 SUSTAIN", String(sustain_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0xAB, (uint8_t)upperData[P_sustain]);
+  } else {
+    sendParamValue(0xAB, (uint8_t)lowerData[P_sustain]);
+  }
+}
 
-// FLASHMEM void updaterelease(bool announce) {
-//   release_str = map(release, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("ENV3 RELEASE", String(release_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CCrelease, release);
-// }
+FLASHMEM void updaterelease(bool announce) {
+  sendOffset(0x0E, 0xAC);
+  release_str = map(release_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("ENV3 RELEASE", String(release_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0xAC, (uint8_t)upperData[P_release]);
+  } else {
+    sendParamValue(0xAC, (uint8_t)lowerData[P_release]);
+  }
+}
 
 // FLASHMEM void updateadsr_mode(bool announce) {
 //   adsr_mode_str = map(adsr_mode, 0, 127, 0, 7);
@@ -2218,46 +3131,67 @@ FLASHMEM void updatedco2_PWM_lfo(bool announce) {
 //   }
 // }
 
-// FLASHMEM void updateenv4_attack(bool announce) {
-//   env4_attack_str = map(env4_attack, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("ENV4 ATTACK", String(env4_attack_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CC4attack, env4_attack);
-// }
 
-// FLASHMEM void updateenv4_decay(bool announce) {
-//   env4_decay_str = map(env4_decay, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("ENV4 DECAY", String(env4_decay_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CC4decay, env4_decay);
-// }
 
-// FLASHMEM void updateenv4_sustain(bool announce) {
-//   env4_sustain_str = map(env4_sustain, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("ENV4 SUSTAIN", String(env4_sustain_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CC4sustain, env4_sustain);
-// }
+FLASHMEM void updateenv4_attack(bool announce) {
+  sendOffset(0x0F, 0xA6);
+  env4_attack_str = map(env4_attack_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("ENV4 ATTACK", String(env4_attack_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0xA6, (uint8_t)upperData[P_env4_attack]);
+  } else {
+    sendParamValue(0xA6, (uint8_t)lowerData[P_env4_attack]);
+  }
+}
 
-// FLASHMEM void updateenv4_release(bool announce) {
-//   env4_release_str = map(env4_release, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("ENV4 RELEASE", String(env4_release_str));
-//     startParameterDisplay();
-//   }
-//   midiCCOut(CC4release, env4_release);
-// }
+FLASHMEM void updateenv4_decay(bool announce) {
+  sendOffset(0x0F, 0xAA);
+  env4_decay_str = map(env4_decay_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("ENV4 DECAY", String(env4_decay_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0xAA, (uint8_t)upperData[P_env4_decay]);
+  } else {
+    sendParamValue(0xAA, (uint8_t)lowerData[P_env4_decay]);
+  }
+}
 
+FLASHMEM void updateenv4_sustain(bool announce) {
+  sendOffset(0x0F, 0xAB);
+  env4_sustain_str = map(env4_sustain_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("ENV4 SUSTAIN", String(env4_sustain_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0xAB, (uint8_t)upperData[P_env4_sustain]);
+  } else {
+    sendParamValue(0xAB, (uint8_t)lowerData[P_env4_sustain]);
+  }
+}
+
+FLASHMEM void updateenv4_release(bool announce) {
+  sendOffset(0x0F, 0xAC);
+  env4_release_str = map(env4_release_str, 0, 127, 0, 99);
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("ENV3 RELEASE", String(env4_release_str));
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    sendParamValue(0xAC, (uint8_t)upperData[P_env4_release]);
+  } else {
+    sendParamValue(0xAC, (uint8_t)lowerData[P_env4_release]);
+  }
+}
 // FLASHMEM void updateenv4_adsr_mode(bool announce) {
 //   env4_adsr_mode_str = map(env4_adsr_mode, 0, 127, 0, 7);
 //   if (announce && !suppressParamAnnounce) {
@@ -2593,7 +3527,7 @@ FLASHMEM void updatesingle_button(bool announce) {
       upperData[i] = lowerData[i];
     }
     keyMode = 1;
-    updateUpperToneData();    
+    updateUpperToneData();
   } else {
     mcp10.digitalWrite(KEY_SINGLE_RED, LOW);
     mcp10.digitalWrite(KEY_SINGLE_GREEN, HIGH);
@@ -6076,7 +7010,14 @@ void updateUpperToneData() {
   updatelfo1_lfo2(0);
   updatedco1_PW(0);
   updatedco1_PWM_env(0);
-  updatedco1_PWM_env(0);
+  updatedco1_PWM_lfo(0);
+  updatedco1_pitch_env(0);
+  updatedco1_pitch_lfo(0);
+  updatedco1_wave(0);
+  updatedco1_range(0);
+  updatedco1_tune(0);
+  updatedco1_xmod(0);
+  updatedco1_level(0);
 
   updatelfo2_wave(0);
   updatelfo2_rate(0);
@@ -6084,7 +7025,57 @@ void updateUpperToneData() {
   updatelfo2_lfo1(0);
   updatedco2_PW(0);
   updatedco2_PWM_env(0);
-  updatedco2_PWM_env(0);
+  updatedco2_PWM_lfo(0);
+  updatedco2_pitch_env(0);
+  updatedco2_pitch_lfo(0);
+  updatedco2_wave(0);
+  updatedco2_range(0);
+  updatedco2_tune(0);
+  updatedco2_fine(0);
+  updatedco2_level(0);
+  updatedco2_mod(0);
+
+  updatevcf_hpf(0);
+  updatevcf_cutoff(0);
+  updatevcf_res(0);
+  updatevcf_kb(0);
+  updatevcf_env(0);
+  updatevcf_lfo1(0);
+  updatevcf_lfo2(0);
+
+  updatetime1(0);
+  updatelevel1(0);
+  updatetime2(0);
+  updatelevel2(0);
+  updatetime3(0);
+  updatelevel3(0);
+  updatetime4(0);
+
+  updateenv2_time1(0);
+  updateenv2_level1(0);
+  updateenv2_time2(0);
+  updateenv2_level2(0);
+  updateenv2_time3(0);
+  updateenv2_level3(0);
+  updateenv2_time4(0);
+
+  updateattack(0);
+  updatedecay(0);
+  updatesustain(0);
+  updaterelease(0);
+
+  updateenv4_attack(0);
+  updateenv4_decay(0);
+  updateenv4_sustain(0);
+  updateenv4_release(0);
+
+  updatevca_mod(0);
+  updateat_vib(0);
+  updateat_lpf(0);
+  updateat_vol(0);
+  updatebalance(0);
+  updatevolume(0);
+  updateportamento(0);
 
   LAST_PARAM = 0x00;
   upperSW = upperSWsafe;
@@ -6099,7 +7090,14 @@ void updateLowerToneData() {
   updatelfo1_lfo2(0);
   updatedco1_PW(0);
   updatedco1_PWM_env(0);
-  updatedco1_PWM_env(0);
+  updatedco1_PWM_lfo(0);
+  updatedco1_pitch_env(0);
+  updatedco1_pitch_lfo(0);
+  updatedco1_wave(0);
+  updatedco1_range(0);
+  updatedco1_tune(0);
+  updatedco1_xmod(0);
+  updatedco1_level(0);
 
   updatelfo2_wave(0);
   updatelfo2_rate(0);
@@ -6107,7 +7105,57 @@ void updateLowerToneData() {
   updatelfo2_lfo1(0);
   updatedco2_PW(0);
   updatedco2_PWM_env(0);
-  updatedco2_PWM_env(0);
+  updatedco2_PWM_lfo(0);
+  updatedco2_pitch_env(0);
+  updatedco2_pitch_lfo(0);
+  updatedco2_wave(0);
+  updatedco2_range(0);
+  updatedco2_tune(0);
+  updatedco2_fine(0);
+  updatedco2_level(0);
+  updatedco2_mod(0);
+
+  updatevcf_hpf(0);
+  updatevcf_cutoff(0);
+  updatevcf_res(0);
+  updatevcf_kb(0);
+  updatevcf_env(0);
+  updatevcf_lfo1(0);
+  updatevcf_lfo2(0);
+
+  updatetime1(0);
+  updatelevel1(0);
+  updatetime2(0);
+  updatelevel2(0);
+  updatetime3(0);
+  updatelevel3(0);
+  updatetime4(0);
+
+  updateenv2_time1(0);
+  updateenv2_level1(0);
+  updateenv2_time2(0);
+  updateenv2_level2(0);
+  updateenv2_time3(0);
+  updateenv2_level3(0);
+  updateenv2_time4(0);
+
+  updateattack(0);
+  updatedecay(0);
+  updatesustain(0);
+  updaterelease(0);
+
+  updateenv4_attack(0);
+  updateenv4_decay(0);
+  updateenv4_sustain(0);
+  updateenv4_release(0);
+
+  updatevca_mod(0);
+  updateat_vib(0);
+  updateat_lpf(0);
+  updateat_vol(0);
+  updatebalance(0);
+  updatevolume(0);
+  updateportamento(0);
 
   LAST_PARAM = 0x00;
   upperSW = upperSWsafe;
@@ -6466,35 +7514,35 @@ void mainButtonChanged(Button *btn, bool released) {
 
   switch (btn->id) {
 
-    // case OCTAVE_DOWN_BUTTON:
-    //   if (!released) {
-    //     if (octave_up > 0) {
-    //       octave_down = 0;
-    //       octave_up = 0;
-    //       myControlChange(midiChannel, CCoctave_down, octave_down);
-    //     } else {
-    //       pingPongStep(octave_down, octave_down_upwards);
-    //       octave_up = 0;
-    //       octave_up_upwards = true;
-    //       myControlChange(midiChannel, CCoctave_down, octave_down);
-    //     }
-    //   }
-    //   break;
+      // case OCTAVE_DOWN_BUTTON:
+      //   if (!released) {
+      //     if (octave_up > 0) {
+      //       octave_down = 0;
+      //       octave_up = 0;
+      //       myControlChange(midiChannel, CCoctave_down, octave_down);
+      //     } else {
+      //       pingPongStep(octave_down, octave_down_upwards);
+      //       octave_up = 0;
+      //       octave_up_upwards = true;
+      //       myControlChange(midiChannel, CCoctave_down, octave_down);
+      //     }
+      //   }
+      //   break;
 
-    // case OCTAVE_UP_BUTTON:
-    //   if (!released) {
-    //     if (octave_down > 0) {
-    //       octave_up = 0;
-    //       octave_down = 0;
-    //       myControlChange(midiChannel, CCoctave_up, octave_up);
-    //     } else {
-    //       pingPongStep(octave_up, octave_up_upwards);
-    //       octave_down = 0;
-    //       octave_down_upwards = true;
-    //       myControlChange(midiChannel, CCoctave_up, octave_up);
-    //     }
-    //   }
-    //   break;
+      // case OCTAVE_UP_BUTTON:
+      //   if (!released) {
+      //     if (octave_down > 0) {
+      //       octave_up = 0;
+      //       octave_down = 0;
+      //       myControlChange(midiChannel, CCoctave_up, octave_up);
+      //     } else {
+      //       pingPongStep(octave_up, octave_up_upwards);
+      //       octave_down = 0;
+      //       octave_down_upwards = true;
+      //       myControlChange(midiChannel, CCoctave_up, octave_up);
+      //     }
+      //   }
+      //   break;
 
       // Keymode Buttons
 
@@ -6549,201 +7597,201 @@ void mainButtonChanged(Button *btn, bool released) {
       }
       break;
 
-    // case LFO1_SYNC_BUTTON:
-    //   if (!released) {
-    //     lfo1_sync = lfo1_sync + 1;
-    //     if (lfo1_sync > 2) {
-    //       lfo1_sync = 0;
-    //     }
-    //     myControlChange(midiChannel, CClfo1_sync, lfo1_sync);
-    //   }
-    //   break;
+      // case LFO1_SYNC_BUTTON:
+      //   if (!released) {
+      //     lfo1_sync = lfo1_sync + 1;
+      //     if (lfo1_sync > 2) {
+      //       lfo1_sync = 0;
+      //     }
+      //     myControlChange(midiChannel, CClfo1_sync, lfo1_sync);
+      //   }
+      //   break;
 
-    // case LFO2_SYNC_BUTTON:
-    //   if (!released) {
-    //     lfo2_sync = lfo2_sync + 1;
-    //     if (lfo2_sync > 2) {
-    //       lfo2_sync = 0;
-    //     }
-    //     myControlChange(midiChannel, CClfo2_sync, lfo2_sync);
-    //   }
-    //   break;
+      // case LFO2_SYNC_BUTTON:
+      //   if (!released) {
+      //     lfo2_sync = lfo2_sync + 1;
+      //     if (lfo2_sync > 2) {
+      //       lfo2_sync = 0;
+      //     }
+      //     myControlChange(midiChannel, CClfo2_sync, lfo2_sync);
+      //   }
+      //   break;
 
-    // case DCO1_PWM_DYN_BUTTON:
-    //   if (!released) {
-    //     dco1_PWM_dyn = dco1_PWM_dyn + 1;
-    //     if (dco1_PWM_dyn > 3) {
-    //       dco1_PWM_dyn = 0;
-    //     }
-    //     myControlChange(midiChannel, CCdco1_PWM_dyn, dco1_PWM_dyn);
-    //   }
-    //   break;
+      // case DCO1_PWM_DYN_BUTTON:
+      //   if (!released) {
+      //     dco1_PWM_dyn = dco1_PWM_dyn + 1;
+      //     if (dco1_PWM_dyn > 3) {
+      //       dco1_PWM_dyn = 0;
+      //     }
+      //     myControlChange(midiChannel, CCdco1_PWM_dyn, dco1_PWM_dyn);
+      //   }
+      //   break;
 
-    // case DCO2_PWM_DYN_BUTTON:
-    //   if (!released) {
-    //     dco2_PWM_dyn = dco2_PWM_dyn + 1;
-    //     if (dco2_PWM_dyn > 3) {
-    //       dco2_PWM_dyn = 0;
-    //     }
-    //     myControlChange(midiChannel, CCdco2_PWM_dyn, dco2_PWM_dyn);
-    //   }
-    //   break;
+      // case DCO2_PWM_DYN_BUTTON:
+      //   if (!released) {
+      //     dco2_PWM_dyn = dco2_PWM_dyn + 1;
+      //     if (dco2_PWM_dyn > 3) {
+      //       dco2_PWM_dyn = 0;
+      //     }
+      //     myControlChange(midiChannel, CCdco2_PWM_dyn, dco2_PWM_dyn);
+      //   }
+      //   break;
 
-    // case DCO1_PWM_ENV_SOURCE_BUTTON:
-    //   if (!released) {
-    //     dco1_PWM_env_source = dco1_PWM_env_source + 2;
-    //     if (dco1_PWM_env_source > 7) {
-    //       dco1_PWM_env_source = 0;
-    //       dco1_PWM_env_pol = 0;
-    //     }
-    //     myControlChange(midiChannel, CCdco1_PWM_env_source, dco1_PWM_env_source);
-    //   }
-    //   break;
+      // case DCO1_PWM_ENV_SOURCE_BUTTON:
+      //   if (!released) {
+      //     dco1_PWM_env_source = dco1_PWM_env_source + 2;
+      //     if (dco1_PWM_env_source > 7) {
+      //       dco1_PWM_env_source = 0;
+      //       dco1_PWM_env_pol = 0;
+      //     }
+      //     myControlChange(midiChannel, CCdco1_PWM_env_source, dco1_PWM_env_source);
+      //   }
+      //   break;
 
-    // case DCO2_PWM_ENV_SOURCE_BUTTON:
-    //   if (!released) {
-    //     dco2_PWM_env_source = dco2_PWM_env_source + 2;
-    //     if (dco2_PWM_env_source > 7) {
-    //       dco2_PWM_env_source = 0;
-    //       dco2_PWM_env_pol = 0;
-    //     }
-    //     myControlChange(midiChannel, CCdco2_PWM_env_source, dco2_PWM_env_source);
-    //   }
-    //   break;
+      // case DCO2_PWM_ENV_SOURCE_BUTTON:
+      //   if (!released) {
+      //     dco2_PWM_env_source = dco2_PWM_env_source + 2;
+      //     if (dco2_PWM_env_source > 7) {
+      //       dco2_PWM_env_source = 0;
+      //       dco2_PWM_env_pol = 0;
+      //     }
+      //     myControlChange(midiChannel, CCdco2_PWM_env_source, dco2_PWM_env_source);
+      //   }
+      //   break;
 
-    // case DCO1_PWM_ENV_POLARITY_BUTTON:
-    //   if (!released) {
-    //     dco1_PWM_env_pol = !dco1_PWM_env_pol;
-    //     if (dco1_PWM_env_pol) {
-    //       dco1_PWM_env_source++;
-    //     }
-    //     if (!dco1_PWM_env_pol) {
-    //       dco1_PWM_env_source--;
-    //     }
-    //     myControlChange(midiChannel, CCdco1_PWM_env_source, dco1_PWM_env_source);
-    //   }
-    //   break;
+      // case DCO1_PWM_ENV_POLARITY_BUTTON:
+      //   if (!released) {
+      //     dco1_PWM_env_pol = !dco1_PWM_env_pol;
+      //     if (dco1_PWM_env_pol) {
+      //       dco1_PWM_env_source++;
+      //     }
+      //     if (!dco1_PWM_env_pol) {
+      //       dco1_PWM_env_source--;
+      //     }
+      //     myControlChange(midiChannel, CCdco1_PWM_env_source, dco1_PWM_env_source);
+      //   }
+      //   break;
 
-    // case DCO2_PWM_ENV_POLARITY_BUTTON:
-    //   if (!released) {
-    //     dco2_PWM_env_pol = !dco2_PWM_env_pol;
-    //     if (dco2_PWM_env_pol) {
-    //       dco2_PWM_env_source++;
-    //     }
-    //     if (!dco2_PWM_env_pol) {
-    //       dco2_PWM_env_source--;
-    //     }
-    //     myControlChange(midiChannel, CCdco2_PWM_env_source, dco2_PWM_env_source);
-    //   }
-    //   break;
+      // case DCO2_PWM_ENV_POLARITY_BUTTON:
+      //   if (!released) {
+      //     dco2_PWM_env_pol = !dco2_PWM_env_pol;
+      //     if (dco2_PWM_env_pol) {
+      //       dco2_PWM_env_source++;
+      //     }
+      //     if (!dco2_PWM_env_pol) {
+      //       dco2_PWM_env_source--;
+      //     }
+      //     myControlChange(midiChannel, CCdco2_PWM_env_source, dco2_PWM_env_source);
+      //   }
+      //   break;
 
-    // case DCO1_PWM_LFO_SOURCE_BUTTON:
-    //   if (!released) {
-    //     dco1_PWM_lfo_source = dco1_PWM_lfo_source + 1;
-    //     if (dco1_PWM_lfo_source > 3) {
-    //       dco1_PWM_lfo_source = 0;
-    //     }
-    //     myControlChange(midiChannel, CCdco1_PWM_lfo_source, dco1_PWM_lfo_source);
-    //   }
-    //   break;
+      // case DCO1_PWM_LFO_SOURCE_BUTTON:
+      //   if (!released) {
+      //     dco1_PWM_lfo_source = dco1_PWM_lfo_source + 1;
+      //     if (dco1_PWM_lfo_source > 3) {
+      //       dco1_PWM_lfo_source = 0;
+      //     }
+      //     myControlChange(midiChannel, CCdco1_PWM_lfo_source, dco1_PWM_lfo_source);
+      //   }
+      //   break;
 
-    // case DCO2_PWM_LFO_SOURCE_BUTTON:
-    //   if (!released) {
-    //     dco2_PWM_lfo_source = dco2_PWM_lfo_source + 1;
-    //     if (dco2_PWM_lfo_source > 3) {
-    //       dco2_PWM_lfo_source = 0;
-    //     }
-    //     myControlChange(midiChannel, CCdco2_PWM_lfo_source, dco2_PWM_lfo_source);
-    //   }
-    //   break;
+      // case DCO2_PWM_LFO_SOURCE_BUTTON:
+      //   if (!released) {
+      //     dco2_PWM_lfo_source = dco2_PWM_lfo_source + 1;
+      //     if (dco2_PWM_lfo_source > 3) {
+      //       dco2_PWM_lfo_source = 0;
+      //     }
+      //     myControlChange(midiChannel, CCdco2_PWM_lfo_source, dco2_PWM_lfo_source);
+      //   }
+      //   break;
 
-    // case DCO1_PITCH_DYN_BUTTON:
-    //   if (!released) {
-    //     dco1_pitch_dyn = dco1_pitch_dyn + 1;
-    //     if (dco1_pitch_dyn > 3) {
-    //       dco1_pitch_dyn = 0;
-    //     }
-    //     myControlChange(midiChannel, CCdco1_pitch_dyn, dco1_pitch_dyn);
-    //   }
-    //   break;
+      // case DCO1_PITCH_DYN_BUTTON:
+      //   if (!released) {
+      //     dco1_pitch_dyn = dco1_pitch_dyn + 1;
+      //     if (dco1_pitch_dyn > 3) {
+      //       dco1_pitch_dyn = 0;
+      //     }
+      //     myControlChange(midiChannel, CCdco1_pitch_dyn, dco1_pitch_dyn);
+      //   }
+      //   break;
 
-    // case DCO2_PITCH_DYN_BUTTON:
-    //   if (!released) {
-    //     dco2_pitch_dyn = dco2_pitch_dyn + 1;
-    //     if (dco2_pitch_dyn > 3) {
-    //       dco2_pitch_dyn = 0;
-    //     }
-    //     myControlChange(midiChannel, CCdco2_pitch_dyn, dco2_pitch_dyn);
-    //   }
-    //   break;
+      // case DCO2_PITCH_DYN_BUTTON:
+      //   if (!released) {
+      //     dco2_pitch_dyn = dco2_pitch_dyn + 1;
+      //     if (dco2_pitch_dyn > 3) {
+      //       dco2_pitch_dyn = 0;
+      //     }
+      //     myControlChange(midiChannel, CCdco2_pitch_dyn, dco2_pitch_dyn);
+      //   }
+      //   break;
 
-    // case DCO1_PITCH_LFO_SOURCE_BUTTON:
-    //   if (!released) {
-    //     dco1_pitch_lfo_source = dco1_pitch_lfo_source + 1;
-    //     if (dco1_pitch_lfo_source > 3) {
-    //       dco1_pitch_lfo_source = 0;
-    //     }
-    //     myControlChange(midiChannel, CCdco1_pitch_lfo_source, dco1_pitch_lfo_source);
-    //   }
-    //   break;
+      // case DCO1_PITCH_LFO_SOURCE_BUTTON:
+      //   if (!released) {
+      //     dco1_pitch_lfo_source = dco1_pitch_lfo_source + 1;
+      //     if (dco1_pitch_lfo_source > 3) {
+      //       dco1_pitch_lfo_source = 0;
+      //     }
+      //     myControlChange(midiChannel, CCdco1_pitch_lfo_source, dco1_pitch_lfo_source);
+      //   }
+      //   break;
 
-    // case DCO2_PITCH_LFO_SOURCE_BUTTON:
-    //   if (!released) {
-    //     dco2_pitch_lfo_source = dco2_pitch_lfo_source + 1;
-    //     if (dco2_pitch_lfo_source > 3) {
-    //       dco2_pitch_lfo_source = 0;
-    //     }
-    //     myControlChange(midiChannel, CCdco2_pitch_lfo_source, dco2_pitch_lfo_source);
-    //   }
-    //   break;
+      // case DCO2_PITCH_LFO_SOURCE_BUTTON:
+      //   if (!released) {
+      //     dco2_pitch_lfo_source = dco2_pitch_lfo_source + 1;
+      //     if (dco2_pitch_lfo_source > 3) {
+      //       dco2_pitch_lfo_source = 0;
+      //     }
+      //     myControlChange(midiChannel, CCdco2_pitch_lfo_source, dco2_pitch_lfo_source);
+      //   }
+      //   break;
 
-    // case DCO1_PITCH_ENV_SOURCE_BUTTON:
-    //   if (!released) {
-    //     dco1_pitch_env_source = dco1_pitch_env_source + 2;
-    //     if (dco1_pitch_env_source > 7) {
-    //       dco1_pitch_env_source = 0;
-    //       dco1_pitch_env_pol = 0;
-    //     }
-    //     myControlChange(midiChannel, CCdco1_pitch_env_source, dco1_pitch_env_source);
-    //   }
-    //   break;
+      // case DCO1_PITCH_ENV_SOURCE_BUTTON:
+      //   if (!released) {
+      //     dco1_pitch_env_source = dco1_pitch_env_source + 2;
+      //     if (dco1_pitch_env_source > 7) {
+      //       dco1_pitch_env_source = 0;
+      //       dco1_pitch_env_pol = 0;
+      //     }
+      //     myControlChange(midiChannel, CCdco1_pitch_env_source, dco1_pitch_env_source);
+      //   }
+      //   break;
 
-    // case DCO2_PITCH_ENV_SOURCE_BUTTON:
-    //   if (!released) {
-    //     dco2_pitch_env_source = dco2_pitch_env_source + 2;
-    //     if (dco2_pitch_env_source > 7) {
-    //       dco2_pitch_env_source = 0;
-    //       dco2_pitch_env_pol = 0;
-    //     }
-    //     myControlChange(midiChannel, CCdco2_pitch_env_source, dco2_pitch_env_source);
-    //   }
-    //   break;
+      // case DCO2_PITCH_ENV_SOURCE_BUTTON:
+      //   if (!released) {
+      //     dco2_pitch_env_source = dco2_pitch_env_source + 2;
+      //     if (dco2_pitch_env_source > 7) {
+      //       dco2_pitch_env_source = 0;
+      //       dco2_pitch_env_pol = 0;
+      //     }
+      //     myControlChange(midiChannel, CCdco2_pitch_env_source, dco2_pitch_env_source);
+      //   }
+      //   break;
 
-    // case DCO1_PITCH_ENV_POLARITY_BUTTON:
-    //   if (!released) {
-    //     dco1_pitch_env_pol = !dco1_pitch_env_pol;
-    //     if (dco1_pitch_env_pol) {
-    //       dco1_pitch_env_source++;
-    //     }
-    //     if (!dco1_pitch_env_pol) {
-    //       dco1_pitch_env_source--;
-    //     }
-    //     myControlChange(midiChannel, CCdco1_pitch_env_source, dco1_pitch_env_pol);
-    //   }
-    //   break;
+      // case DCO1_PITCH_ENV_POLARITY_BUTTON:
+      //   if (!released) {
+      //     dco1_pitch_env_pol = !dco1_pitch_env_pol;
+      //     if (dco1_pitch_env_pol) {
+      //       dco1_pitch_env_source++;
+      //     }
+      //     if (!dco1_pitch_env_pol) {
+      //       dco1_pitch_env_source--;
+      //     }
+      //     myControlChange(midiChannel, CCdco1_pitch_env_source, dco1_pitch_env_pol);
+      //   }
+      //   break;
 
-    // case DCO2_PITCH_ENV_POLARITY_BUTTON:
-    //   if (!released) {
-    //     dco2_pitch_env_pol = !dco2_pitch_env_pol;
-    //     if (dco2_pitch_env_pol) {
-    //       dco2_pitch_env_source++;
-    //     }
-    //     if (!dco2_pitch_env_pol) {
-    //       dco2_pitch_env_source--;
-    //     }
-    //     myControlChange(midiChannel, CCdco2_pitch_env_source, dco2_pitch_env_pol);
-    //   }
-    //   break;
+      // case DCO2_PITCH_ENV_POLARITY_BUTTON:
+      //   if (!released) {
+      //     dco2_pitch_env_pol = !dco2_pitch_env_pol;
+      //     if (dco2_pitch_env_pol) {
+      //       dco2_pitch_env_source++;
+      //     }
+      //     if (!dco2_pitch_env_pol) {
+      //       dco2_pitch_env_source--;
+      //     }
+      //     myControlChange(midiChannel, CCdco2_pitch_env_source, dco2_pitch_env_pol);
+      //   }
+      //   break;
 
     case LOWER_BUTTON:
       if (!released) {
@@ -6759,127 +7807,127 @@ void mainButtonChanged(Button *btn, bool released) {
       }
       break;
 
-    // case DCO_MIX_ENV_SOURCE_BUTTON:
-    //   if (!released) {
-    //     dco_mix_env_source = dco_mix_env_source + 2;
-    //     if (dco_mix_env_source > 7) {
-    //       dco_mix_env_source = 0;
-    //       dco_mix_env_pol = 0;
-    //     }
-    //     myControlChange(midiChannel, CCdco_mix_env_source, dco_mix_env_source);
-    //   }
-    //   break;
+      // case DCO_MIX_ENV_SOURCE_BUTTON:
+      //   if (!released) {
+      //     dco_mix_env_source = dco_mix_env_source + 2;
+      //     if (dco_mix_env_source > 7) {
+      //       dco_mix_env_source = 0;
+      //       dco_mix_env_pol = 0;
+      //     }
+      //     myControlChange(midiChannel, CCdco_mix_env_source, dco_mix_env_source);
+      //   }
+      //   break;
 
-    // case DCO_MIX_ENV_POLARITY_BUTTON:
-    //   if (!released) {
-    //     dco_mix_env_pol = !dco_mix_env_pol;
-    //     if (dco_mix_env_pol) {
-    //       dco_mix_env_source++;
-    //     }
-    //     if (!dco_mix_env_pol) {
-    //       dco_mix_env_source--;
-    //     }
-    //     myControlChange(midiChannel, CCdco_mix_env_source, dco_mix_env_source);
-    //   }
-    //   break;
+      // case DCO_MIX_ENV_POLARITY_BUTTON:
+      //   if (!released) {
+      //     dco_mix_env_pol = !dco_mix_env_pol;
+      //     if (dco_mix_env_pol) {
+      //       dco_mix_env_source++;
+      //     }
+      //     if (!dco_mix_env_pol) {
+      //       dco_mix_env_source--;
+      //     }
+      //     myControlChange(midiChannel, CCdco_mix_env_source, dco_mix_env_source);
+      //   }
+      //   break;
 
-    // case DCO_MIX_DYN_BUTTON:
-    //   if (!released) {
-    //     dco_mix_dyn = dco_mix_dyn + 1;
-    //     if (dco_mix_dyn > 3) {
-    //       dco_mix_dyn = 0;
-    //     }
-    //     myControlChange(midiChannel, CCdco_mix_dyn, dco_mix_dyn);
-    //   }
-    //   break;
+      // case DCO_MIX_DYN_BUTTON:
+      //   if (!released) {
+      //     dco_mix_dyn = dco_mix_dyn + 1;
+      //     if (dco_mix_dyn > 3) {
+      //       dco_mix_dyn = 0;
+      //     }
+      //     myControlChange(midiChannel, CCdco_mix_dyn, dco_mix_dyn);
+      //   }
+      //   break;
 
-    // case VCF_ENV_SOURCE_BUTTON:
-    //   if (!released) {
-    //     vcf_env_source = vcf_env_source + 2;
-    //     if (vcf_env_source > 7) {
-    //       vcf_env_source = 0;
-    //       vcf_env_pol = 0;
-    //     }
-    //     myControlChange(midiChannel, CCvcf_env_source, vcf_env_source);
-    //   }
-    //   break;
+      // case VCF_ENV_SOURCE_BUTTON:
+      //   if (!released) {
+      //     vcf_env_source = vcf_env_source + 2;
+      //     if (vcf_env_source > 7) {
+      //       vcf_env_source = 0;
+      //       vcf_env_pol = 0;
+      //     }
+      //     myControlChange(midiChannel, CCvcf_env_source, vcf_env_source);
+      //   }
+      //   break;
 
-    // case VCF_ENV_POLARITY_BUTTON:
-    //   if (!released) {
-    //     vcf_env_pol = !vcf_env_pol;
-    //     if (vcf_env_pol) {
-    //       vcf_env_source++;
-    //     }
-    //     if (!vcf_env_pol) {
-    //       vcf_env_source--;
-    //     }
-    //     myControlChange(midiChannel, CCvcf_env_source, vcf_env_source);
-    //   }
-    //   break;
+      // case VCF_ENV_POLARITY_BUTTON:
+      //   if (!released) {
+      //     vcf_env_pol = !vcf_env_pol;
+      //     if (vcf_env_pol) {
+      //       vcf_env_source++;
+      //     }
+      //     if (!vcf_env_pol) {
+      //       vcf_env_source--;
+      //     }
+      //     myControlChange(midiChannel, CCvcf_env_source, vcf_env_source);
+      //   }
+      //   break;
 
-    // case VCF_DYN_BUTTON:
-    //   if (!released) {
-    //     vcf_dyn = vcf_dyn + 1;
-    //     if (vcf_dyn > 3) {
-    //       vcf_dyn = 0;
-    //     }
-    //     myControlChange(midiChannel, CCvcf_dyn, vcf_dyn);
-    //   }
-    //   break;
+      // case VCF_DYN_BUTTON:
+      //   if (!released) {
+      //     vcf_dyn = vcf_dyn + 1;
+      //     if (vcf_dyn > 3) {
+      //       vcf_dyn = 0;
+      //     }
+      //     myControlChange(midiChannel, CCvcf_dyn, vcf_dyn);
+      //   }
+      //   break;
 
-    // case VCA_ENV_SOURCE_BUTTON:
-    //   if (!released) {
-    //     vca_env_source = vca_env_source + 1;
-    //     if (vca_env_source > 3) {
-    //       vca_env_source = 0;
-    //     }
-    //     myControlChange(midiChannel, CCvca_env_source, vca_env_source);
-    //   }
-    //   break;
+      // case VCA_ENV_SOURCE_BUTTON:
+      //   if (!released) {
+      //     vca_env_source = vca_env_source + 1;
+      //     if (vca_env_source > 3) {
+      //       vca_env_source = 0;
+      //     }
+      //     myControlChange(midiChannel, CCvca_env_source, vca_env_source);
+      //   }
+      //   break;
 
-    // case VCA_DYN_BUTTON:
-    //   if (!released) {
-    //     vca_dyn = vca_dyn + 1;
-    //     if (vca_dyn > 3) {
-    //       vca_dyn = 0;
-    //     }
-    //     myControlChange(midiChannel, CCvca_dyn, vca_dyn);
-    //   }
-    //   break;
+      // case VCA_DYN_BUTTON:
+      //   if (!released) {
+      //     vca_dyn = vca_dyn + 1;
+      //     if (vca_dyn > 3) {
+      //       vca_dyn = 0;
+      //     }
+      //     myControlChange(midiChannel, CCvca_dyn, vca_dyn);
+      //   }
+      //   break;
 
-    // case CHORUS_BUTTON:
-    //   if (!released) {
-    //     chorus = chorus + 1;
-    //     if (chorus > 2) {
-    //       chorus = 0;
-    //     }
-    //     myControlChange(midiChannel, CCchorus_sw, chorus);
-    //   }
-    //   break;
+      // case CHORUS_BUTTON:
+      //   if (!released) {
+      //     chorus = chorus + 1;
+      //     if (chorus > 2) {
+      //       chorus = 0;
+      //     }
+      //     myControlChange(midiChannel, CCchorus_sw, chorus);
+      //   }
+      //   break;
 
-    // case PORTAMENTO_BUTTON:
-    //   if (!released) {
-    //     portamento_sw = portamento_sw + 1;
-    //     if (portamento_sw > 3) {
-    //       portamento_sw = 0;
-    //     }
-    //     myControlChange(midiChannel, CCportamento_sw, portamento_sw);
-    //   }
-    //   break;
+      // case PORTAMENTO_BUTTON:
+      //   if (!released) {
+      //     portamento_sw = portamento_sw + 1;
+      //     if (portamento_sw > 3) {
+      //       portamento_sw = 0;
+      //     }
+      //     myControlChange(midiChannel, CCportamento_sw, portamento_sw);
+      //   }
+      //   break;
 
-    // case ENV5STAGE_SELECT_BUTTON:
-    //   if (!released) {
-    //     env5stage = !env5stage;
-    //     myControlChange(midiChannel, CCenv5stage, env5stage);
-    //   }
-    //   break;
+      // case ENV5STAGE_SELECT_BUTTON:
+      //   if (!released) {
+      //     env5stage = !env5stage;
+      //     myControlChange(midiChannel, CCenv5stage, env5stage);
+      //   }
+      //   break;
 
-    // case ADSR_SELECT_BUTTON:
-    //   if (!released) {
-    //     adsr = !adsr;
-    //     myControlChange(midiChannel, CCadsr, adsr);
-    //   }
-    //   break;
+      // case ADSR_SELECT_BUTTON:
+      //   if (!released) {
+      //     adsr = !adsr;
+      //     myControlChange(midiChannel, CCadsr, adsr);
+      //   }
+      //   break;
   }
 }
 
@@ -7026,7 +8074,7 @@ void checkMux() {
         myControlChange(midiChannel, CCdco2_fine, mux2Read);
         break;
       case MUX2_DCO1_MODE:
-        myControlChange(midiChannel, CCdco1_mode, mux2Read);
+        myControlChange(midiChannel, CCdco1_xmod, mux2Read);
         break;
       case MUX2_LFO2_WAVE:
         myControlChange(midiChannel, CClfo2_wave, mux2Read);

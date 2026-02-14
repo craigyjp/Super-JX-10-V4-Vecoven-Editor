@@ -21,7 +21,7 @@
 #define CCdco2_pitch_dyn  0x0E
 #define CCdco2_pitch_env_source  0x0F
 
-#define CCdco1_mode       0x10
+#define CCdco1_xmod       0x10
 #define CCdco2_fine       0x11
 #define CCvcf_hpf         0x12
 #define CCchorus_sw       0x13

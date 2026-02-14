@@ -402,6 +402,13 @@ int octave_upU = 0;
 int octave_upL = 0;
 bool octave_up_upwards = true;
 
+static constexpr uint8_t kBalanceParam = 0x9E;
+static constexpr uint8_t kBoardLowerPrefix = 0xF1;
+static constexpr uint8_t kBoardUpperPrefix = 0xF9;
+static constexpr uint8_t kBoardBothPrefix  = 0xF4; // keyMode 1/2 broadcast
+static constexpr uint8_t kMaxLevel = 0x60;         // 96
+// static uint8_t g_lastPrefixSent = 0x00;   // 0x00 = unknown/none
+// static uint8_t g_lastF4Param    = 0x00;   // last param used under F4 "no-repeat" mode
 
 int oldkeyMode = -1;
 int adsr = 0;

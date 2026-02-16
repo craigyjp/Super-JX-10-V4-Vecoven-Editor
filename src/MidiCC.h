@@ -127,5 +127,7 @@
 #define CCmono_button     0x6B
 #define CCunison_button   0x6C
 #define CCkeyMode         0x6D
+#define CCbend_enable     0x6E
+#define CCafter_enable    0x6F
 
 #define CCallnotesoff 123//Panic button

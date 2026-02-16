@@ -119,6 +119,8 @@ void setup() {
   delay(10);
   mcp11.begin(2, Wire1);
   delay(10);
+  mcp12.begin(7, Wire);
+  delay(10);
 
   //groupEncoders();
   //initRotaryEncoders();
@@ -171,26 +173,33 @@ void setup() {
 }
 
 void sendInitSequence() {
-
+  mcp10.digitalWrite(LOWER_SELECT, HIGH);
   digitalWrite(VOICE_RESET, LOW);
   delay(10);
   digitalWrite(VOICE_RESET, HIGH);
   delay(1);
   // 8x F1
-  for (int i = 0; i < 16; i++) Serial3.write((uint8_t)0xF1);
-  mcp10.digitalWrite(LOWER_SELECT, HIGH);
-
+  for (int i = 0; i < 16; i++) {
+    Serial3.write((uint8_t)0xF1);
+    delay(100);
+  }
   delay(100);
+
+  mcp10.digitalWrite(UPPER_SELECT, HIGH);
   digitalWrite(VOICE_RESET, LOW);
   delay(10);
   digitalWrite(VOICE_RESET, HIGH);
   delay(1);
   // 8x F9
-  for (int i = 0; i < 16; i++) Serial3.write((uint8_t)0xF9);
-  mcp10.digitalWrite(UPPER_SELECT, HIGH);
+  for (int i = 0; i < 16; i++) {
+    Serial3.write((uint8_t)0xF9);
+    delay(100);
+  }
 
   Serial3.flush();  // wait until bytes have left the TX buffer
   delay(100);
+  mcp10.digitalWrite(LOWER_SELECT, LOW);
+  mcp10.digitalWrite(UPPER_SELECT, LOW);
 }
 
 
@@ -217,10 +226,6 @@ void startParameterDisplay() {
   waitingToUpdate = true;
 }
 
-void myAfterTouch(byte channel, byte value) {
-  MIDI.sendAfterTouch(value, channel);
-}
-
 void myProgramChange(byte channel, byte program) {
   state = PATCH;
   patchNo = program + 1;
@@ -230,8 +235,150 @@ void myProgramChange(byte channel, byte program) {
   state = PARAMETER;
 }
 
+// Aftertouch
+
+void myAfterTouch(byte channel, byte value) {
+  switch (after_enable) {
+
+    case 1:
+      send3(kBoardLowerPrefix, 0xB3, value);
+      break;
+
+    case 2:
+      send3(kBoardUpperPrefix, 0xB3, value);
+      break;
+
+    case 3:
+      send3(kBoardLowerPrefix, 0xB3, value);
+      send3(kBoardUpperPrefix, 0xB3, value);
+      break;
+
+    case 0:
+      break;
+  }
+}
+
+// PITCH BEND
+
+static inline uint16_t clamp_u16(int v, uint16_t lo, uint16_t hi) {
+  if (v < (int)lo) return lo;
+  if (v > (int)hi) return hi;
+  return (uint16_t)v;
+}
+
+static inline uint8_t map_u8_round(uint16_t x, uint16_t in_min, uint16_t in_max, uint8_t out_min, uint8_t out_max) {
+  if (in_max == in_min) return out_min;
+  const uint32_t num = (uint32_t)(x - in_min) * (uint32_t)(out_max - out_min);
+  const uint32_t den = (uint32_t)(in_max - in_min);
+  const uint32_t y = (uint32_t)out_min + (num + den / 2) / den;
+  return clamp_u8(y, out_min, out_max);
+}
+
+static inline void send3(uint8_t a, uint8_t b, uint8_t c) {
+  Serial3.write(a);
+  Serial3.write(b);
+  Serial3.write((uint8_t)(c & 0x7F));
+  Serial3.flush();
+}
+
+static inline void send2(uint8_t a, uint8_t b) {
+  Serial3.write(a);
+  Serial3.write((uint8_t)(b & 0x7F));
+  Serial3.flush();
+}
+
+// Convert signed pitch bend (-8192 to +8191) to unsigned 14-bit (0 to 16383)
+static inline uint16_t toPb14(int pitchValue) {
+  // Clamp to valid range
+  if (pitchValue < -8192) pitchValue = -8192;
+  if (pitchValue > 8191) pitchValue = 8191;
+  // Convert to 0-16383 range (center = 8192)
+  return (uint16_t)(pitchValue + 8192);
+}
+
 void myPitchBend(byte channel, int pitchValue) {
   MIDI.sendPitchBend(pitchValue, midiOutCh);
+
+  static uint8_t lastSign = 0xFF;
+  static uint8_t lastMag = 0xFF;
+
+  // Convert signed MIDI value to 0-16383 range
+  uint16_t pb14 = toPb14(pitchValue);
+
+  // DISABLE THIS if you want normal behavior
+  // if (kInvertPb14) pb14 = (uint16_t)(16383 - pb14);
+
+  // Determine sign: center (8192) and above = positive
+  const bool neg = (pb14 < 8192);
+  const uint8_t signVal = neg ? 0x00 : 0x7F;
+
+  // Calculate magnitude (distance from center)
+  uint16_t magIn;
+  if (neg) {
+    magIn = (uint16_t)(8192 - pb14);  // 0 to 8192
+  } else {
+    magIn = (uint16_t)(pb14 - 8192);  // 0 to 8191
+  }
+
+  // Map to 0x00-0x7F
+  uint8_t mag;
+  if (magIn == 0) {
+    mag = 0x00;
+  } else {
+    uint16_t magMax = neg ? 8192u : 8191u;
+    mag = map_u8_round(magIn, 0, magMax, 0x00, 0x7F);
+  }
+
+  switch (bend_enable) {
+
+    case 1:
+
+      // Send sign change message when crossing zero
+      if (signVal != lastSign) {
+        send3(kPrefixBroadcast, kPitchSignParam, signVal);
+        lastSign = signVal;
+      }
+
+      // Send magnitude updates
+      if (mag != lastMag) {
+        send3(kBoardLowerPrefix, kPitchValueParam, mag);
+        lastMag = mag;
+      }
+
+      break;
+
+    case 2:
+      // Send sign change message when crossing zero
+      if (signVal != lastSign) {
+        send3(kPrefixBroadcast, kPitchSignParam, signVal);
+        lastSign = signVal;
+      }
+
+      // Send magnitude updates
+      if (mag != lastMag) {
+        send3(kBoardUpperPrefix, kPitchValueParam, mag);
+        lastMag = mag;
+      }
+      break;
+
+    case 3:
+      // Send sign change message when crossing zero
+      if (signVal != lastSign) {
+        send3(kPrefixBroadcast, kPitchSignParam, signVal);
+        lastSign = signVal;
+      }
+
+      // Send magnitude updates
+      if (mag != lastMag) {
+        send3(kBoardLowerPrefix, kPitchValueParam, mag);
+        send3(kBoardUpperPrefix, kPitchValueParam, mag);
+        lastMag = mag;
+      }
+      break;
+
+    case 0:
+      break;
+  }
 }
 
 void myControlConvert(byte channel, byte control, byte value) {
@@ -268,10 +415,11 @@ void myControlChange(byte channel, byte control, int value) {
       //   updatemod_lfo(1);
       //   break;
 
-      // case CCbend_range:
-      //   bend_range = value;
-      //   updatebend_range(1);
-      //   break;
+    case CCbend_range:
+      bend_range = value;
+      bend_range_str = value;
+      updatebend_range(1);
+      break;
 
     case CClfo1_wave:
       if (upperSW) {
@@ -1013,10 +1161,21 @@ void myControlChange(byte channel, byte control, int value) {
       updatetime4(1);
       break;
 
-      // case CC5stage_mode:
-      //   env5stage_mode = value;
-      //   updateenv5stage_mode(1);
-      //   break;
+    case CC5stage_mode:
+      if (upperSW) {
+        upperData[P_env5stage_mode] = map(value, 0, 127, 0, 7);
+        if (keyMode == 1) {
+          lowerData[P_env5stage_mode] = upperData[P_env5stage_mode];
+        }
+      } else {
+        lowerData[P_env5stage_mode] = map(value, 0, 127, 0, 7);
+        if (keyMode == 2) {
+          upperData[P_env5stage_mode] = lowerData[P_env5stage_mode];
+        }
+      }
+      env5stage_mode_str = value;
+      updateenv5stage_mode(1);
+      break;
 
     case CC2time1:
       if (upperSW) {
@@ -1130,10 +1289,21 @@ void myControlChange(byte channel, byte control, int value) {
       updateenv2_time4(1);
       break;
 
-      // case CC25stage_mode:
-      //   env2_5stage_mode = value;
-      //   updateenv2_env5stage_mode(1);
-      //   break;
+    case CC25stage_mode:
+      if (upperSW) {
+        upperData[P_env2_5stage_mode] = map(value, 0, 127, 0, 7);
+        if (keyMode == 1) {
+          lowerData[P_env2_5stage_mode] = upperData[P_env2_5stage_mode];
+        }
+      } else {
+        lowerData[P_env2_5stage_mode] = map(value, 0, 127, 0, 7);
+        if (keyMode == 2) {
+          upperData[P_env2_5stage_mode] = lowerData[P_env2_5stage_mode];
+        }
+      }
+      env2_5stage_mode_str = value;
+      updateenv2_env5stage_mode(1);
+      break;
 
     case CCattack:
       if (upperSW) {
@@ -1263,20 +1433,43 @@ void myControlChange(byte channel, byte control, int value) {
       updateenv4_release(1);
       break;
 
-      // case CCadsr_mode:
-      //   adsr_mode = value;
-      //   updateadsr_mode(1);
-      //   break;
+    case CCadsr_mode:
+      if (upperSW) {
+        upperData[P_adsr_mode] = map(value, 0, 127, 0, 7);
+        if (keyMode == 1) {
+          lowerData[P_adsr_mode] = upperData[P_adsr_mode];
+        }
+      } else {
+        lowerData[P_adsr_mode] = map(value, 0, 127, 0, 7);
+        if (keyMode == 2) {
+          upperData[P_adsr_mode] = lowerData[P_adsr_mode];
+        }
+      }
+      adsr_mode_str = value;
+      updateadsr_mode(1);
+      break;
 
-      // case CC4adsr_mode:
-      //   env4_adsr_mode = value;
-      //   updateenv4_adsr_mode(1);
-      //   break;
+    case CC4adsr_mode:
+      if (upperSW) {
+        upperData[P_env4_adsr_mode] = map(value, 0, 127, 0, 7);
+        if (keyMode == 1) {
+          lowerData[P_env4_adsr_mode] = upperData[P_env4_adsr_mode];
+        }
+      } else {
+        lowerData[P_env4_adsr_mode] = map(value, 0, 127, 0, 7);
+        if (keyMode == 2) {
+          upperData[P_env4_adsr_mode] = lowerData[P_env4_adsr_mode];
+        }
+      }
+      env4_adsr_mode_str = value;
+      updateenv4_adsr_mode(1);
+      break;
 
-      // case CCdualdetune:
-      //   dualdetune = value;
-      //   updatedualdetune(1);
-      //   break;
+    case CCdualdetune:
+      dualdetune = value;
+      dualdetune_str = value;
+      updatedualdetune(1);
+      break;
 
       // case CCunisondetune:
       //   unisondetune = value;
@@ -1292,6 +1485,14 @@ void myControlChange(byte channel, byte control, int value) {
       // case CCoctave_up:
       //   updateoctave_up(1);
       //   break;
+
+    case CCbend_enable:
+      updatebend_enable_button(1);
+      break;
+
+    case CCafter_enable:
+      updateafter_enable_button(1);
+      break;
 
     case CCdual_button:
       updatedual_button(1);
@@ -1595,58 +1796,95 @@ FLASHMEM void updatelfo1_wave(bool announce) {
 //   }
 // }
 
+static inline uint8_t bendStepToValue(uint8_t step) {
+  switch (step) {
+    case 0: return 0x00;  // 2
+    case 1: return 0x10;  // 3
+    case 2: return 0x20;  // 4
+    case 3: return 0x30;  // 7
+    case 4: return 0x70;  // 12
+    default: return 0x00;
+  }
+}
+
+static inline const char *bendStepToLabel(uint8_t step) {
+  switch (step) {
+    case 0: return "2 SEMITONES";
+    case 1: return "3 SEMITONES";
+    case 2: return "4 SEMITONES";
+    case 3: return "7 SEMITONES";
+    case 4: return "12 SEMITONES";
+    default: return "2 SEMITONES";
+  }
+}
+
+FLASHMEM void updatebend_range(bool announce) {
+  // pot 0..127 -> step 0..4
+  const uint8_t newStep = static_cast<uint8_t>(map(bend_range, 0, 127, 0, 4));
+
+  static uint8_t lastStep = 0xFF;
+  const bool changed = (newStep != lastStep);
+
+  bend_range_str = newStep;
+
+  if (announce && !suppressParamAnnounce && changed) {
+    displayMode = 1;
+    showCurrentParameterPage("BEND RANGE", bendStepToLabel(newStep));
+    startParameterDisplay();
+  }
+
+  if (changed) {
+    sendParamValue(0xB7, bendStepToValue(newStep));
+    lastStep = newStep;
+  }
+}
+
 // FLASHMEM void updatebend_range(bool announce) {
-//   bend_range_str = map(bend_range, 0, 127, 0, 4);
+//   bend_range_str = map(bend_range_str, 0, 127, 0, 4);
 //   if (announce && !suppressParamAnnounce) {
 //     displayMode = 1;
 //     switch (bend_range_str) {
 //       case 0:
-//         showCurrentParameterPage("BEND RANGE", "2 Semitones");
+//         showCurrentParameterPage("BEND RANGE", "2 SEMITONES");
 //         break;
 
 //       case 1:
-//         showCurrentParameterPage("BEND RANGE", "3 Semitones");
+//         showCurrentParameterPage("BEND RANGE", "3 SEMITONES");
 //         break;
 
 //       case 2:
-//         showCurrentParameterPage("BEND RANGE", "4 Semitones");
+//         showCurrentParameterPage("BEND RANGE", "4 SEMITONES");
 //         break;
 
 //       case 3:
-//         showCurrentParameterPage("BEND RANGE", "7 Semitones");
+//         showCurrentParameterPage("BEND RANGE", "7 SEMITONES");
 //         break;
 
 //       case 4:
-//         showCurrentParameterPage("BEND RANGE", "12 Semitones");
+//         showCurrentParameterPage("BEND RANGE", "12 SEMITONES");
 //         break;
 //     }
 //     startParameterDisplay();
 //   }
-//   switch (bend_range_str) {
+//   switch (bend_range) {
 //     case 0:
-//       sendCustomSysEx((midiOutCh - 1), 0x17, 0x00);
+//       sendParamValue(0xB7, 0x00);
 //       break;
 
 //     case 1:
-//       sendCustomSysEx((midiOutCh - 1), 0x17, 0x20);
+//       sendParamValue(0xB7, 0x10);
 //       break;
 
 //     case 2:
-//       sendCustomSysEx((midiOutCh - 1), 0x17, 0x40);
+//       sendParamValue(0xB7, 0x20);
 //       break;
 
 //     case 3:
-//       if (set10ctave) {
-//         sendCustomSysEx((midiOutCh - 1), 0x34, 0x00);
-//         delay(20);
-//         set10ctave = false;
-//       }
-//       sendCustomSysEx((midiOutCh - 1), 0x17, 0x60);
+//       sendParamValue(0xB7, 0x30);
 //       break;
 
 //     case 4:
-//       sendCustomSysEx((midiOutCh - 1), 0x34, 0x01);
-//       set10ctave = true;
+//       sendParamValue(0xB7, 0x70);
 //       break;
 //   }
 // }
@@ -2744,79 +2982,116 @@ FLASHMEM void updatetime4(bool announce) {
   }
 }
 
-// FLASHMEM void updateenv5stage_mode(bool announce) {
-//   env5stage_mode_str = map(env5stage_mode, 0, 127, 0, 7);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (env5stage_mode_str) {
-//       case 0:
-//         showCurrentParameterPage("ENV1 KEY FOLLOW.", "Off");
-//         break;
+FLASHMEM void updateenv5stage_mode(bool announce) {
+  sendOffset(0x0C, 0xAD);
+  if (announce && !suppressParamAnnounce) {
+    env5stage_mode_str = map(env5stage_mode_str, 0, 127, 0, 7);
+    displayMode = 0;
+    switch (env5stage_mode_str) {
+      case 0:
+        showCurrentParameterPage("ENV1 KEY FOLLOW.", "OFF");
+        break;
 
-//       case 1:
-//         showCurrentParameterPage("ENV1 KEY FOLLOW.", "KEY 1");
-//         break;
+      case 1:
+        showCurrentParameterPage("ENV1 KEY FOLLOW.", "KEY1");
+        break;
 
-//       case 2:
-//         showCurrentParameterPage("ENV1 KEY FOLLOW.", "KEY 2");
-//         break;
+      case 2:
+        showCurrentParameterPage("ENV1 KEY FOLLOW.", "KEY2");
+        break;
 
-//       case 3:
-//         showCurrentParameterPage("ENV1 KEY FOLLOW.", "KEY 3");
-//         break;
+      case 3:
+        showCurrentParameterPage("ENV1 KEY FOLLOW.", "KEY3");
+        break;
 
-//       case 4:
-//         showCurrentParameterPage("ENV1 KEY FOLLOW.", "LOOP 0");
-//         break;
+      case 4:
+        showCurrentParameterPage("ENV1 KEY FOLLOW.", "LOOP0");
+        break;
 
-//       case 5:
-//         showCurrentParameterPage("ENV1 KEY FOLLOW.", "LOOP 1");
-//         break;
+      case 5:
+        showCurrentParameterPage("ENV1 KEY FOLLOW.", "LOOP1");
+        break;
 
-//       case 6:
-//         showCurrentParameterPage("ENV1 KEY FOLLOW.", "LOOP 2");
-//         break;
+      case 6:
+        showCurrentParameterPage("ENV1 KEY FOLLOW.", "LOOP2");
+        break;
 
-//       case 7:
-//         showCurrentParameterPage("ENV1 KEY FOLLOW.", "LOOP 3");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (env5stage_mode_str) {
-//     case 0:
-//       midiCCOut(CC5stage_mode, 0x00);
-//       break;
+      case 7:
+        showCurrentParameterPage("ENV1 KEY FOLLOW.", "LOOP3");
+        break;
+    }
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    switch (upperData[P_env5stage_mode]) {
+      case 0:
+        sendParamValue(0xAD, 0x00);
+        break;
 
-//     case 1:
-//       midiCCOut(CC5stage_mode, 0x10);
-//       break;
+      case 1:
+        sendParamValue(0xAD, 0x10);
+        break;
 
-//     case 2:
-//       midiCCOut(CC5stage_mode, 0x20);
-//       break;
+      case 2:
+        sendParamValue(0xAD, 0x20);
+        break;
 
-//     case 3:
-//       midiCCOut(CC5stage_mode, 0x30);
-//       break;
+      case 3:
+        sendParamValue(0xAD, 0x30);
+        break;
 
-//     case 4:
-//       midiCCOut(CC5stage_mode, 0x40);
-//       break;
+      case 4:
+        sendParamValue(0xAD, 0x40);
+        break;
 
-//     case 5:
-//       midiCCOut(CC5stage_mode, 0x50);
-//       break;
+      case 5:
+        sendParamValue(0xAD, 0x50);
+        break;
 
-//     case 6:
-//       midiCCOut(CC5stage_mode, 0x60);
-//       break;
+      case 6:
+        sendParamValue(0xAD, 0x60);
+        break;
 
-//     case 7:
-//       midiCCOut(CC5stage_mode, 0x70);
-//       break;
-//   }
-// }
+      case 7:
+        sendParamValue(0xAD, 0x70);
+        break;
+    }
+  } else {
+    switch (lowerData[P_env5stage_mode]) {
+      case 0:
+        sendParamValue(0xAD, 0x00);
+        break;
+
+      case 1:
+        sendParamValue(0xAD, 0x10);
+        break;
+
+      case 2:
+        sendParamValue(0xAD, 0x20);
+        break;
+
+      case 3:
+        sendParamValue(0xAD, 0x30);
+        break;
+
+      case 4:
+        sendParamValue(0xAD, 0x40);
+        break;
+
+      case 5:
+        sendParamValue(0xAD, 0x50);
+        break;
+
+      case 6:
+        sendParamValue(0xAD, 0x60);
+        break;
+
+      case 7:
+        sendParamValue(0xAD, 0x70);
+        break;
+    }
+  }
+}
 
 FLASHMEM void updateenv2_time1(bool announce) {
   sendOffset(0x0D, 0xA6);
@@ -2923,79 +3198,116 @@ FLASHMEM void updateenv2_time4(bool announce) {
   }
 }
 
-// FLASHMEM void updateenv2_env5stage_mode(bool announce) {
-//   env2_5stage_mode_str = map(env2_5stage_mode, 0, 127, 0, 7);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (env2_5stage_mode_str) {
-//       case 0:
-//         showCurrentParameterPage("ENV2 KEY FOLLOW.", "Off");
-//         break;
+FLASHMEM void updateenv2_env5stage_mode(bool announce) {
+  sendOffset(0x0D, 0xAD);
+  if (announce && !suppressParamAnnounce) {
+    env2_5stage_mode_str = map(env2_5stage_mode_str, 0, 127, 0, 7);
+    displayMode = 0;
+    switch (env2_5stage_mode_str) {
+      case 0:
+        showCurrentParameterPage("ENV2 KEY FOLLOW.", "OFF");
+        break;
 
-//       case 1:
-//         showCurrentParameterPage("ENV2 KEY FOLLOW.", "KEY 1");
-//         break;
+      case 1:
+        showCurrentParameterPage("ENV2 KEY FOLLOW.", "KEY1");
+        break;
 
-//       case 2:
-//         showCurrentParameterPage("ENV2 KEY FOLLOW.", "KEY 2");
-//         break;
+      case 2:
+        showCurrentParameterPage("ENV2 KEY FOLLOW.", "KEY2");
+        break;
 
-//       case 3:
-//         showCurrentParameterPage("ENV2 KEY FOLLOW.", "KEY 3");
-//         break;
+      case 3:
+        showCurrentParameterPage("ENV2 KEY FOLLOW.", "KEY3");
+        break;
 
-//       case 4:
-//         showCurrentParameterPage("ENV2 KEY FOLLOW.", "LOOP 0");
-//         break;
+      case 4:
+        showCurrentParameterPage("ENV2 KEY FOLLOW.", "LOOP0");
+        break;
 
-//       case 5:
-//         showCurrentParameterPage("ENV2 KEY FOLLOW.", "LOOP 1");
-//         break;
+      case 5:
+        showCurrentParameterPage("ENV2 KEY FOLLOW.", "LOOP1");
+        break;
 
-//       case 6:
-//         showCurrentParameterPage("ENV2 KEY FOLLOW.", "LOOP 2");
-//         break;
+      case 6:
+        showCurrentParameterPage("ENV2 KEY FOLLOW.", "LOOP2");
+        break;
 
-//       case 7:
-//         showCurrentParameterPage("ENV2 KEY FOLLOW.", "LOOP 3");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (env2_5stage_mode_str) {
-//     case 0:
-//       midiCCOut(CC25stage_mode, 0x00);
-//       break;
+      case 7:
+        showCurrentParameterPage("ENV2 KEY FOLLOW.", "LOOP3");
+        break;
+    }
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    switch (upperData[P_env2_5stage_mode]) {
+      case 0:
+        sendParamValue(0xAD, 0x00);
+        break;
 
-//     case 1:
-//       midiCCOut(CC25stage_mode, 0x10);
-//       break;
+      case 1:
+        sendParamValue(0xAD, 0x10);
+        break;
 
-//     case 2:
-//       midiCCOut(CC25stage_mode, 0x20);
-//       break;
+      case 2:
+        sendParamValue(0xAD, 0x20);
+        break;
 
-//     case 3:
-//       midiCCOut(CC25stage_mode, 0x30);
-//       break;
+      case 3:
+        sendParamValue(0xAD, 0x30);
+        break;
 
-//     case 4:
-//       midiCCOut(CC25stage_mode, 0x40);
-//       break;
+      case 4:
+        sendParamValue(0xAD, 0x40);
+        break;
 
-//     case 5:
-//       midiCCOut(CC25stage_mode, 0x50);
-//       break;
+      case 5:
+        sendParamValue(0xAD, 0x50);
+        break;
 
-//     case 6:
-//       midiCCOut(CC25stage_mode, 0x60);
-//       break;
+      case 6:
+        sendParamValue(0xAD, 0x60);
+        break;
 
-//     case 7:
-//       midiCCOut(CC25stage_mode, 0x70);
-//       break;
-//   }
-// }
+      case 7:
+        sendParamValue(0xAD, 0x70);
+        break;
+    }
+  } else {
+    switch (lowerData[P_env2_5stage_mode]) {
+      case 0:
+        sendParamValue(0xAD, 0x00);
+        break;
+
+      case 1:
+        sendParamValue(0xAD, 0x10);
+        break;
+
+      case 2:
+        sendParamValue(0xAD, 0x20);
+        break;
+
+      case 3:
+        sendParamValue(0xAD, 0x30);
+        break;
+
+      case 4:
+        sendParamValue(0xAD, 0x40);
+        break;
+
+      case 5:
+        sendParamValue(0xAD, 0x50);
+        break;
+
+      case 6:
+        sendParamValue(0xAD, 0x60);
+        break;
+
+      case 7:
+        sendParamValue(0xAD, 0x70);
+        break;
+    }
+  }
+}
 
 FLASHMEM void updateattack(bool announce) {
   sendOffset(0x0E, 0xA6);
@@ -3057,81 +3369,116 @@ FLASHMEM void updaterelease(bool announce) {
   }
 }
 
-// FLASHMEM void updateadsr_mode(bool announce) {
-//   adsr_mode_str = map(adsr_mode, 0, 127, 0, 7);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (adsr_mode_str) {
-//       case 0:
-//         showCurrentParameterPage("ENV3 KEY FOLLOW.", "Off");
-//         break;
+FLASHMEM void updateadsr_mode(bool announce) {
+  sendOffset(0x0E, 0xAD);
+  if (announce && !suppressParamAnnounce) {
+    adsr_mode_str = map(adsr_mode_str, 0, 127, 0, 7);
+    displayMode = 0;
+    switch (adsr_mode_str) {
+      case 0:
+        showCurrentParameterPage("ENV3 KEY FOLLOW.", "OFF");
+        break;
 
-//       case 1:
-//         showCurrentParameterPage("ENV3 KEY FOLLOW.", "KEY 1");
-//         break;
+      case 1:
+        showCurrentParameterPage("ENV3 KEY FOLLOW.", "KEY1");
+        break;
 
-//       case 2:
-//         showCurrentParameterPage("ENV3 KEY FOLLOW.", "KEY 2");
-//         break;
+      case 2:
+        showCurrentParameterPage("ENV3 KEY FOLLOW.", "KEY2");
+        break;
 
-//       case 3:
-//         showCurrentParameterPage("ENV3 KEY FOLLOW.", "KEY 3");
-//         break;
+      case 3:
+        showCurrentParameterPage("ENV3 KEY FOLLOW.", "KEY3");
+        break;
 
-//       case 4:
-//         showCurrentParameterPage("ENV3 KEY FOLLOW.", "LOOP 0");
-//         break;
+      case 4:
+        showCurrentParameterPage("ENV3 KEY FOLLOW.", "LOOP0");
+        break;
 
-//       case 5:
-//         showCurrentParameterPage("ENV3 KEY FOLLOW.", "LOOP 1");
-//         break;
+      case 5:
+        showCurrentParameterPage("ENV3 KEY FOLLOW.", "LOOP1");
+        break;
 
-//       case 6:
-//         showCurrentParameterPage("ENV3 KEY FOLLOW.", "LOOP 2");
-//         break;
+      case 6:
+        showCurrentParameterPage("ENV3 KEY FOLLOW.", "LOOP2");
+        break;
 
-//       case 7:
-//         showCurrentParameterPage("ENV3 KEY FOLLOW.", "LOOP 3");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (adsr_mode_str) {
-//     case 0:
-//       midiCCOut(CCadsr_mode, 0x00);
-//       break;
+      case 7:
+        showCurrentParameterPage("ENV3 KEY FOLLOW.", "LOOP3");
+        break;
+    }
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    switch (upperData[P_adsr_mode]) {
+      case 0:
+        sendParamValue(0xAD, 0x00);
+        break;
 
-//     case 1:
-//       midiCCOut(CCadsr_mode, 0x10);
-//       break;
+      case 1:
+        sendParamValue(0xAD, 0x10);
+        break;
 
-//     case 2:
-//       midiCCOut(CCadsr_mode, 0x20);
-//       break;
+      case 2:
+        sendParamValue(0xAD, 0x20);
+        break;
 
-//     case 3:
-//       midiCCOut(CCadsr_mode, 0x30);
-//       break;
+      case 3:
+        sendParamValue(0xAD, 0x30);
+        break;
 
-//     case 4:
-//       midiCCOut(CCadsr_mode, 0x40);
-//       break;
+      case 4:
+        sendParamValue(0xAD, 0x40);
+        break;
 
-//     case 5:
-//       midiCCOut(CCadsr_mode, 0x50);
-//       break;
+      case 5:
+        sendParamValue(0xAD, 0x50);
+        break;
 
-//     case 6:
-//       midiCCOut(CCadsr_mode, 0x60);
-//       break;
+      case 6:
+        sendParamValue(0xAD, 0x60);
+        break;
 
-//     case 7:
-//       midiCCOut(CCadsr_mode, 0x70);
-//       break;
-//   }
-// }
+      case 7:
+        sendParamValue(0xAD, 0x70);
+        break;
+    }
+  } else {
+    switch (lowerData[P_adsr_mode]) {
+      case 0:
+        sendParamValue(0xAD, 0x00);
+        break;
 
+      case 1:
+        sendParamValue(0xAD, 0x10);
+        break;
 
+      case 2:
+        sendParamValue(0xAD, 0x20);
+        break;
+
+      case 3:
+        sendParamValue(0xAD, 0x30);
+        break;
+
+      case 4:
+        sendParamValue(0xAD, 0x40);
+        break;
+
+      case 5:
+        sendParamValue(0xAD, 0x50);
+        break;
+
+      case 6:
+        sendParamValue(0xAD, 0x60);
+        break;
+
+      case 7:
+        sendParamValue(0xAD, 0x70);
+        break;
+    }
+  }
+}
 
 FLASHMEM void updateenv4_attack(bool announce) {
   sendOffset(0x0F, 0xA6);
@@ -3192,89 +3539,208 @@ FLASHMEM void updateenv4_release(bool announce) {
     sendParamValue(0xAC, (uint8_t)lowerData[P_env4_release]);
   }
 }
-// FLASHMEM void updateenv4_adsr_mode(bool announce) {
-//   env4_adsr_mode_str = map(env4_adsr_mode, 0, 127, 0, 7);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (env4_adsr_mode_str) {
-//       case 0:
-//         showCurrentParameterPage("ENV4 KEY FOLLOW.", "Off");
-//         break;
 
-//       case 1:
-//         showCurrentParameterPage("ENV4 KEY FOLLOW.", "KEY 1");
-//         break;
+FLASHMEM void updateenv4_adsr_mode(bool announce) {
+  sendOffset(0x0F, 0xAD);
+  if (announce && !suppressParamAnnounce) {
+    env4_adsr_mode_str = map(env4_adsr_mode_str, 0, 127, 0, 7);
+    displayMode = 0;
+    switch (env4_adsr_mode_str) {
+      case 0:
+        showCurrentParameterPage("ENV4 KEY FOLLOW.", "OFF");
+        break;
 
-//       case 2:
-//         showCurrentParameterPage("ENV4 KEY FOLLOW.", "KEY 2");
-//         break;
+      case 1:
+        showCurrentParameterPage("ENV4 KEY FOLLOW.", "KEY1");
+        break;
 
-//       case 3:
-//         showCurrentParameterPage("ENV4 KEY FOLLOW.", "KEY 3");
-//         break;
+      case 2:
+        showCurrentParameterPage("ENV4 KEY FOLLOW.", "KEY2");
+        break;
 
-//       case 4:
-//         showCurrentParameterPage("ENV4 KEY FOLLOW.", "LOOP 0");
-//         break;
+      case 3:
+        showCurrentParameterPage("ENV4 KEY FOLLOW.", "KEY3");
+        break;
 
-//       case 5:
-//         showCurrentParameterPage("ENV4 KEY FOLLOW.", "LOOP 1");
-//         break;
+      case 4:
+        showCurrentParameterPage("ENV4 KEY FOLLOW.", "LOOP0");
+        break;
 
-//       case 6:
-//         showCurrentParameterPage("ENV4 KEY FOLLOW.", "LOOP 2");
-//         break;
+      case 5:
+        showCurrentParameterPage("ENV4 KEY FOLLOW.", "LOOP1");
+        break;
 
-//       case 7:
-//         showCurrentParameterPage("ENV4 KEY FOLLOW.", "LOOP 3");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (env4_adsr_mode_str) {
-//     case 0:
-//       midiCCOut(CC4adsr_mode, 0x00);
-//       break;
+      case 6:
+        showCurrentParameterPage("ENV4 KEY FOLLOW.", "LOOP2");
+        break;
 
-//     case 1:
-//       midiCCOut(CC4adsr_mode, 0x10);
-//       break;
+      case 7:
+        showCurrentParameterPage("ENV4 KEY FOLLOW.", "LOOP3");
+        break;
+    }
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    switch (upperData[P_env4_adsr_mode]) {
+      case 0:
+        sendParamValue(0xAD, 0x00);
+        break;
 
-//     case 2:
-//       midiCCOut(CC4adsr_mode, 0x20);
-//       break;
+      case 1:
+        sendParamValue(0xAD, 0x10);
+        break;
 
-//     case 3:
-//       midiCCOut(CC4adsr_mode, 0x30);
-//       break;
+      case 2:
+        sendParamValue(0xAD, 0x20);
+        break;
 
-//     case 4:
-//       midiCCOut(CC4adsr_mode, 0x40);
-//       break;
+      case 3:
+        sendParamValue(0xAD, 0x30);
+        break;
 
-//     case 5:
-//       midiCCOut(CC4adsr_mode, 0x50);
-//       break;
+      case 4:
+        sendParamValue(0xAD, 0x40);
+        break;
 
-//     case 6:
-//       midiCCOut(CC4adsr_mode, 0x60);
-//       break;
+      case 5:
+        sendParamValue(0xAD, 0x50);
+        break;
 
-//     case 7:
-//       midiCCOut(CC4adsr_mode, 0x70);
-//       break;
-//   }
-// }
+      case 6:
+        sendParamValue(0xAD, 0x60);
+        break;
 
-// FLASHMEM void updatedualdetune(bool announce) {
-//   dualdetune_str = map(dualdetune, 0, 127, -50, 50);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 1;
-//     showCurrentParameterPage("DUAL DETUNE", String(dualdetune_str));
-//     startParameterDisplay();
-//   }
-//   sendCustomSysEx((midiOutCh - 1), 0x13, dualdetune);
-// }
+      case 7:
+        sendParamValue(0xAD, 0x70);
+        break;
+    }
+  } else {
+    switch (lowerData[P_env4_adsr_mode]) {
+      case 0:
+        sendParamValue(0xAD, 0x00);
+        break;
+
+      case 1:
+        sendParamValue(0xAD, 0x10);
+        break;
+
+      case 2:
+        sendParamValue(0xAD, 0x20);
+        break;
+
+      case 3:
+        sendParamValue(0xAD, 0x30);
+        break;
+
+      case 4:
+        sendParamValue(0xAD, 0x40);
+        break;
+
+      case 5:
+        sendParamValue(0xAD, 0x50);
+        break;
+
+      case 6:
+        sendParamValue(0xAD, 0x60);
+        break;
+
+      case 7:
+        sendParamValue(0xAD, 0x70);
+        break;
+    }
+  }
+}
+
+// File: detune.cpp
+
+static inline uint8_t map_u8_round(uint8_t x, uint8_t in_min, uint8_t in_max, uint8_t out_min, uint8_t out_max) {
+  if (in_max == in_min) return out_min;
+  const uint16_t num = static_cast<uint16_t>(x - in_min) * static_cast<uint16_t>(out_max - out_min);
+  const uint16_t den = static_cast<uint16_t>(in_max - in_min);
+  const uint16_t y = static_cast<uint16_t>(out_min) + (num + den / 2) / den;
+  return clamp_u8(y, out_min, out_max);
+}
+
+static inline int16_t map_i16_round(uint8_t x, uint8_t in_min, uint8_t in_max, int16_t out_min, int16_t out_max) {
+  if (in_max == in_min) return out_min;
+  const int32_t num = static_cast<int32_t>(x - in_min) * static_cast<int32_t>(out_max - out_min);
+  const int32_t den = static_cast<int32_t>(in_max - in_min);
+  const int32_t y = static_cast<int32_t>(out_min) + (num + den / 2) / den;
+  if (y < out_min) return out_min;
+  if (y > out_max) return out_max;
+  return static_cast<int16_t>(y);
+}
+
+// Slider 0..127 -> raw 0x00..0x6B, but at slider 63 raw must be 0x2C.
+static uint8_t dualDetuneSliderToRaw(uint8_t slider) {
+  slider = clamp_u8(slider, 0, 127);
+
+  if (slider <= 63) {
+    // 0..63 => 0x00..0x2C (inclusive, hit 0x2C at 63)
+    return map_u8_round(slider, 0, 63, 0x00, kDetuneZeroPos);
+  }
+
+  // 64..127 => 0x2C..0x6B (inclusive)
+  return map_u8_round(slider, 64, 127, kDetuneZeroPos, kDetuneMax);
+}
+
+// Raw 0x00..0x6B -> display value -50..+50,
+// with distinct "-00" at 0x2B and "00" at 0x2C.
+static String dualDetuneRawToDisplayString(uint8_t raw) {
+  raw = clamp_u8(raw, 0x00, kDetuneMax);
+
+  if (raw == kDetuneNegZero) return String("-00");
+  if (raw == kDetuneZeroPos) return String("00");
+
+  if (raw < kDetuneZeroPos) {
+    // 0x00..0x2B => -50..-0
+    const int16_t v = map_i16_round(raw, 0x00, kDetuneNegZero, -50, 0);
+    // format "-02", "-01", "-00" handled above
+    char buf[5];
+    snprintf(buf, sizeof(buf), "%+03d", (int)v);  // yields "-02", "-01", "+00" etc
+    // force minus sign style without '+'
+    if (v == 0) return String("-00");
+    if (buf[0] == '+') memmove(buf, buf + 1, strlen(buf));  // drop '+'
+    return String(buf);
+  } else {
+    // 0x2D..0x6B => +1..+50 (0x2C handled above as "00")
+    const int16_t v = map_i16_round(raw, kDetuneZeroPos, kDetuneMax, 0, 50);
+    if (v == 0) return String("00");
+    char buf[5];
+    snprintf(buf, sizeof(buf), "%+03d", (int)v);  // "+01", "+02", ...
+    return String(buf);
+  }
+}
+
+// Example update routine
+FLASHMEM void updatedualdetune(bool announce) {
+  sendNoOffset(kDualDetuneParam);
+
+  const uint8_t raw = dualDetuneSliderToRaw(static_cast<uint8_t>(dualdetune));  // dualdetune slider 0..127
+  const String disp = dualDetuneRawToDisplayString(raw);
+
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 1;
+    showCurrentParameterPage("DUAL DETUNE", disp);
+    startParameterDisplay();
+  }
+  if (keyMode == 0) {
+
+    sendParamValueWithPrefixLatched(0xF1, kDualDetuneParam, raw);
+    sendParamValue(kDualDetuneParam2, raw);
+
+    sendParamValueWithPrefixLatched(0XF9, kDualDetuneParam, 0x2C);
+    sendParamValue(kDualDetuneParam2, 0x2C);
+
+  } else {
+
+    sendParamValueWithPrefixLatched(0xF1, kDualDetuneParam, 0x2C);
+    sendParamValue(kDualDetuneParam2, 0x2C);
+
+    sendParamValueWithPrefixLatched(0XF9, kDualDetuneParam, 0x2C);
+    sendParamValue(kDualDetuneParam2, 0x2C);
+  }
+}
 
 // FLASHMEM void updateunisondetune(bool announce) {
 //   unisondetune_str = map(unisondetune, 0, 127, -50, 50);
@@ -3486,6 +3952,7 @@ FLASHMEM void updatedual_button(bool announce) {
     mcp10.digitalWrite(UPPER_SELECT, LOW);
   }
   keyMode = 0;
+  updatedualdetune(0);
 }
 
 FLASHMEM void updatesplit_button(bool announce) {
@@ -3508,6 +3975,7 @@ FLASHMEM void updatesplit_button(bool announce) {
     mcp10.digitalWrite(UPPER_SELECT, LOW);
   }
   keyMode = 3;
+  updatedualdetune(0);
 }
 
 FLASHMEM void updatesingle_button(bool announce) {
@@ -3543,6 +4011,7 @@ FLASHMEM void updatesingle_button(bool announce) {
   mcp8.digitalWrite(KEY_SPECIAL_GREEN, LOW);
   mcp10.digitalWrite(LOWER_SELECT, HIGH);
   mcp10.digitalWrite(UPPER_SELECT, HIGH);
+  updatedualdetune(0);
 }
 
 FLASHMEM void updatespecial_button(bool announce) {
@@ -3575,6 +4044,7 @@ FLASHMEM void updatespecial_button(bool announce) {
     mcp10.digitalWrite(LOWER_SELECT, HIGH);
     mcp10.digitalWrite(UPPER_SELECT, LOW);
   }
+  updatedualdetune(0);
 }
 
 // Assigner buttons
@@ -3652,6 +4122,84 @@ FLASHMEM void updateunison_button(bool announce) {
   mcp8.digitalWrite(ASSIGN_POLY_GREEN, LOW);
   mcp8.digitalWrite(ASSIGN_MONO_RED, LOW);
   mcp8.digitalWrite(ASSIGN_MONO_GREEN, LOW);
+}
+
+FLASHMEM void updatebend_enable_button(bool announce) {
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 1;
+    switch (bend_enable) {
+      case 0:
+        showCurrentParameterPage("BEND ENABLE", "OFF");
+        break;
+      case 1:
+        showCurrentParameterPage("BEND ENABLE", "LOWER");
+        break;
+      case 2:
+        showCurrentParameterPage("BEND ENABLE", "UPPER");
+        break;
+      case 3:
+        showCurrentParameterPage("BEND ENABLE", "BOTH");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (bend_enable) {
+    case 0:
+      mcp7.digitalWrite(BEND_ENABLE_RED, LOW);
+      mcp7.digitalWrite(BEND_ENABLE_GREEN, LOW);
+      break;
+    case 1:
+      mcp7.digitalWrite(BEND_ENABLE_RED, HIGH);
+      mcp7.digitalWrite(BEND_ENABLE_GREEN, LOW);
+      break;
+    case 2:
+      mcp7.digitalWrite(BEND_ENABLE_RED, LOW);
+      mcp7.digitalWrite(BEND_ENABLE_GREEN, HIGH);
+      break;
+    case 3:
+      mcp7.digitalWrite(BEND_ENABLE_RED, HIGH);
+      mcp7.digitalWrite(BEND_ENABLE_GREEN, HIGH);
+      break;
+  }
+}
+
+FLASHMEM void updateafter_enable_button(bool announce) {
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 1;
+    switch (after_enable) {
+      case 0:
+        showCurrentParameterPage("AFTERTOUCH ", "OFF");
+        break;
+      case 1:
+        showCurrentParameterPage("AFTERTOUCH", "LOWER");
+        break;
+      case 2:
+        showCurrentParameterPage("AFTERTOUCH", "UPPER");
+        break;
+      case 3:
+        showCurrentParameterPage("AFTERTOUCH", "BOTH");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (after_enable) {
+    case 0:
+      mcp12.digitalWrite(AFTER_ENABLE_RED, LOW);
+      mcp12.digitalWrite(AFTER_ENABLE_GREEN, LOW);
+      break;
+    case 1:
+      mcp12.digitalWrite(AFTER_ENABLE_RED, HIGH);
+      mcp12.digitalWrite(AFTER_ENABLE_GREEN, LOW);
+      break;
+    case 2:
+      mcp12.digitalWrite(AFTER_ENABLE_RED, LOW);
+      mcp12.digitalWrite(AFTER_ENABLE_GREEN, HIGH);
+      break;
+    case 3:
+      mcp12.digitalWrite(AFTER_ENABLE_RED, HIGH);
+      mcp12.digitalWrite(AFTER_ENABLE_GREEN, HIGH);
+      break;
+  }
 }
 
 // FLASHMEM void updatelfo1_sync(bool announce) {
@@ -6757,7 +7305,7 @@ String getCurrentPatchData() {
          + "," + String(upperData[P_assign]) + "," + String(lowerData[P_assign]) + "," + String(toneNameU) + "," + String(toneNameL)
          + "," + String(keyMode) + "," + String(dualdetune) + "," + String(at_vib) + "," + String(at_lpf) + "," + String(at_vol) + "," + String(balance)
          + "," + String(portamento) + "," + String(volume) + "," + String(bend_range) + "," + String(chaseLevel) + "," + String(chaseMode) + "," + String(chaseTime)
-         + "," + String(chasePlay);
+         + "," + String(chasePlay) + "," + String(bend_enable) + "," + String(after_enable);
 }
 
 void setCurrentPatchData(String data[]) {
@@ -6983,12 +7531,15 @@ void setCurrentPatchData(String data[]) {
   chaseMode = data[207].toInt();
   chaseTime = data[208].toInt();
   chasePlay = data[209].toInt();
+  bend_enable = data[210].toInt();
+  after_enable = data[211].toInt();
 
   //Patchname
   updatePatchname();
   updateButtons();
   updateUpperToneData();
   updateLowerToneData();
+  updatePerformanceData();
 
   Serial.print("Set Patch: ");
   Serial.println(patchName);
@@ -7050,6 +7601,7 @@ void updateUpperToneData() {
   updatetime3(0);
   updatelevel3(0);
   updatetime4(0);
+  updateenv5stage_mode(0);
 
   updateenv2_time1(0);
   updateenv2_level1(0);
@@ -7058,24 +7610,22 @@ void updateUpperToneData() {
   updateenv2_time3(0);
   updateenv2_level3(0);
   updateenv2_time4(0);
+  updateenv2_env5stage_mode(0);
 
   updateattack(0);
   updatedecay(0);
   updatesustain(0);
   updaterelease(0);
+  updateadsr_mode(0);
 
   updateenv4_attack(0);
   updateenv4_decay(0);
   updateenv4_sustain(0);
   updateenv4_release(0);
+  updateenv4_adsr_mode(0);
 
   updatevca_mod(0);
-  updateat_vib(0);
-  updateat_lpf(0);
-  updateat_vol(0);
-  updatebalance(0);
-  updatevolume(0);
-  updateportamento(0);
+
 
   LAST_PARAM = 0x00;
   upperSW = upperSWsafe;
@@ -7130,6 +7680,7 @@ void updateLowerToneData() {
   updatetime3(0);
   updatelevel3(0);
   updatetime4(0);
+  updateenv5stage_mode(0);
 
   updateenv2_time1(0);
   updateenv2_level1(0);
@@ -7138,27 +7689,40 @@ void updateLowerToneData() {
   updateenv2_time3(0);
   updateenv2_level3(0);
   updateenv2_time4(0);
+  updateenv2_env5stage_mode(0);
 
   updateattack(0);
   updatedecay(0);
   updatesustain(0);
   updaterelease(0);
+  updateadsr_mode(0);
 
   updateenv4_attack(0);
   updateenv4_decay(0);
   updateenv4_sustain(0);
   updateenv4_release(0);
+  updateenv4_adsr_mode(0);
 
   updatevca_mod(0);
+
+  LAST_PARAM = 0x00;
+  upperSW = upperSWsafe;
+}
+
+void updatePerformanceData() {
+
   updateat_vib(0);
   updateat_lpf(0);
   updateat_vol(0);
   updatebalance(0);
   updatevolume(0);
   updateportamento(0);
+  updatedualdetune(0);
+  updatebend_enable_button(0);
+  updatebend_range(0);
+  updateafter_enable_button(0);
 
   LAST_PARAM = 0x00;
-  upperSW = upperSWsafe;
 }
 
 void showSettingsPage() {
@@ -7545,6 +8109,32 @@ void mainButtonChanged(Button *btn, bool released) {
       //   break;
 
       // Keymode Buttons
+
+    case BEND_ENABLE_BUTTON:
+      if (!released) {
+        bend_enable = bend_enable + 1;
+        if (bend_enable > 3) {
+          bend_enable = 0;
+        }
+        if (bend_enable != 0 && (keyMode == 1 || keyMode == 2)) {
+          bend_enable = 3;
+        }
+        myControlChange(midiChannel, CCbend_enable, bend_enable);
+      }
+      break;
+
+    case AFTER_ENABLE_BUTTON:
+      if (!released) {
+        after_enable = after_enable + 1;
+        if (after_enable > 3) {
+          after_enable = 0;
+        }
+        if (after_enable != 0 && (keyMode == 1 || keyMode == 2)) {
+          after_enable = 3;
+        }
+        myControlChange(midiChannel, CCafter_enable, after_enable);
+      }
+      break;
 
     case KEY_DUAL_BUTTON:
       if (!released) {

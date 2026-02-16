@@ -220,6 +220,7 @@ ADC *adc = new ADC();
 #define PATCH_BUTTON 81
 #define TONE_BUTTON 82
 #define MIDI_BUTTON 83
+#define AFTER_ENABLE_BUTTON 84
 
 //void RotaryEncoderChanged (bool clockwise, int id);
 
@@ -238,9 +239,10 @@ Adafruit_MCP23017 mcp8;
 Adafruit_MCP23017 mcp9;
 Adafruit_MCP23017 mcp10;
 Adafruit_MCP23017 mcp11;
+Adafruit_MCP23017 mcp12;
 
 //Array of pointers of all MCPs
-Adafruit_MCP23017 *allMCPs[] = { &mcp1, &mcp2, &mcp3, &mcp4, &mcp5, &mcp6, &mcp7, &mcp8, &mcp9, &mcp10, &mcp11};
+Adafruit_MCP23017 *allMCPs[] = { &mcp1, &mcp2, &mcp3, &mcp4, &mcp5, &mcp6, &mcp7, &mcp8, &mcp9, &mcp10, &mcp11, &mcp12};
 
 // // My encoders
 // /* Array of all rotary encoders and their pins */
@@ -349,6 +351,8 @@ Button patch_5_Button = Button(&mcp11, 12, PATCH_5_BUTTON, &mainButtonChanged);
 Button patch_6_Button = Button(&mcp11, 13, PATCH_6_BUTTON, &mainButtonChanged);
 Button patch_7_Button = Button(&mcp11, 14, PATCH_7_BUTTON, &mainButtonChanged);
 
+Button after_enable_Button = Button(&mcp12, 5, AFTER_ENABLE_BUTTON, &mainButtonChanged);
+
 Button *mainButtons[] = {
   &lfo1_sync_Button,
   &lfo2_sync_Button,
@@ -393,6 +397,7 @@ Button *mainButtons[] = {
   &key_dual_Button,
   &key_split_Button,
   &key_special_Button,
+  &after_enable_Button,
 };
 
 Button *allButtons[] = {
@@ -402,7 +407,7 @@ Button *allButtons[] = {
   &dco_mix_env_pol_Button, &dco_mix_env_src_Button, &vcf_env_pol_Button, &dco_mix_dyn_Button, &env5stage_select_Button,
   &vca_dyn_Button, &vca_env_src_Button, &vcf_env_src_Button, &vcf_dyn_Button, &adsr_select_Button, &lower_Button, &upper_Button, &chorus_Button, &portamento_Button,
   &octave_down_Button, &octave_up_Button, &bend_enable_Button, &key_single_Button, &assign_poly_Button, &assign_mono_Button, &assign_uni_Button,
-  &key_dual_Button, &key_split_Button, &key_special_Button
+  &key_dual_Button, &key_split_Button, &key_special_Button, &after_enable_Button
 };
 
 // an array of vectors to hold pointers to the encoders on each MCP
@@ -532,6 +537,13 @@ std::vector<RotaryEncOverMCP *> encByMCP[NUM_MCP];
 #define KEY_SINGLE_GREEN 7
 
 #define CHASE_LED_RED 15
+
+// GP11
+
+// GP12
+
+#define AFTER_ENABLE_RED 6
+#define AFTER_ENABLE_GREEN 7
 
 #define MUXCHANNELS 16
 #define QUANTISE_FACTOR 1
@@ -698,5 +710,8 @@ void setupMCPoutputs() {
   mcp10.pinMode(6, OUTPUT);  // pin 6 = GPA7 of MCP2301X
   mcp10.pinMode(7, OUTPUT);  // pin 7 = GPA7 of MCP2301X
   mcp10.pinMode(15, OUTPUT);  // pin 15 = GPA7 of MCP2301X
+
+  mcp12.pinMode(6, OUTPUT);  // pin 6 = GPA7 of MCP2301X
+  mcp12.pinMode(7, OUTPUT);  // pin 7 = GPA7 of MCP2301X
 
 }

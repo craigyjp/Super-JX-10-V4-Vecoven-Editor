@@ -3,7 +3,7 @@ constexpr int VOICES = 12;  // you’re indexing 1..8
 
 const char* VERSION = "V1.1";
 #define RE_READ -1
-#define NO_OF_PARAMS 210
+#define NO_OF_PARAMS 220
 const char* INITPATCHNAME = "Initial Patch";
 const char* INITTONEU = "Initial Upper";
 const char* INITTONEL = "Initial Lower";

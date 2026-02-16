@@ -316,6 +316,8 @@ int portamento;
 int volume;
 int dualdetune;
 int bend_range;
+int bend_enable;
+int after_enable;
 int keyMode = 0;
 int chaseLevel;
 int chaseMode;
@@ -402,13 +404,31 @@ int octave_upU = 0;
 int octave_upL = 0;
 bool octave_up_upwards = true;
 
+
+// Balance variables
+
 static constexpr uint8_t kBalanceParam = 0x9E;
 static constexpr uint8_t kBoardLowerPrefix = 0xF1;
 static constexpr uint8_t kBoardUpperPrefix = 0xF9;
 static constexpr uint8_t kBoardBothPrefix  = 0xF4; // keyMode 1/2 broadcast
 static constexpr uint8_t kMaxLevel = 0x60;         // 96
-// static uint8_t g_lastPrefixSent = 0x00;   // 0x00 = unknown/none
-// static uint8_t g_lastF4Param    = 0x00;   // last param used under F4 "no-repeat" mode
+
+
+// Dual detune
+static constexpr uint8_t kDualDetuneParam = 0xB4; // TODO: set your actual param
+static constexpr uint8_t kDualDetuneParam2 = 0xBE; // TODO: set your actual param
+static constexpr uint8_t kDetuneZeroPos   = 0x2C; // "00"
+static constexpr uint8_t kDetuneNegZero   = 0x2B; // "-00"
+static constexpr uint8_t kDetuneMax       = 0x6B; // "+50"
+
+// Pitch bend
+
+static constexpr uint8_t kPrefixBroadcast = 0xF4;
+static constexpr uint8_t kPitchSignParam  = 0xBF; // 0x00=negative, 0x7F=positive
+static constexpr uint8_t kPitchValueParam = 0xB2; // 0..0x7F magnitude
+static constexpr bool kInvertPb14 = true;
+
+// None saved variables
 
 int oldkeyMode = -1;
 int adsr = 0;

@@ -11,6 +11,7 @@
 #include "Button.h"
 #include "HWControls.h"
 #include "EepromMgr.h"
+#include "DisplayValues.h"
 #include "imxrt.h"
 #include <map>
 
@@ -131,6 +132,8 @@ void setup() {
 
   //Read MIDI In Channel from EEPROM
   midiChannel = getMIDIChannel();
+  masterTune = getMasterTune();
+  sendInitialTuneCommands(masterTune);
 
   //USB HOST MIDI Class Compliant
   delay(400);  //Wait to turn on USB Host
@@ -202,6 +205,44 @@ void sendInitSequence() {
   mcp10.digitalWrite(UPPER_SELECT, LOW);
 }
 
+inline uint8_t clampTune(int16_t val) {
+  if (val < TUNE_MIN) return TUNE_MIN;
+  if (val > TUNE_MAX) return TUNE_MAX;
+  return (uint8_t)val;
+}
+
+void sendInitialTuneCommands(uint8_t masterTune) {
+  lowerMT1 = masterTune;
+  lowerMT2 = masterTune;
+  upperMT1 = masterTune;
+  upperMT2 = masterTune;
+  send5(kBoardLowerPrefix, 0xB4, lowerMT1, 0xBE, lowerMT2);
+  send5(kBoardUpperPrefix, 0xB4, upperMT1, 0xBE, upperMT2);
+}
+
+uint8_t calcLowerDetune(uint8_t masterTune, uint8_t dualdetune) {
+  uint8_t lowerFloor = (masterTune >= TUNE_442HZ) ? (masterTune - TUNE_442HZ) : 0x00;
+  uint8_t upperCeiling = (uint8_t)min((int16_t)masterTune + 0x3F, (int16_t)0x7F);
+  int16_t offset = (int16_t)dualdetune - (int16_t)DETUNE_CENTER;
+  return (uint8_t)constrain((int16_t)masterTune + offset,
+                            (int16_t)lowerFloor,
+                            (int16_t)upperCeiling);
+}
+
+void sendTuneCommands(uint8_t masterTune) {
+  lowerMT1 = masterTune;
+  lowerMT2 = masterTune;
+  upperMT1 = masterTune;
+  upperMT2 = masterTune;
+
+  if (keyMode == 0) {
+    uint8_t lowerSend = calcLowerDetune(masterTune, dualdetune);
+    send5(kBoardLowerPrefix, 0xB4, lowerSend, 0xBE, lowerSend);
+  } else {
+    send5(kBoardLowerPrefix, 0xB4, lowerMT1, 0xBE, lowerMT2);
+  }
+  send5(kBoardUpperPrefix, 0xB4, upperMT1, 0xBE, upperMT2);
+}
 
 void primeMuxBaseline() {
   for (int ch = 0; ch < MUXCHANNELS; ch++) {
@@ -241,11 +282,13 @@ void myAfterTouch(byte channel, byte value) {
   switch (after_enable) {
 
     case 1:
+      //send3(kBoardUpperPrefix, 0xB3, 0x00);
       send3(kBoardLowerPrefix, 0xB3, value);
       break;
 
     case 2:
       send3(kBoardUpperPrefix, 0xB3, value);
+      //send3(kBoardLowerPrefix, 0xB3, 0x00);
       break;
 
     case 3:
@@ -272,6 +315,15 @@ static inline uint8_t map_u8_round(uint16_t x, uint16_t in_min, uint16_t in_max,
   const uint32_t den = (uint32_t)(in_max - in_min);
   const uint32_t y = (uint32_t)out_min + (num + den / 2) / den;
   return clamp_u8(y, out_min, out_max);
+}
+
+static inline void send5(uint8_t a, uint8_t b, uint8_t c, uint8_t d, uint8_t e) {
+  Serial3.write(a);
+  Serial3.write(b);
+  Serial3.write((uint8_t)(c & 0x7F));
+  Serial3.write(d);
+  Serial3.write((uint8_t)(e & 0x7F));
+  Serial3.flush();
 }
 
 static inline void send3(uint8_t a, uint8_t b, uint8_t c) {
@@ -381,11 +433,21 @@ void myPitchBend(byte channel, int pitchValue) {
   }
 }
 
+void sendModToBoards(uint8_t wheelValue) {
+  lastModWheelValue = wheelValue;
+
+  uint8_t lowerMod = (uint8_t)((wheelValue * lowerData[P_mod_lfo]) / 127);
+  uint8_t upperMod = (uint8_t)((wheelValue * upperData[P_mod_lfo]) / 127);
+
+  send3(0xF1, 0xBC, lowerMod);
+  send3(0xF9, 0xBC, upperMod);
+}
+
 void myControlConvert(byte channel, byte control, byte value) {
   switch (control) {
 
-    case 1:
-      MIDI.sendControlChange(control, value, midiOutCh);
+    case 1:  // mod wheel
+      sendModToBoards(value);
       break;
 
     case 2:
@@ -410,10 +472,21 @@ void myControlConvert(byte channel, byte control, byte value) {
 void myControlChange(byte channel, byte control, int value) {
   switch (control) {
 
-      // case CCmod_lfo:
-      //   mod_lfo = value;
-      //   updatemod_lfo(1);
-      //   break;
+    case CCmod_lfo:
+      if (upperSW) {
+        upperData[P_mod_lfo] = value;
+        if (keyMode == 1) {
+          lowerData[P_mod_lfo] = upperData[P_mod_lfo];
+        }
+      } else {
+        lowerData[P_mod_lfo] = value;
+        if (keyMode == 2) {
+          upperData[P_mod_lfo] = lowerData[P_mod_lfo];
+        }
+      }
+      mod_lfo_str = value;
+      updatemod_lfo(1);
+      break;
 
     case CCbend_range:
       bend_range = value;
@@ -433,7 +506,7 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_lfo1_wave] = lowerData[P_lfo1_wave];
         }
       }
-      lfo1_wave_str = value;
+      lfo1_wave_str = upperSW ? upperData[P_lfo1_wave] : lowerData[P_lfo1_wave];
       updatelfo1_wave(1);
       break;
 
@@ -568,32 +641,24 @@ void myControlChange(byte channel, byte control, int value) {
     case CCdco1_wave:
       if (upperSW) {
         upperData[P_dco1_wave] = map(value, 0, 127, 0, 3);
-        if (keyMode == 1) {
-          lowerData[P_dco1_wave] = upperData[P_dco1_wave];
-        }
+        if (keyMode == 1) lowerData[P_dco1_wave] = upperData[P_dco1_wave];
       } else {
         lowerData[P_dco1_wave] = map(value, 0, 127, 0, 3);
-        if (keyMode == 2) {
-          upperData[P_dco1_wave] = lowerData[P_dco1_wave];
-        }
+        if (keyMode == 2) upperData[P_dco1_wave] = lowerData[P_dco1_wave];
       }
-      dco1_wave_str = value;
+      dco1_wave_str = upperSW ? upperData[P_dco1_wave] : lowerData[P_dco1_wave];
       updatedco1_wave(1);
       break;
 
     case CCdco1_range:
       if (upperSW) {
         upperData[P_dco1_range] = map(value, 0, 127, 0, 3);
-        if (keyMode == 1) {
-          lowerData[P_dco1_range] = upperData[P_dco1_range];
-        }
+        if (keyMode == 1) lowerData[P_dco1_range] = upperData[P_dco1_range];
       } else {
         lowerData[P_dco1_range] = map(value, 0, 127, 0, 3);
-        if (keyMode == 2) {
-          upperData[P_dco1_range] = lowerData[P_dco1_range];
-        }
+        if (keyMode == 2) upperData[P_dco1_range] = lowerData[P_dco1_range];
       }
-      dco1_range_str = value;
+      dco1_range_str = upperSW ? upperData[P_dco1_range] : lowerData[P_dco1_range];
       updatedco1_range(1);
       break;
 
@@ -616,16 +681,12 @@ void myControlChange(byte channel, byte control, int value) {
     case CCdco1_xmod:
       if (upperSW) {
         upperData[P_dco1_mode] = map(value, 0, 127, 0, 3);
-        if (keyMode == 1) {
-          lowerData[P_dco1_mode] = upperData[P_dco1_mode];
-        }
+        if (keyMode == 1) lowerData[P_dco1_mode] = upperData[P_dco1_mode];
       } else {
         lowerData[P_dco1_mode] = map(value, 0, 127, 0, 3);
-        if (keyMode == 2) {
-          upperData[P_dco1_mode] = lowerData[P_dco1_mode];
-        }
+        if (keyMode == 2) upperData[P_dco1_mode] = lowerData[P_dco1_mode];
       }
-      dco1_mode_str = value;
+      dco1_mode_str = upperSW ? upperData[P_dco1_mode] : lowerData[P_dco1_mode];
       updatedco1_xmod(1);
       break;
 
@@ -641,7 +702,7 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_lfo2_wave] = lowerData[P_lfo2_wave];
         }
       }
-      lfo2_wave_str = value;
+      lfo2_wave_str = upperSW ? upperData[P_lfo2_wave] : lowerData[P_lfo2_wave];
       updatelfo2_wave(1);
       break;
 
@@ -776,32 +837,24 @@ void myControlChange(byte channel, byte control, int value) {
     case CCdco2_wave:
       if (upperSW) {
         upperData[P_dco2_wave] = map(value, 0, 127, 0, 3);
-        if (keyMode == 1) {
-          lowerData[P_dco2_wave] = upperData[P_dco2_wave];
-        }
+        if (keyMode == 1) lowerData[P_dco2_wave] = upperData[P_dco2_wave];
       } else {
         lowerData[P_dco2_wave] = map(value, 0, 127, 0, 3);
-        if (keyMode == 2) {
-          upperData[P_dco2_wave] = lowerData[P_dco2_wave];
-        }
+        if (keyMode == 2) upperData[P_dco2_wave] = lowerData[P_dco2_wave];
       }
-      dco2_wave_str = value;
+      dco1_wave_str = upperSW ? upperData[P_dco2_wave] : lowerData[P_dco2_wave];
       updatedco2_wave(1);
       break;
 
     case CCdco2_range:
       if (upperSW) {
         upperData[P_dco2_range] = map(value, 0, 127, 0, 3);
-        if (keyMode == 1) {
-          lowerData[P_dco2_range] = upperData[P_dco2_range];
-        }
+        if (keyMode == 1) lowerData[P_dco2_range] = upperData[P_dco2_range];
       } else {
         lowerData[P_dco2_range] = map(value, 0, 127, 0, 3);
-        if (keyMode == 2) {
-          upperData[P_dco2_range] = lowerData[P_dco2_range];
-        }
+        if (keyMode == 2) upperData[P_dco2_range] = lowerData[P_dco2_range];
       }
-      dco2_range_str = value;
+      dco2_range_str = upperSW ? upperData[P_dco2_range] : lowerData[P_dco2_range];
       updatedco2_range(1);
       break;
 
@@ -1173,7 +1226,7 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_env5stage_mode] = lowerData[P_env5stage_mode];
         }
       }
-      env5stage_mode_str = value;
+      env5stage_mode_str = upperSW ? upperData[P_env5stage_mode] : lowerData[P_env5stage_mode];
       updateenv5stage_mode(1);
       break;
 
@@ -1301,7 +1354,7 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_env2_5stage_mode] = lowerData[P_env2_5stage_mode];
         }
       }
-      env2_5stage_mode_str = value;
+      env2_5stage_mode_str = upperSW ? upperData[P_env2_5stage_mode] : lowerData[P_env2_5stage_mode];
       updateenv2_env5stage_mode(1);
       break;
 
@@ -1445,7 +1498,7 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_adsr_mode] = lowerData[P_adsr_mode];
         }
       }
-      adsr_mode_str = value;
+      adsr_mode_str = upperSW ? upperData[P_adsr_mode] : lowerData[P_adsr_mode];
       updateadsr_mode(1);
       break;
 
@@ -1461,7 +1514,7 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_env4_adsr_mode] = lowerData[P_env4_adsr_mode];
         }
       }
-      env4_adsr_mode_str = value;
+      env4_adsr_mode_str = upperSW ? upperData[P_env4_adsr_mode] : lowerData[P_env4_adsr_mode];
       updateenv4_adsr_mode(1);
       break;
 
@@ -1522,105 +1575,337 @@ void myControlChange(byte channel, byte control, int value) {
       updateunison_button(1);
       break;
 
-      // case CClfo1_sync:
-      //   updatelfo1_sync(1);
-      //   break;
+    case CClfo1_sync:
+      if (upperSW) {
+        upperData[P_lfo1_sync] = value;
+        if (keyMode == 1) {
+          lowerData[P_lfo1_sync] = upperData[P_lfo1_sync];
+        }
+      } else {
+        lowerData[P_lfo1_sync] = value;
+        if (keyMode == 2) {
+          upperData[P_lfo1_sync] = lowerData[P_lfo1_sync];
+        }
+      }
+      updatelfo1_sync(1);
+      break;
 
-      // case CClfo2_sync:
-      //   updatelfo2_sync(1);
-      //   break;
+    case CClfo2_sync:
+      if (upperSW) {
+        upperData[P_lfo2_sync] = value;
+        if (keyMode == 1) {
+          lowerData[P_lfo2_sync] = upperData[P_lfo2_sync];
+        }
+      } else {
+        lowerData[P_lfo2_sync] = value;
+        if (keyMode == 2) {
+          upperData[P_lfo2_sync] = lowerData[P_lfo2_sync];
+        }
+      }
+      updatelfo2_sync(1);
+      break;
 
-      // case CCdco1_PWM_dyn:
-      //   updatedco1_PWM_dyn(1);
-      //   break;
+    case CCdco1_PWM_dyn:
+      if (upperSW) {
+        upperData[P_dco1_PWM_dyn] = value;
+        if (keyMode == 1) {
+          lowerData[P_dco1_PWM_dyn] = upperData[P_dco1_PWM_dyn];
+        }
+      } else {
+        lowerData[P_dco1_PWM_dyn] = value;
+        if (keyMode == 2) {
+          upperData[P_dco1_PWM_dyn] = lowerData[P_dco1_PWM_dyn];
+        }
+      }
+      updatedco1_PWM_dyn(1);
+      break;
 
-      // case CCdco2_PWM_dyn:
-      //   updatedco2_PWM_dyn(1);
-      //   break;
+    case CCdco2_PWM_dyn:
+      if (upperSW) {
+        upperData[P_dco2_PWM_dyn] = value;
+        if (keyMode == 1) {
+          lowerData[P_dco2_PWM_dyn] = upperData[P_dco2_PWM_dyn];
+        }
+      } else {
+        lowerData[P_dco2_PWM_dyn] = value;
+        if (keyMode == 2) {
+          upperData[P_dco2_PWM_dyn] = lowerData[P_dco2_PWM_dyn];
+        }
+      }
+      updatedco2_PWM_dyn(1);
+      break;
 
-      // case CCdco1_PWM_env_source:
-      //   updatedco1_PWM_env_source(1);
-      //   break;
+    case CCdco1_PWM_env_source:
+      if (upperSW) {
+        upperData[P_dco1_PWM_env_source] = value;
+        if (keyMode == 1) {
+          lowerData[P_dco1_PWM_env_source] = upperData[P_dco1_PWM_env_source];
+        }
+      } else {
+        lowerData[P_dco1_PWM_env_source] = value;
+        if (keyMode == 2) {
+          upperData[P_dco1_PWM_env_source] = lowerData[P_dco1_PWM_env_source];
+        }
+      }
+      updatedco1_PWM_env_source(1);
+      break;
 
-      // case CCdco2_PWM_env_source:
-      //   updatedco2_PWM_env_source(1);
-      //   break;
+    case CCdco2_PWM_env_source:
+      if (upperSW) {
+        upperData[P_dco2_PWM_env_source] = value;
+        if (keyMode == 1) {
+          lowerData[P_dco2_PWM_env_source] = upperData[P_dco2_PWM_env_source];
+        }
+      } else {
+        lowerData[P_dco2_PWM_env_source] = value;
+        if (keyMode == 2) {
+          upperData[P_dco2_PWM_env_source] = lowerData[P_dco2_PWM_env_source];
+        }
+      }
+      updatedco2_PWM_env_source(1);
+      break;
 
-      // case CCdco1_PWM_lfo_source:
-      //   updatedco1_PWM_lfo_source(1);
-      //   break;
+    case CCdco1_PWM_lfo_source:
+      if (upperSW) {
+        upperData[P_dco1_PWM_lfo_source] = value;
+        if (keyMode == 1) {
+          lowerData[P_dco1_PWM_lfo_source] = upperData[P_dco1_PWM_lfo_source];
+        }
+      } else {
+        lowerData[P_dco1_PWM_lfo_source] = value;
+        if (keyMode == 2) {
+          upperData[P_dco1_PWM_lfo_source] = lowerData[P_dco1_PWM_lfo_source];
+        }
+      }
+      updatedco1_PWM_lfo_source(1);
+      break;
 
-      // case CCdco2_PWM_lfo_source:
-      //   updatedco2_PWM_lfo_source(1);
-      //   break;
+    case CCdco2_PWM_lfo_source:
+      if (upperSW) {
+        upperData[P_dco2_PWM_lfo_source] = value;
+        if (keyMode == 1) {
+          lowerData[P_dco2_PWM_lfo_source] = upperData[P_dco2_PWM_lfo_source];
+        }
+      } else {
+        lowerData[P_dco2_PWM_lfo_source] = value;
+        if (keyMode == 2) {
+          upperData[P_dco2_PWM_lfo_source] = lowerData[P_dco2_PWM_lfo_source];
+        }
+      }
+      updatedco2_PWM_lfo_source(1);
+      break;
 
-      // case CCdco1_pitch_dyn:
-      //   updatedco1_pitch_dyn(1);
-      //   break;
+    case CCdco1_pitch_dyn:
+      if (upperSW) {
+        upperData[P_dco1_pitch_dyn] = value;
+        if (keyMode == 1) {
+          lowerData[P_dco1_pitch_dyn] = upperData[P_dco1_pitch_dyn];
+        }
+      } else {
+        lowerData[P_dco1_pitch_dyn] = value;
+        if (keyMode == 2) {
+          upperData[P_dco1_pitch_dyn] = lowerData[P_dco1_pitch_dyn];
+        }
+      }
+      updatedco1_pitch_dyn(1);
+      break;
 
-      // case CCdco2_pitch_dyn:
-      //   updatedco2_pitch_dyn(1);
-      //   break;
+    case CCdco2_pitch_dyn:
+      if (upperSW) {
+        upperData[P_dco2_pitch_dyn] = value;
+        if (keyMode == 1) {
+          lowerData[P_dco2_pitch_dyn] = upperData[P_dco2_pitch_dyn];
+        }
+      } else {
+        lowerData[P_dco2_pitch_dyn] = value;
+        if (keyMode == 2) {
+          upperData[P_dco2_pitch_dyn] = lowerData[P_dco2_pitch_dyn];
+        }
+      }
+      updatedco2_pitch_dyn(1);
+      break;
 
-      // case CCdco1_pitch_lfo_source:
-      //   updatedco1_pitch_lfo_source(1);
-      //   break;
+    case CCdco1_pitch_lfo_source:
+      if (upperSW) {
+        upperData[P_dco1_pitch_lfo_source] = value;
+        if (keyMode == 1) {
+          lowerData[P_dco1_pitch_lfo_source] = upperData[P_dco1_pitch_lfo_source];
+        }
+      } else {
+        lowerData[P_dco1_pitch_lfo_source] = value;
+        if (keyMode == 2) {
+          upperData[P_dco1_pitch_lfo_source] = lowerData[P_dco1_pitch_lfo_source];
+        }
+      }
+      updatedco1_pitch_lfo_source(1);
+      break;
 
-      // case CCdco2_pitch_lfo_source:
-      //   updatedco2_pitch_lfo_source(1);
-      //   break;
+    case CCdco2_pitch_lfo_source:
+      if (upperSW) {
+        upperData[P_dco2_pitch_lfo_source] = value;
+        if (keyMode == 1) {
+          lowerData[P_dco2_pitch_lfo_source] = upperData[P_dco2_pitch_lfo_source];
+        }
+      } else {
+        lowerData[P_dco2_pitch_lfo_source] = value;
+        if (keyMode == 2) {
+          upperData[P_dco2_pitch_lfo_source] = lowerData[P_dco2_pitch_lfo_source];
+        }
+      }
+      updatedco2_pitch_lfo_source(1);
+      break;
 
-      // case CCdco1_pitch_env_source:
-      //   updatedco1_pitch_env_source(1);
-      //   break;
+    case CCdco1_pitch_env_source:
+      if (upperSW) {
+        upperData[P_dco1_pitch_env_source] = value;
+        if (keyMode == 1) {
+          lowerData[P_dco1_pitch_env_source] = upperData[P_dco1_pitch_env_source];
+        }
+      } else {
+        lowerData[P_dco1_pitch_env_source] = value;
+        if (keyMode == 2) {
+          upperData[P_dco1_pitch_env_source] = lowerData[P_dco1_pitch_env_source];
+        }
+      }
+      updatedco1_pitch_env_source(1);
+      break;
 
-      // case CCdco2_pitch_env_source:
-      //   updatedco2_pitch_env_source(1);
-      //   break;
+    case CCdco2_pitch_env_source:
+      if (upperSW) {
+        upperData[P_dco2_pitch_env_source] = value;
+        if (keyMode == 1) {
+          lowerData[P_dco2_pitch_env_source] = upperData[P_dco2_pitch_env_source];
+        }
+      } else {
+        lowerData[P_dco2_pitch_env_source] = value;
+        if (keyMode == 2) {
+          upperData[P_dco2_pitch_env_source] = lowerData[P_dco2_pitch_env_source];
+        }
+      }
+      updatedco2_pitch_env_source(1);
+      break;
 
     case CCeditMode:
       updateeditMode(1);
       break;
 
-      // case CCdco_mix_env_source:
-      //   updatedco_mix_env_source(1);
-      //   break;
+    case CCdco_mix_env_source:
+      if (upperSW) {
+        upperData[P_dco_mix_env_source] = value;
+        if (keyMode == 1) {
+          lowerData[P_dco_mix_env_source] = upperData[P_dco_mix_env_source];
+        }
+      } else {
+        lowerData[P_dco_mix_env_source] = value;
+        if (keyMode == 2) {
+          upperData[P_dco_mix_env_source] = lowerData[P_dco_mix_env_source];
+        }
+      }
+      updatedco_mix_env_source(1);
+      break;
 
-      // case CCdco_mix_dyn:
-      //   updatedco_mix_dyn(1);
-      //   break;
+    case CCdco_mix_dyn:
+      if (upperSW) {
+        upperData[P_dco_mix_dyn] = value;
+        if (keyMode == 1) {
+          lowerData[P_dco_mix_dyn] = upperData[P_dco_mix_dyn];
+        }
+      } else {
+        lowerData[P_dco_mix_dyn] = value;
+        if (keyMode == 2) {
+          upperData[P_dco_mix_dyn] = lowerData[P_dco_mix_dyn];
+        }
+      }
+      updatedco_mix_dyn(1);
+      break;
 
-      // case CCvcf_env_source:
-      //   updatevcf_env_source(1);
-      //   break;
+    case CCvcf_env_source:
+      if (upperSW) {
+        upperData[P_vcf_env_source] = value;
+        if (keyMode == 1) {
+          lowerData[P_vcf_env_source] = upperData[P_vcf_env_source];
+        }
+      } else {
+        lowerData[P_vcf_env_source] = value;
+        if (keyMode == 2) {
+          upperData[P_vcf_env_source] = lowerData[P_vcf_env_source];
+        }
+      }
+      updatevcf_env_source(1);
+      break;
 
-      // case CCvcf_dyn:
-      //   updatevcf_dyn(1);
-      //   break;
+    case CCvcf_dyn:
+      if (upperSW) {
+        upperData[P_vcf_dyn] = value;
+        if (keyMode == 1) {
+          lowerData[P_vcf_dyn] = upperData[P_vcf_dyn];
+        }
+      } else {
+        lowerData[P_vcf_dyn] = value;
+        if (keyMode == 2) {
+          upperData[P_vcf_dyn] = lowerData[P_vcf_dyn];
+        }
+      }
+      updatevcf_dyn(1);
+      break;
 
-      // case CCvca_env_source:
-      //   updatevca_env_source(1);
-      //   break;
+    case CCvca_env_source:
+      if (upperSW) {
+        upperData[P_vca_env_source] = value;
+        if (keyMode == 1) {
+          lowerData[P_vca_env_source] = upperData[P_vca_env_source];
+        }
+      } else {
+        lowerData[P_vca_env_source] = value;
+        if (keyMode == 2) {
+          upperData[P_vca_env_source] = lowerData[P_vca_env_source];
+        }
+      }
+      updatevca_env_source(1);
+      break;
 
-      // case CCvca_dyn:
-      //   updatevca_dyn(1);
-      //   break;
+    case CCvca_dyn:
+      if (upperSW) {
+        upperData[P_vca_dyn] = value;
+        if (keyMode == 1) {
+          lowerData[P_vca_dyn] = upperData[P_vca_dyn];
+        }
+      } else {
+        lowerData[P_vca_dyn] = value;
+        if (keyMode == 2) {
+          upperData[P_vca_dyn] = lowerData[P_vca_dyn];
+        }
+      }
+      updatevca_dyn(1);
+      break;
 
-      // case CCchorus_sw:
-      //   updatechorus(1);
-      //   break;
+    case CCchorus_sw:
+      if (upperSW) {
+        upperData[P_chorus] = value;
+        if (keyMode == 1) {
+          lowerData[P_chorus] = upperData[P_chorus];
+        }
+      } else {
+        lowerData[P_chorus] = value;
+        if (keyMode == 2) {
+          upperData[P_chorus] = lowerData[P_chorus];
+        }
+      }
+      updatechorus(1);
+      break;
 
-      // case CCportamento_sw:
-      //   updateportamento_sw(1);
-      //   break;
 
-      // case CCenv5stage:
-      //   updateenv5stage(1);
-      //   break;
+    case CCportamento_sw:
+      updateportamento_sw(1);
+      break;
 
-      // case CCadsr:
-      //   updateadsr(1);
-      //   break;
+    case CCenv5stage:
+      updateenv5stage(1);
+      break;
+
+    case CCadsr:
+      updateadsr(1);
+      break;
   }
 }
 
@@ -1699,123 +1984,44 @@ void sendParamValue(uint8_t param, uint8_t value) {
 
 FLASHMEM void updatelfo1_wave(bool announce) {
   sendOffset(0x0C, 0xA1);
+
+  const uint8_t newStep = upperSW ? upperData[P_lfo1_wave] : lowerData[P_lfo1_wave];
+
+  static uint8_t lastStep = 0xFF;
+  const bool changed = (newStep != lastStep);
+  const bool firstTouch = (lastStepParam != CClfo1_wave);
+  if (firstTouch) lastStepParam = CClfo1_wave;
+
+  lfo1_wave_str = newStep;
+
   if (announce && !suppressParamAnnounce) {
-    lfo1_wave_str = map(lfo1_wave_str, 0, 127, 0, 4);
-    displayMode = 0;
-    switch (lfo1_wave_str) {
-      case 0:
-        showCurrentParameterPage("LFO1 WAVEFORM", "RAND");
-        break;
-
-      case 1:
-        showCurrentParameterPage("LFO1 WAVEFORM", "SQR");
-        break;
-
-      case 2:
-        showCurrentParameterPage("LFO1 WAVEFORM", "SAW-");
-        break;
-
-      case 3:
-        showCurrentParameterPage("LFO1 WAVEFORM", "SAW+");
-        break;
-
-      case 4:
-        showCurrentParameterPage("LFO1 WAVEFORM", "SINE");
-        break;
+    if (firstTouch || changed) {
+      displayMode = 0;
+      showCurrentParameterPage("LFO1 WAVEFORM", lfowaveStepToLabel(newStep));
+      startParameterDisplay();
     }
+  }
+
+  if (changed || recallPatchFlag) {
+    sendParamValue(0xA1, lfowaveStepToValue(newStep));
+    lastStep = newStep;
+  }
+}
+
+FLASHMEM void updatemod_lfo(bool announce) {
+  const uint8_t displayVal = (uint8_t)map(
+    upperSW ? upperData[P_mod_lfo] : lowerData[P_mod_lfo],
+    0, 127, 0, 99);
+  mod_lfo_str = displayVal;
+
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    showCurrentParameterPage("MOD DEPTH", String(displayVal));
     startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_lfo1_wave]) {
-      case 0:
-        sendParamValue(0xA1, 0x00);
-        break;
 
-      case 1:
-        sendParamValue(0xA1, 0x10);
-        break;
-
-      case 2:
-        sendParamValue(0xA1, 0x20);
-        break;
-
-      case 3:
-        sendParamValue(0xA1, 0x30);
-        break;
-
-      case 4:
-        sendParamValue(0xA1, 0x40);
-        break;
-    }
-  } else {
-    switch (lowerData[P_lfo1_wave]) {
-      case 0:
-        sendParamValue(0xA1, 0x00);
-        break;
-
-      case 1:
-        sendParamValue(0xA1, 0x10);
-        break;
-
-      case 2:
-        sendParamValue(0xA1, 0x20);
-        break;
-
-      case 3:
-        sendParamValue(0xA1, 0x30);
-        break;
-
-      case 4:
-        sendParamValue(0xA1, 0x40);
-        break;
-    }
-  }
-}
-
-// FLASHMEM void updatemod_lfo(bool announce) {
-//   mod_lfo_str = map(mod_lfo, 0, 127, 0, 99);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     showCurrentParameterPage("MOD DEPTH", String(mod_lfo_str));
-//     startParameterDisplay();
-//   }
-//   switch (keyMode) {
-//     case 0:
-//       sendCustomSysEx((midiOutCh - 1), 0x2B, mod_lfo);
-//       break;
-
-//     case 1:
-//       sendCustomSysEx((midiOutCh - 1), 0x22, mod_lfo);
-//       break;
-
-//     case 2:
-//       sendCustomSysEx((midiOutCh - 1), 0x22, mod_lfo);
-//       delay(20);
-//       sendCustomSysEx((midiOutCh - 1), 0x2B, mod_lfo);
-//       break;
-//   }
-// }
-
-static inline uint8_t bendStepToValue(uint8_t step) {
-  switch (step) {
-    case 0: return 0x00;  // 2
-    case 1: return 0x10;  // 3
-    case 2: return 0x20;  // 4
-    case 3: return 0x30;  // 7
-    case 4: return 0x70;  // 12
-    default: return 0x00;
-  }
-}
-
-static inline const char *bendStepToLabel(uint8_t step) {
-  switch (step) {
-    case 0: return "2 SEMITONES";
-    case 1: return "3 SEMITONES";
-    case 2: return "4 SEMITONES";
-    case 3: return "7 SEMITONES";
-    case 4: return "12 SEMITONES";
-    default: return "2 SEMITONES";
-  }
+  // Send to boards using last known wheel position
+  sendModToBoards(lastModWheelValue);
 }
 
 FLASHMEM void updatebend_range(bool announce) {
@@ -1824,73 +2030,29 @@ FLASHMEM void updatebend_range(bool announce) {
 
   static uint8_t lastStep = 0xFF;
   const bool changed = (newStep != lastStep);
+  const bool firstTouch = (lastStepParam != CCbend_range);
+  if (firstTouch) lastStepParam = CCbend_range;
+
 
   bend_range_str = newStep;
 
-  if (announce && !suppressParamAnnounce && changed) {
-    displayMode = 1;
-    showCurrentParameterPage("BEND RANGE", bendStepToLabel(newStep));
-    startParameterDisplay();
+  if (announce && !suppressParamAnnounce) {
+    if (firstTouch || changed) {
+      displayMode = 1;
+      showCurrentParameterPage("BEND RANGE", bendStepToLabel(newStep));
+      startParameterDisplay();
+    }
   }
 
-  if (changed) {
+  if (changed || recallPatchFlag) {
     sendParamValue(0xB7, bendStepToValue(newStep));
     lastStep = newStep;
   }
 }
 
-// FLASHMEM void updatebend_range(bool announce) {
-//   bend_range_str = map(bend_range_str, 0, 127, 0, 4);
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 1;
-//     switch (bend_range_str) {
-//       case 0:
-//         showCurrentParameterPage("BEND RANGE", "2 SEMITONES");
-//         break;
-
-//       case 1:
-//         showCurrentParameterPage("BEND RANGE", "3 SEMITONES");
-//         break;
-
-//       case 2:
-//         showCurrentParameterPage("BEND RANGE", "4 SEMITONES");
-//         break;
-
-//       case 3:
-//         showCurrentParameterPage("BEND RANGE", "7 SEMITONES");
-//         break;
-
-//       case 4:
-//         showCurrentParameterPage("BEND RANGE", "12 SEMITONES");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (bend_range) {
-//     case 0:
-//       sendParamValue(0xB7, 0x00);
-//       break;
-
-//     case 1:
-//       sendParamValue(0xB7, 0x10);
-//       break;
-
-//     case 2:
-//       sendParamValue(0xB7, 0x20);
-//       break;
-
-//     case 3:
-//       sendParamValue(0xB7, 0x30);
-//       break;
-
-//     case 4:
-//       sendParamValue(0xB7, 0x70);
-//       break;
-//   }
-// }
-
 FLASHMEM void updatelfo1_rate(bool announce) {
   sendOffset(0x0C, 0xA3);
+  lastStepParam = 0xFF;
   lfo1_rate_str = map(lfo1_rate_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -1906,6 +2068,7 @@ FLASHMEM void updatelfo1_rate(bool announce) {
 
 FLASHMEM void updatelfo1_delay(bool announce) {
   sendOffset(0x0C, 0xA2);
+  lastStepParam = 0xFF;
   lfo1_delay_str = map(lfo1_delay_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -1921,6 +2084,7 @@ FLASHMEM void updatelfo1_delay(bool announce) {
 
 FLASHMEM void updatelfo1_lfo2(bool announce) {
   sendOffset(0x0C, 0xA4);
+  lastStepParam = 0xFF;
   lfo1_lfo2_str = map(lfo1_lfo2_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -1936,6 +2100,7 @@ FLASHMEM void updatelfo1_lfo2(bool announce) {
 
 FLASHMEM void updatedco1_PW(bool announce) {
   sendOffset(0x0C, 0x8A);
+  lastStepParam = 0xFF;
   dco1_PW_str = map(dco1_PW_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -1951,6 +2116,7 @@ FLASHMEM void updatedco1_PW(bool announce) {
 
 FLASHMEM void updatedco1_PWM_env(bool announce) {
   sendOffset(0x0C, 0x8B);
+  lastStepParam = 0xFF;
   dco1_PWM_env_str = map(dco1_PWM_env_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -1966,6 +2132,7 @@ FLASHMEM void updatedco1_PWM_env(bool announce) {
 
 FLASHMEM void updatedco1_PWM_lfo(bool announce) {
   sendOffset(0x0C, 0x8C);
+  lastStepParam = 0xFF;
   dco1_PWM_lfo_str = map(dco1_PWM_lfo_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -1981,6 +2148,7 @@ FLASHMEM void updatedco1_PWM_lfo(bool announce) {
 
 FLASHMEM void updatedco1_pitch_env(bool announce) {
   sendOffset(0x0C, 0x85);
+  lastStepParam = 0xFF;
   dco1_pitch_env_str = map(dco1_pitch_env_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -1996,6 +2164,7 @@ FLASHMEM void updatedco1_pitch_env(bool announce) {
 
 FLASHMEM void updatedco1_pitch_lfo(bool announce) {
   sendOffset(0x0C, 0x83);
+  lastStepParam = 0xFF;
   dco1_pitch_lfo_str = map(dco1_pitch_lfo_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2011,132 +2180,57 @@ FLASHMEM void updatedco1_pitch_lfo(bool announce) {
 
 FLASHMEM void updatedco1_wave(bool announce) {
   sendOffset(0x0C, 0x81);
+  const uint8_t newStep = upperSW ? upperData[P_dco1_wave] : lowerData[P_dco1_wave];
+
+  static uint8_t lastStep = 0xFF;
+  const bool changed = (newStep != lastStep);
+  const bool firstTouch = (lastStepParam != CCdco1_wave);
+  if (firstTouch) lastStepParam = CCdco1_wave;
+
+  dco1_wave_str = newStep;
+
   if (announce && !suppressParamAnnounce) {
-    dco1_wave_str = map(dco1_wave_str, 0, 127, 0, 3);
-    displayMode = 0;
-    switch (dco1_wave_str) {
-      case 0:
-        showCurrentParameterPage("DCO1 WAVEFORM", "NOIS");
-        break;
-
-      case 1:
-        showCurrentParameterPage("DCO1 WAVEFORM", "SQR");
-        break;
-
-      case 2:
-        showCurrentParameterPage("DCO1 WAVEFORM", "PWM");
-        break;
-
-      case 3:
-        showCurrentParameterPage("DCO1 WAVEFORM", "SAW");
-        break;
+    if (firstTouch || changed) {
+      displayMode = 0;
+      showCurrentParameterPage("DCO1 WAVEFORM", dco1waveStepToLabel(newStep));
+      startParameterDisplay();
     }
-    startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_dco1_wave]) {
-      case 0:
-        sendParamValue(0x81, 0x00);
-        break;
 
-      case 1:
-        sendParamValue(0x81, 0x20);
-        break;
-
-      case 2:
-        sendParamValue(0x81, 0x40);
-        break;
-
-      case 3:
-        sendParamValue(0x81, 0x60);
-        break;
-    }
-  } else {
-    switch (lowerData[P_dco1_wave]) {
-      case 0:
-        sendParamValue(0x81, 0x00);
-        break;
-
-      case 1:
-        sendParamValue(0x81, 0x20);
-        break;
-
-      case 2:
-        sendParamValue(0x81, 0x40);
-        break;
-
-      case 3:
-        sendParamValue(0x81, 0x60);
-        break;
-    }
+  if (changed || recallPatchFlag) {
+    sendParamValue(0x81, dco1waveStepToValue(newStep));
+    lastStep = newStep;
   }
 }
 
 FLASHMEM void updatedco1_range(bool announce) {
   sendOffset(0x0C, 0x80);
+  const uint8_t newStep = upperSW ? upperData[P_dco1_range] : lowerData[P_dco1_range];
+
+  static uint8_t lastStep = 0xFF;
+  const bool changed = (newStep != lastStep);
+  const bool firstTouch = (lastStepParam != CCdco1_range);
+  if (firstTouch) lastStepParam = CCdco1_range;
+
+  dco1_range_str = newStep;
+
   if (announce && !suppressParamAnnounce) {
-    dco1_range_str = map(dco1_range_str, 0, 127, 0, 3);
-    displayMode = 0;
-    switch (dco1_range_str) {
-      case 0:
-        showCurrentParameterPage("DCO1 RANGE", "16");
-        break;
-
-      case 1:
-        showCurrentParameterPage("DCO1 RANGE", "8");
-        break;
-
-      case 2:
-        showCurrentParameterPage("DCO1 RANGE", "4");
-        break;
-
-      case 3:
-        showCurrentParameterPage("DCO1 RANGE", "2");
-        break;
+    if (firstTouch || changed) {
+      displayMode = 0;
+      showCurrentParameterPage("DCO1 RANGE", dco1rangeStepToLabel(newStep));
+      startParameterDisplay();
     }
-    startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_dco1_range]) {
-      case 0:
-        sendParamValue(0x80, 0x00);
-        break;
 
-      case 1:
-        sendParamValue(0x80, 0x20);
-        break;
-
-      case 2:
-        sendParamValue(0x80, 0x40);
-        break;
-
-      case 3:
-        sendParamValue(0x80, 0x60);
-        break;
-    }
-  } else {
-    switch (lowerData[P_dco1_range]) {
-      case 0:
-        sendParamValue(0x80, 0x00);
-        break;
-
-      case 1:
-        sendParamValue(0x80, 0x20);
-        break;
-
-      case 2:
-        sendParamValue(0x80, 0x40);
-        break;
-
-      case 3:
-        sendParamValue(0x80, 0x60);
-        break;
-    }
+  if (changed || recallPatchFlag) {
+    sendParamValue(0x80, dco1rangeStepToValue(newStep));
+    lastStep = newStep;
   }
 }
 
 FLASHMEM void updatedco1_tune(bool announce) {
   sendOffset(0x0C, 0x82);
+  lastStepParam = 0xFF;
   dco1_tune_str = map(dco1_tune_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2152,144 +2246,57 @@ FLASHMEM void updatedco1_tune(bool announce) {
 
 FLASHMEM void updatedco1_xmod(bool announce) {
   sendOffset(0x0C, 0x88);
+  const uint8_t newStep = upperSW ? upperData[P_dco1_mode] : lowerData[P_dco1_mode];
+
+  static uint8_t lastStep = 0xFF;
+  const bool changed = (newStep != lastStep);
+  const bool firstTouch = (lastStepParam != CCdco1_xmod);
+  if (firstTouch) lastStepParam = CCdco1_xmod;
+
+  dco1_mode_str = newStep;
+
   if (announce && !suppressParamAnnounce) {
-    dco1_mode_str = map(dco1_mode_str, 0, 127, 0, 3);
-    displayMode = 0;
-    switch (dco1_mode_str) {
-      case 0:
-        showCurrentParameterPage("DCO X-MOD", "OFF");
-        break;
-
-      case 1:
-        showCurrentParameterPage("DCO X-MOD", "SYNC1");
-        break;
-
-      case 2:
-        showCurrentParameterPage("DCO X-MOD", "SYNC2");
-        break;
-
-      case 3:
-        showCurrentParameterPage("DCO X-MOD", "X-MOD");
-        break;
+    if (firstTouch || changed) {
+      displayMode = 0;
+      showCurrentParameterPage("DCO X-MOD", dco1xmodStepToLabel(newStep));
+      startParameterDisplay();
     }
-    startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_dco1_mode]) {
-      case 0:
-        sendParamValue(0x88, 0x00);
-        break;
 
-      case 1:
-        sendParamValue(0x88, 0x20);
-        break;
-
-      case 2:
-        sendParamValue(0x88, 0x40);
-        break;
-
-      case 3:
-        sendParamValue(0x88, 0x60);
-        break;
-    }
-  } else {
-    switch (lowerData[P_dco1_mode]) {
-      case 0:
-        sendParamValue(0x88, 0x00);
-        break;
-
-      case 1:
-        sendParamValue(0x88, 0x20);
-        break;
-
-      case 2:
-        sendParamValue(0x88, 0x40);
-        break;
-
-      case 3:
-        sendParamValue(0x88, 0x60);
-        break;
-    }
+  if (changed || recallPatchFlag) {
+    sendParamValue(0x88, dco1xmodStepToValue(newStep));
+    lastStep = newStep;
   }
 }
 
 FLASHMEM void updatelfo2_wave(bool announce) {
   sendOffset(0x0D, 0xA1);
+  const uint8_t newStep = upperSW ? upperData[P_lfo2_wave] : lowerData[P_lfo2_wave];
+
+  static uint8_t lastStep = 0xFF;
+  const bool changed = (newStep != lastStep);
+  const bool firstTouch = (lastStepParam != CClfo2_wave);
+  if (firstTouch) lastStepParam = CClfo2_wave;
+
+  lfo2_wave_str = newStep;
+
   if (announce && !suppressParamAnnounce) {
-    lfo2_wave_str = map(lfo2_wave_str, 0, 127, 0, 4);
-    displayMode = 0;
-    switch (lfo2_wave_str) {
-      case 0:
-        showCurrentParameterPage("LFO2 WAVEFORM", "RAND");
-        break;
-
-      case 1:
-        showCurrentParameterPage("LFO2 WAVEFORM", "SQR");
-        break;
-
-      case 2:
-        showCurrentParameterPage("LFO2 WAVEFORM", "SAW-");
-        break;
-
-      case 3:
-        showCurrentParameterPage("LFO2 WAVEFORM", "SAW+");
-        break;
-
-      case 4:
-        showCurrentParameterPage("LFO2 WAVEFORM", "SINE");
-        break;
+    if (firstTouch || changed) {
+      displayMode = 0;
+      showCurrentParameterPage("LFO2 WAVEFORM", lfowaveStepToLabel(newStep));
+      startParameterDisplay();
     }
-    startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_lfo2_wave]) {
-      case 0:
-        sendParamValue(0xA1, 0x00);
-        break;
 
-      case 1:
-        sendParamValue(0xA1, 0x10);
-        break;
-
-      case 2:
-        sendParamValue(0xA1, 0x20);
-        break;
-
-      case 3:
-        sendParamValue(0xA1, 0x30);
-        break;
-
-      case 4:
-        sendParamValue(0xA1, 0x40);
-        break;
-    }
-  } else {
-    switch (lowerData[P_lfo2_wave]) {
-      case 0:
-        sendParamValue(0xA1, 0x00);
-        break;
-
-      case 1:
-        sendParamValue(0xA1, 0x10);
-        break;
-
-      case 2:
-        sendParamValue(0xA1, 0x20);
-        break;
-
-      case 3:
-        sendParamValue(0xA1, 0x30);
-        break;
-
-      case 4:
-        sendParamValue(0xA1, 0x40);
-        break;
-    }
+  if (changed || recallPatchFlag) {
+    sendParamValue(0xA1, lfowaveStepToValue(newStep));
+    lastStep = newStep;
   }
 }
 
 FLASHMEM void updatelfo2_rate(bool announce) {
   sendOffset(0x0D, 0xA3);
+  lastStepParam = 0xFF;
   lfo2_rate_str = map(lfo2_rate_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2305,6 +2312,7 @@ FLASHMEM void updatelfo2_rate(bool announce) {
 
 FLASHMEM void updatelfo2_delay(bool announce) {
   sendOffset(0x0D, 0xA2);
+  lastStepParam = 0xFF;
   lfo2_delay_str = map(lfo2_delay_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2320,6 +2328,7 @@ FLASHMEM void updatelfo2_delay(bool announce) {
 
 FLASHMEM void updatelfo2_lfo1(bool announce) {
   sendOffset(0x0D, 0xA4);
+  lastStepParam = 0xFF;
   lfo2_lfo1_str = map(lfo2_lfo1_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2335,6 +2344,7 @@ FLASHMEM void updatelfo2_lfo1(bool announce) {
 
 FLASHMEM void updatedco2_PW(bool announce) {
   sendOffset(0x0D, 0x8A);
+  lastStepParam = 0xFF;
   dco2_PW_str = map(dco2_PW_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2350,6 +2360,7 @@ FLASHMEM void updatedco2_PW(bool announce) {
 
 FLASHMEM void updatedco2_PWM_env(bool announce) {
   sendOffset(0x0D, 0x8B);
+  lastStepParam = 0xFF;
   dco2_PWM_env_str = map(dco2_PWM_env_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2365,6 +2376,7 @@ FLASHMEM void updatedco2_PWM_env(bool announce) {
 
 FLASHMEM void updatedco2_PWM_lfo(bool announce) {
   sendOffset(0x0D, 0x8C);
+  lastStepParam = 0xFF;
   dco2_PWM_lfo_str = map(dco2_PWM_lfo_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2380,6 +2392,7 @@ FLASHMEM void updatedco2_PWM_lfo(bool announce) {
 
 FLASHMEM void updatedco2_pitch_env(bool announce) {
   sendOffset(0x0D, 0x85);
+  lastStepParam = 0xFF;
   dco2_pitch_env_str = map(dco2_pitch_env_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2395,6 +2408,7 @@ FLASHMEM void updatedco2_pitch_env(bool announce) {
 
 FLASHMEM void updatedco2_pitch_lfo(bool announce) {
   sendOffset(0x0D, 0x83);
+  lastStepParam = 0xFF;
   dco2_pitch_lfo_str = map(dco2_pitch_lfo_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2410,132 +2424,57 @@ FLASHMEM void updatedco2_pitch_lfo(bool announce) {
 
 FLASHMEM void updatedco2_wave(bool announce) {
   sendOffset(0x0D, 0x81);
+  const uint8_t newStep = upperSW ? upperData[P_dco2_wave] : lowerData[P_dco2_wave];
+
+  static uint8_t lastStep = 0xFF;
+  const bool changed = (newStep != lastStep);
+  const bool firstTouch = (lastStepParam != CCdco2_wave);
+  if (firstTouch) lastStepParam = CCdco2_wave;
+
+  dco2_wave_str = newStep;
+
   if (announce && !suppressParamAnnounce) {
-    dco2_wave_str = map(dco2_wave_str, 0, 127, 0, 3);
-    displayMode = 0;
-    switch (dco2_wave_str) {
-      case 0:
-        showCurrentParameterPage("DCO2 WAVEFORM", "NOIS");
-        break;
-
-      case 1:
-        showCurrentParameterPage("DCO2 WAVEFORM", "SQR");
-        break;
-
-      case 2:
-        showCurrentParameterPage("DCO2 WAVEFORM", "PWM");
-        break;
-
-      case 3:
-        showCurrentParameterPage("DCO2 WAVEFORM", "SAW");
-        break;
+    if (firstTouch || changed) {
+      displayMode = 0;
+      showCurrentParameterPage("DCO2 WAVEFORM", dco1waveStepToLabel(newStep));
+      startParameterDisplay();
     }
-    startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_dco2_wave]) {
-      case 0:
-        sendParamValue(0x81, 0x00);
-        break;
 
-      case 1:
-        sendParamValue(0x81, 0x20);
-        break;
-
-      case 2:
-        sendParamValue(0x81, 0x40);
-        break;
-
-      case 3:
-        sendParamValue(0x81, 0x60);
-        break;
-    }
-  } else {
-    switch (lowerData[P_dco2_wave]) {
-      case 0:
-        sendParamValue(0x81, 0x00);
-        break;
-
-      case 1:
-        sendParamValue(0x81, 0x20);
-        break;
-
-      case 2:
-        sendParamValue(0x81, 0x40);
-        break;
-
-      case 3:
-        sendParamValue(0x81, 0x60);
-        break;
-    }
+  if (changed || recallPatchFlag) {
+    sendParamValue(0x81, dco1waveStepToValue(newStep));
+    lastStep = newStep;
   }
 }
 
 FLASHMEM void updatedco2_range(bool announce) {
   sendOffset(0x0D, 0x80);
+  const uint8_t newStep = upperSW ? upperData[P_dco2_range] : lowerData[P_dco2_range];
+
+  static uint8_t lastStep = 0xFF;
+  const bool changed = (newStep != lastStep);
+  const bool firstTouch = (lastStepParam != CCdco2_range);
+  if (firstTouch) lastStepParam = CCdco2_range;
+
+  dco2_range_str = newStep;
+
   if (announce && !suppressParamAnnounce) {
-    dco2_range_str = map(dco2_range_str, 0, 127, 0, 3);
-    displayMode = 0;
-    switch (dco2_range_str) {
-      case 0:
-        showCurrentParameterPage("DCO2 RANGE", "16");
-        break;
-
-      case 1:
-        showCurrentParameterPage("DCO2 RANGE", "8");
-        break;
-
-      case 2:
-        showCurrentParameterPage("DCO2 RANGE", "4");
-        break;
-
-      case 3:
-        showCurrentParameterPage("DCO2 RANGE", "2");
-        break;
+    if (firstTouch || changed) {
+      displayMode = 0;
+      showCurrentParameterPage("DCO2 RANGE", dco1rangeStepToLabel(newStep));
+      startParameterDisplay();
     }
-    startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_dco2_range]) {
-      case 0:
-        sendParamValue(0x80, 0x00);
-        break;
 
-      case 1:
-        sendParamValue(0x80, 0x20);
-        break;
-
-      case 2:
-        sendParamValue(0x80, 0x40);
-        break;
-
-      case 3:
-        sendParamValue(0x80, 0x60);
-        break;
-    }
-  } else {
-    switch (lowerData[P_dco2_range]) {
-      case 0:
-        sendParamValue(0x80, 0x00);
-        break;
-
-      case 1:
-        sendParamValue(0x80, 0x20);
-        break;
-
-      case 2:
-        sendParamValue(0x80, 0x40);
-        break;
-
-      case 3:
-        sendParamValue(0x80, 0x60);
-        break;
-    }
+  if (changed || recallPatchFlag) {
+    sendParamValue(0x80, dco1rangeStepToValue(newStep));
+    lastStep = newStep;
   }
 }
 
 FLASHMEM void updatedco2_tune(bool announce) {
   sendOffset(0x0D, 0x82);
+  lastStepParam = 0xFF;
   dco2_tune_str = map(dco2_tune_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2551,6 +2490,7 @@ FLASHMEM void updatedco2_tune(bool announce) {
 
 FLASHMEM void updatedco2_fine(bool announce) {
   sendOffset(0x0D, 0x89);
+  lastStepParam = 0xFF;
   dco2_fine_str = map(dco2_fine_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2566,6 +2506,7 @@ FLASHMEM void updatedco2_fine(bool announce) {
 
 FLASHMEM void updatedco1_level(bool announce) {
   sendNoOffset(0x90);
+  lastStepParam = 0xFF;
   dco1_level_str = map(dco1_level_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2581,6 +2522,7 @@ FLASHMEM void updatedco1_level(bool announce) {
 
 FLASHMEM void updatedco2_level(bool announce) {
   sendNoOffset(0x91);
+  lastStepParam = 0xFF;
   dco2_level_str = map(dco2_level_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2596,6 +2538,7 @@ FLASHMEM void updatedco2_level(bool announce) {
 
 FLASHMEM void updatedco2_mod(bool announce) {
   sendNoOffset(0x87);
+  lastStepParam = 0xFF;
   dco2_mod_str = map(dco2_mod_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2611,6 +2554,7 @@ FLASHMEM void updatedco2_mod(bool announce) {
 
 FLASHMEM void updatevcf_hpf(bool announce) {
   sendNoOffset(0x95);
+  lastStepParam = 0xFF;
   vcf_hpf_str = map(vcf_hpf_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2626,6 +2570,7 @@ FLASHMEM void updatevcf_hpf(bool announce) {
 
 FLASHMEM void updatevcf_cutoff(bool announce) {
   sendNoOffset(0x96);
+  lastStepParam = 0xFF;
   vcf_cutoff_str = map(vcf_cutoff_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2641,6 +2586,7 @@ FLASHMEM void updatevcf_cutoff(bool announce) {
 
 FLASHMEM void updatevcf_res(bool announce) {
   sendNoOffset(0x97);
+  lastStepParam = 0xFF;
   vcf_res_str = map(vcf_res_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2656,6 +2602,7 @@ FLASHMEM void updatevcf_res(bool announce) {
 
 FLASHMEM void updatevcf_kb(bool announce) {
   sendNoOffset(0x9B);
+  lastStepParam = 0xFF;
   vcf_kb_str = map(vcf_kb_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2671,6 +2618,7 @@ FLASHMEM void updatevcf_kb(bool announce) {
 
 FLASHMEM void updatevcf_env(bool announce) {
   sendNoOffset(0x9A);
+  lastStepParam = 0xFF;
   vcf_env_str = map(vcf_env_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2686,6 +2634,7 @@ FLASHMEM void updatevcf_env(bool announce) {
 
 FLASHMEM void updatevcf_lfo1(bool announce) {
   sendNoOffset(0x98);
+  lastStepParam = 0xFF;
   vcf_lfo1_str = map(vcf_lfo1_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2701,6 +2650,7 @@ FLASHMEM void updatevcf_lfo1(bool announce) {
 
 FLASHMEM void updatevcf_lfo2(bool announce) {
   sendNoOffset(0x99);
+  lastStepParam = 0xFF;
   vcf_lfo2_str = map(vcf_lfo2_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2716,6 +2666,7 @@ FLASHMEM void updatevcf_lfo2(bool announce) {
 
 FLASHMEM void updatevca_mod(bool announce) {
   sendNoOffset(0x9E);
+  lastStepParam = 0xFF;
   vca_mod_str = map(vca_mod_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2731,6 +2682,7 @@ FLASHMEM void updatevca_mod(bool announce) {
 
 FLASHMEM void updateat_vib(bool announce) {
   sendExtraOffset(0x01, 0xB8);
+  lastStepParam = 0xFF;
   at_vib_str = map(at_vib_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 1;
@@ -2742,6 +2694,7 @@ FLASHMEM void updateat_vib(bool announce) {
 
 FLASHMEM void updateat_lpf(bool announce) {
   sendExtraOffset(0x03, 0xB9);
+  lastStepParam = 0xFF;
   at_lpf_str = map(at_lpf_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 1;
@@ -2753,6 +2706,7 @@ FLASHMEM void updateat_lpf(bool announce) {
 
 FLASHMEM void updateat_vol(bool announce) {
   sendExtraOffset(0x05, 0xBA);
+  lastStepParam = 0xFF;
   at_vol_str = map(at_vol_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 1;
@@ -2828,6 +2782,7 @@ static void computeBalanceBoardValues(uint8_t balance, uint8_t keymode, uint8_t 
 }
 
 FLASHMEM void updatebalance(bool announce) {
+  lastStepParam = 0xFF;
   sendNoOffset(kBalanceParam);
 
   balance_str = map(balance_str, 0, 127, 0, 99);
@@ -2857,6 +2812,7 @@ FLASHMEM void updatebalance(bool announce) {
 
 FLASHMEM void updateportamento(bool announce) {
   sendNoOffset(0xB0);
+  lastStepParam = 0xFF;
   portamento_str = map(portamento_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2868,6 +2824,7 @@ FLASHMEM void updateportamento(bool announce) {
 
 FLASHMEM void updatevolume(bool announce) {
   sendNoOffset(0xB1);
+  lastStepParam = 0xFF;
   volume_str = map(volume_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2879,6 +2836,7 @@ FLASHMEM void updatevolume(bool announce) {
 
 FLASHMEM void updatetime1(bool announce) {
   sendOffset(0x0C, 0xA6);
+  lastStepParam = 0xFF;
   time1_str = map(time1_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2894,6 +2852,7 @@ FLASHMEM void updatetime1(bool announce) {
 
 FLASHMEM void updatelevel1(bool announce) {
   sendOffset(0x0C, 0xA7);
+  lastStepParam = 0xFF;
   level1_str = map(level1_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2909,6 +2868,7 @@ FLASHMEM void updatelevel1(bool announce) {
 
 FLASHMEM void updatetime2(bool announce) {
   sendOffset(0x0C, 0xA8);
+  lastStepParam = 0xFF;
   time2_str = map(time2_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2924,6 +2884,7 @@ FLASHMEM void updatetime2(bool announce) {
 
 FLASHMEM void updatelevel2(bool announce) {
   sendOffset(0x0C, 0xA9);
+  lastStepParam = 0xFF;
   level2_str = map(level2_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2939,6 +2900,7 @@ FLASHMEM void updatelevel2(bool announce) {
 
 FLASHMEM void updatetime3(bool announce) {
   sendOffset(0x0C, 0xAA);
+  lastStepParam = 0xFF;
   time3_str = map(time3_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2954,6 +2916,7 @@ FLASHMEM void updatetime3(bool announce) {
 
 FLASHMEM void updatelevel3(bool announce) {
   sendOffset(0x0C, 0xAB);
+  lastStepParam = 0xFF;
   level3_str = map(level3_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2969,6 +2932,7 @@ FLASHMEM void updatelevel3(bool announce) {
 
 FLASHMEM void updatetime4(bool announce) {
   sendOffset(0x0C, 0xAC);
+  lastStepParam = 0xFF;
   time4_str = map(time4_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -2984,117 +2948,32 @@ FLASHMEM void updatetime4(bool announce) {
 
 FLASHMEM void updateenv5stage_mode(bool announce) {
   sendOffset(0x0C, 0xAD);
+  const uint8_t newStep = upperSW ? upperData[P_env5stage_mode] : lowerData[P_env5stage_mode];
+
+  static uint8_t lastStep = 0xFF;
+  const bool changed = (newStep != lastStep);
+  const bool firstTouch = (lastStepParam != CC5stage_mode);
+  if (firstTouch) lastStepParam = CC5stage_mode;
+
+  env5stage_mode_str = newStep;
+
   if (announce && !suppressParamAnnounce) {
-    env5stage_mode_str = map(env5stage_mode_str, 0, 127, 0, 7);
-    displayMode = 0;
-    switch (env5stage_mode_str) {
-      case 0:
-        showCurrentParameterPage("ENV1 KEY FOLLOW.", "OFF");
-        break;
-
-      case 1:
-        showCurrentParameterPage("ENV1 KEY FOLLOW.", "KEY1");
-        break;
-
-      case 2:
-        showCurrentParameterPage("ENV1 KEY FOLLOW.", "KEY2");
-        break;
-
-      case 3:
-        showCurrentParameterPage("ENV1 KEY FOLLOW.", "KEY3");
-        break;
-
-      case 4:
-        showCurrentParameterPage("ENV1 KEY FOLLOW.", "LOOP0");
-        break;
-
-      case 5:
-        showCurrentParameterPage("ENV1 KEY FOLLOW.", "LOOP1");
-        break;
-
-      case 6:
-        showCurrentParameterPage("ENV1 KEY FOLLOW.", "LOOP2");
-        break;
-
-      case 7:
-        showCurrentParameterPage("ENV1 KEY FOLLOW.", "LOOP3");
-        break;
+    if (firstTouch || changed) {
+      displayMode = 0;
+      showCurrentParameterPage("ENV1 KEY FOLLOW.", env5stageModeStepToLabel(newStep));
+      startParameterDisplay();
     }
-    startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_env5stage_mode]) {
-      case 0:
-        sendParamValue(0xAD, 0x00);
-        break;
 
-      case 1:
-        sendParamValue(0xAD, 0x10);
-        break;
-
-      case 2:
-        sendParamValue(0xAD, 0x20);
-        break;
-
-      case 3:
-        sendParamValue(0xAD, 0x30);
-        break;
-
-      case 4:
-        sendParamValue(0xAD, 0x40);
-        break;
-
-      case 5:
-        sendParamValue(0xAD, 0x50);
-        break;
-
-      case 6:
-        sendParamValue(0xAD, 0x60);
-        break;
-
-      case 7:
-        sendParamValue(0xAD, 0x70);
-        break;
-    }
-  } else {
-    switch (lowerData[P_env5stage_mode]) {
-      case 0:
-        sendParamValue(0xAD, 0x00);
-        break;
-
-      case 1:
-        sendParamValue(0xAD, 0x10);
-        break;
-
-      case 2:
-        sendParamValue(0xAD, 0x20);
-        break;
-
-      case 3:
-        sendParamValue(0xAD, 0x30);
-        break;
-
-      case 4:
-        sendParamValue(0xAD, 0x40);
-        break;
-
-      case 5:
-        sendParamValue(0xAD, 0x50);
-        break;
-
-      case 6:
-        sendParamValue(0xAD, 0x60);
-        break;
-
-      case 7:
-        sendParamValue(0xAD, 0x70);
-        break;
-    }
+  if (changed || recallPatchFlag) {
+    sendParamValue(0xAD, env5stageModeStepToValue(newStep));
+    lastStep = newStep;
   }
 }
 
 FLASHMEM void updateenv2_time1(bool announce) {
   sendOffset(0x0D, 0xA6);
+  lastStepParam = 0xFF;
   env2_time1_str = map(env2_time1_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -3110,6 +2989,7 @@ FLASHMEM void updateenv2_time1(bool announce) {
 
 FLASHMEM void updateenv2_level1(bool announce) {
   sendOffset(0x0D, 0xA7);
+  lastStepParam = 0xFF;
   env2_level1_str = map(env2_level1_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -3125,6 +3005,7 @@ FLASHMEM void updateenv2_level1(bool announce) {
 
 FLASHMEM void updateenv2_time2(bool announce) {
   sendOffset(0x0D, 0xA8);
+  lastStepParam = 0xFF;
   env2_time2_str = map(env2_time2_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -3140,6 +3021,7 @@ FLASHMEM void updateenv2_time2(bool announce) {
 
 FLASHMEM void updateenv2_level2(bool announce) {
   sendOffset(0x0D, 0xA9);
+  lastStepParam = 0xFF;
   env2_level2_str = map(env2_level2_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -3155,6 +3037,7 @@ FLASHMEM void updateenv2_level2(bool announce) {
 
 FLASHMEM void updateenv2_time3(bool announce) {
   sendOffset(0x0D, 0xAA);
+  lastStepParam = 0xFF;
   env2_time3_str = map(env2_time3_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -3170,6 +3053,7 @@ FLASHMEM void updateenv2_time3(bool announce) {
 
 FLASHMEM void updateenv2_level3(bool announce) {
   sendOffset(0x0D, 0xAB);
+  lastStepParam = 0xFF;
   env2_level3_str = map(env2_level3_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -3185,6 +3069,7 @@ FLASHMEM void updateenv2_level3(bool announce) {
 
 FLASHMEM void updateenv2_time4(bool announce) {
   sendOffset(0x0D, 0xAC);
+  lastStepParam = 0xFF;
   env2_time4_str = map(env2_time4_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -3200,117 +3085,32 @@ FLASHMEM void updateenv2_time4(bool announce) {
 
 FLASHMEM void updateenv2_env5stage_mode(bool announce) {
   sendOffset(0x0D, 0xAD);
+  const uint8_t newStep = upperSW ? upperData[P_env2_5stage_mode] : lowerData[P_env2_5stage_mode];
+
+  static uint8_t lastStep = 0xFF;
+  const bool changed = (newStep != lastStep);
+  const bool firstTouch = (lastStepParam != CC25stage_mode);
+  if (firstTouch) lastStepParam = CC25stage_mode;
+
+  env2_5stage_mode_str = newStep;
+
   if (announce && !suppressParamAnnounce) {
-    env2_5stage_mode_str = map(env2_5stage_mode_str, 0, 127, 0, 7);
-    displayMode = 0;
-    switch (env2_5stage_mode_str) {
-      case 0:
-        showCurrentParameterPage("ENV2 KEY FOLLOW.", "OFF");
-        break;
-
-      case 1:
-        showCurrentParameterPage("ENV2 KEY FOLLOW.", "KEY1");
-        break;
-
-      case 2:
-        showCurrentParameterPage("ENV2 KEY FOLLOW.", "KEY2");
-        break;
-
-      case 3:
-        showCurrentParameterPage("ENV2 KEY FOLLOW.", "KEY3");
-        break;
-
-      case 4:
-        showCurrentParameterPage("ENV2 KEY FOLLOW.", "LOOP0");
-        break;
-
-      case 5:
-        showCurrentParameterPage("ENV2 KEY FOLLOW.", "LOOP1");
-        break;
-
-      case 6:
-        showCurrentParameterPage("ENV2 KEY FOLLOW.", "LOOP2");
-        break;
-
-      case 7:
-        showCurrentParameterPage("ENV2 KEY FOLLOW.", "LOOP3");
-        break;
+    if (firstTouch || changed) {
+      displayMode = 0;
+      showCurrentParameterPage("ENV2 KEY FOLLOW.", env5stageModeStepToLabel(newStep));
+      startParameterDisplay();
     }
-    startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_env2_5stage_mode]) {
-      case 0:
-        sendParamValue(0xAD, 0x00);
-        break;
 
-      case 1:
-        sendParamValue(0xAD, 0x10);
-        break;
-
-      case 2:
-        sendParamValue(0xAD, 0x20);
-        break;
-
-      case 3:
-        sendParamValue(0xAD, 0x30);
-        break;
-
-      case 4:
-        sendParamValue(0xAD, 0x40);
-        break;
-
-      case 5:
-        sendParamValue(0xAD, 0x50);
-        break;
-
-      case 6:
-        sendParamValue(0xAD, 0x60);
-        break;
-
-      case 7:
-        sendParamValue(0xAD, 0x70);
-        break;
-    }
-  } else {
-    switch (lowerData[P_env2_5stage_mode]) {
-      case 0:
-        sendParamValue(0xAD, 0x00);
-        break;
-
-      case 1:
-        sendParamValue(0xAD, 0x10);
-        break;
-
-      case 2:
-        sendParamValue(0xAD, 0x20);
-        break;
-
-      case 3:
-        sendParamValue(0xAD, 0x30);
-        break;
-
-      case 4:
-        sendParamValue(0xAD, 0x40);
-        break;
-
-      case 5:
-        sendParamValue(0xAD, 0x50);
-        break;
-
-      case 6:
-        sendParamValue(0xAD, 0x60);
-        break;
-
-      case 7:
-        sendParamValue(0xAD, 0x70);
-        break;
-    }
+  if (changed || recallPatchFlag) {
+    sendParamValue(0xAD, env5stageModeStepToValue(newStep));
+    lastStep = newStep;
   }
 }
 
 FLASHMEM void updateattack(bool announce) {
   sendOffset(0x0E, 0xA6);
+  lastStepParam = 0xFF;
   attack_str = map(attack_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -3326,6 +3126,7 @@ FLASHMEM void updateattack(bool announce) {
 
 FLASHMEM void updatedecay(bool announce) {
   sendOffset(0x0E, 0xAA);
+  lastStepParam = 0xFF;
   decay_str = map(decay_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -3341,6 +3142,7 @@ FLASHMEM void updatedecay(bool announce) {
 
 FLASHMEM void updatesustain(bool announce) {
   sendOffset(0x0E, 0xAB);
+  lastStepParam = 0xFF;
   sustain_str = map(sustain_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -3356,6 +3158,7 @@ FLASHMEM void updatesustain(bool announce) {
 
 FLASHMEM void updaterelease(bool announce) {
   sendOffset(0x0E, 0xAC);
+  lastStepParam = 0xFF;
   release_str = map(release_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -3371,117 +3174,32 @@ FLASHMEM void updaterelease(bool announce) {
 
 FLASHMEM void updateadsr_mode(bool announce) {
   sendOffset(0x0E, 0xAD);
+  const uint8_t newStep = upperSW ? upperData[P_adsr_mode] : lowerData[P_adsr_mode];
+
+  static uint8_t lastStep = 0xFF;
+  const bool changed = (newStep != lastStep);
+  const bool firstTouch = (lastStepParam != CCadsr_mode);
+  if (firstTouch) lastStepParam = CCadsr_mode;
+
+  adsr_mode_str = newStep;
+
   if (announce && !suppressParamAnnounce) {
-    adsr_mode_str = map(adsr_mode_str, 0, 127, 0, 7);
-    displayMode = 0;
-    switch (adsr_mode_str) {
-      case 0:
-        showCurrentParameterPage("ENV3 KEY FOLLOW.", "OFF");
-        break;
-
-      case 1:
-        showCurrentParameterPage("ENV3 KEY FOLLOW.", "KEY1");
-        break;
-
-      case 2:
-        showCurrentParameterPage("ENV3 KEY FOLLOW.", "KEY2");
-        break;
-
-      case 3:
-        showCurrentParameterPage("ENV3 KEY FOLLOW.", "KEY3");
-        break;
-
-      case 4:
-        showCurrentParameterPage("ENV3 KEY FOLLOW.", "LOOP0");
-        break;
-
-      case 5:
-        showCurrentParameterPage("ENV3 KEY FOLLOW.", "LOOP1");
-        break;
-
-      case 6:
-        showCurrentParameterPage("ENV3 KEY FOLLOW.", "LOOP2");
-        break;
-
-      case 7:
-        showCurrentParameterPage("ENV3 KEY FOLLOW.", "LOOP3");
-        break;
+    if (firstTouch || changed) {
+      displayMode = 0;
+      showCurrentParameterPage("ENV3 KEY FOLLOW.", env5stageModeStepToLabel(newStep));
+      startParameterDisplay();
     }
-    startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_adsr_mode]) {
-      case 0:
-        sendParamValue(0xAD, 0x00);
-        break;
 
-      case 1:
-        sendParamValue(0xAD, 0x10);
-        break;
-
-      case 2:
-        sendParamValue(0xAD, 0x20);
-        break;
-
-      case 3:
-        sendParamValue(0xAD, 0x30);
-        break;
-
-      case 4:
-        sendParamValue(0xAD, 0x40);
-        break;
-
-      case 5:
-        sendParamValue(0xAD, 0x50);
-        break;
-
-      case 6:
-        sendParamValue(0xAD, 0x60);
-        break;
-
-      case 7:
-        sendParamValue(0xAD, 0x70);
-        break;
-    }
-  } else {
-    switch (lowerData[P_adsr_mode]) {
-      case 0:
-        sendParamValue(0xAD, 0x00);
-        break;
-
-      case 1:
-        sendParamValue(0xAD, 0x10);
-        break;
-
-      case 2:
-        sendParamValue(0xAD, 0x20);
-        break;
-
-      case 3:
-        sendParamValue(0xAD, 0x30);
-        break;
-
-      case 4:
-        sendParamValue(0xAD, 0x40);
-        break;
-
-      case 5:
-        sendParamValue(0xAD, 0x50);
-        break;
-
-      case 6:
-        sendParamValue(0xAD, 0x60);
-        break;
-
-      case 7:
-        sendParamValue(0xAD, 0x70);
-        break;
-    }
+  if (changed || recallPatchFlag) {
+    sendParamValue(0xAD, env5stageModeStepToValue(newStep));
+    lastStep = newStep;
   }
 }
 
 FLASHMEM void updateenv4_attack(bool announce) {
   sendOffset(0x0F, 0xA6);
+  lastStepParam = 0xFF;
   env4_attack_str = map(env4_attack_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -3497,6 +3215,7 @@ FLASHMEM void updateenv4_attack(bool announce) {
 
 FLASHMEM void updateenv4_decay(bool announce) {
   sendOffset(0x0F, 0xAA);
+  lastStepParam = 0xFF;
   env4_decay_str = map(env4_decay_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -3512,6 +3231,7 @@ FLASHMEM void updateenv4_decay(bool announce) {
 
 FLASHMEM void updateenv4_sustain(bool announce) {
   sendOffset(0x0F, 0xAB);
+  lastStepParam = 0xFF;
   env4_sustain_str = map(env4_sustain_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -3527,6 +3247,7 @@ FLASHMEM void updateenv4_sustain(bool announce) {
 
 FLASHMEM void updateenv4_release(bool announce) {
   sendOffset(0x0F, 0xAC);
+  lastStepParam = 0xFF;
   env4_release_str = map(env4_release_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -3542,116 +3263,28 @@ FLASHMEM void updateenv4_release(bool announce) {
 
 FLASHMEM void updateenv4_adsr_mode(bool announce) {
   sendOffset(0x0F, 0xAD);
+  const uint8_t newStep = upperSW ? upperData[P_env4_adsr_mode] : lowerData[P_env4_adsr_mode];
+
+  static uint8_t lastStep = 0xFF;
+  const bool changed = (newStep != lastStep);
+  const bool firstTouch = (lastStepParam != CC4adsr_mode);
+  if (firstTouch) lastStepParam = CC4adsr_mode;
+
+  env4_adsr_mode_str = newStep;
+
   if (announce && !suppressParamAnnounce) {
-    env4_adsr_mode_str = map(env4_adsr_mode_str, 0, 127, 0, 7);
-    displayMode = 0;
-    switch (env4_adsr_mode_str) {
-      case 0:
-        showCurrentParameterPage("ENV4 KEY FOLLOW.", "OFF");
-        break;
-
-      case 1:
-        showCurrentParameterPage("ENV4 KEY FOLLOW.", "KEY1");
-        break;
-
-      case 2:
-        showCurrentParameterPage("ENV4 KEY FOLLOW.", "KEY2");
-        break;
-
-      case 3:
-        showCurrentParameterPage("ENV4 KEY FOLLOW.", "KEY3");
-        break;
-
-      case 4:
-        showCurrentParameterPage("ENV4 KEY FOLLOW.", "LOOP0");
-        break;
-
-      case 5:
-        showCurrentParameterPage("ENV4 KEY FOLLOW.", "LOOP1");
-        break;
-
-      case 6:
-        showCurrentParameterPage("ENV4 KEY FOLLOW.", "LOOP2");
-        break;
-
-      case 7:
-        showCurrentParameterPage("ENV4 KEY FOLLOW.", "LOOP3");
-        break;
+    if (firstTouch || changed) {
+      displayMode = 0;
+      showCurrentParameterPage("ENV4 KEY FOLLOW.", env5stageModeStepToLabel(newStep));
+      startParameterDisplay();
     }
-    startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_env4_adsr_mode]) {
-      case 0:
-        sendParamValue(0xAD, 0x00);
-        break;
 
-      case 1:
-        sendParamValue(0xAD, 0x10);
-        break;
-
-      case 2:
-        sendParamValue(0xAD, 0x20);
-        break;
-
-      case 3:
-        sendParamValue(0xAD, 0x30);
-        break;
-
-      case 4:
-        sendParamValue(0xAD, 0x40);
-        break;
-
-      case 5:
-        sendParamValue(0xAD, 0x50);
-        break;
-
-      case 6:
-        sendParamValue(0xAD, 0x60);
-        break;
-
-      case 7:
-        sendParamValue(0xAD, 0x70);
-        break;
-    }
-  } else {
-    switch (lowerData[P_env4_adsr_mode]) {
-      case 0:
-        sendParamValue(0xAD, 0x00);
-        break;
-
-      case 1:
-        sendParamValue(0xAD, 0x10);
-        break;
-
-      case 2:
-        sendParamValue(0xAD, 0x20);
-        break;
-
-      case 3:
-        sendParamValue(0xAD, 0x30);
-        break;
-
-      case 4:
-        sendParamValue(0xAD, 0x40);
-        break;
-
-      case 5:
-        sendParamValue(0xAD, 0x50);
-        break;
-
-      case 6:
-        sendParamValue(0xAD, 0x60);
-        break;
-
-      case 7:
-        sendParamValue(0xAD, 0x70);
-        break;
-    }
+  if (changed || recallPatchFlag) {
+    sendParamValue(0xAD, env5stageModeStepToValue(newStep));
+    lastStep = newStep;
   }
 }
-
-// File: detune.cpp
 
 static inline uint8_t map_u8_round(uint8_t x, uint8_t in_min, uint8_t in_max, uint8_t out_min, uint8_t out_max) {
   if (in_max == in_min) return out_min;
@@ -3714,9 +3347,9 @@ static String dualDetuneRawToDisplayString(uint8_t raw) {
 
 // Example update routine
 FLASHMEM void updatedualdetune(bool announce) {
-  sendNoOffset(kDualDetuneParam);
+  lastStepParam = 0xFF;
 
-  const uint8_t raw = dualDetuneSliderToRaw(static_cast<uint8_t>(dualdetune));  // dualdetune slider 0..127
+  const uint8_t raw = dualDetuneSliderToRaw(static_cast<uint8_t>(dualdetune));
   const String disp = dualDetuneRawToDisplayString(raw);
 
   if (announce && !suppressParamAnnounce) {
@@ -3724,21 +3357,23 @@ FLASHMEM void updatedualdetune(bool announce) {
     showCurrentParameterPage("DUAL DETUNE", disp);
     startParameterDisplay();
   }
+
   if (keyMode == 0) {
+    // Calculate detune send values without touching lowerMT1/MT2
+    uint8_t lowerSend = calcLowerDetune(masterTune, dualdetune);
 
-    sendParamValueWithPrefixLatched(0xF1, kDualDetuneParam, raw);
-    sendParamValue(kDualDetuneParam2, raw);
+    sendParamValueWithPrefixLatched(0xF1, kDualDetuneParam, lowerSend);
+    sendParamValue(kDualDetuneParam2, lowerSend);
 
-    sendParamValueWithPrefixLatched(0XF9, kDualDetuneParam, 0x2C);
-    sendParamValue(kDualDetuneParam2, 0x2C);
-
+    sendParamValueWithPrefixLatched(0xF9, kDualDetuneParam, upperMT1);
+    sendParamValue(kDualDetuneParam2, upperMT2);
   } else {
+    // Single or Split — all boards get master tune, detune ignored
+    sendParamValueWithPrefixLatched(0xF1, kDualDetuneParam, lowerMT1);
+    sendParamValue(kDualDetuneParam2, lowerMT2);
 
-    sendParamValueWithPrefixLatched(0xF1, kDualDetuneParam, 0x2C);
-    sendParamValue(kDualDetuneParam2, 0x2C);
-
-    sendParamValueWithPrefixLatched(0XF9, kDualDetuneParam, 0x2C);
-    sendParamValue(kDualDetuneParam2, 0x2C);
+    sendParamValueWithPrefixLatched(0xF9, kDualDetuneParam, upperMT1);
+    sendParamValue(kDualDetuneParam2, upperMT2);
   }
 }
 
@@ -4186,14 +3821,18 @@ FLASHMEM void updateafter_enable_button(bool announce) {
     case 0:
       mcp12.digitalWrite(AFTER_ENABLE_RED, LOW);
       mcp12.digitalWrite(AFTER_ENABLE_GREEN, LOW);
+      send3(kBoardUpperPrefix, 0xB3, 0x00);
+      send3(kBoardLowerPrefix, 0xB3, 0x00);
       break;
     case 1:
       mcp12.digitalWrite(AFTER_ENABLE_RED, HIGH);
       mcp12.digitalWrite(AFTER_ENABLE_GREEN, LOW);
+      send3(kBoardUpperPrefix, 0xB3, 0x00);
       break;
     case 2:
       mcp12.digitalWrite(AFTER_ENABLE_RED, LOW);
       mcp12.digitalWrite(AFTER_ENABLE_GREEN, HIGH);
+      send3(kBoardLowerPrefix, 0xB3, 0x00);
       break;
     case 3:
       mcp12.digitalWrite(AFTER_ENABLE_RED, HIGH);
@@ -4202,783 +3841,1311 @@ FLASHMEM void updateafter_enable_button(bool announce) {
   }
 }
 
-// FLASHMEM void updatelfo1_sync(bool announce) {
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (lfo1_sync) {
-//       case 0:
-//         showCurrentParameterPage("LFO1 SYNC", "OFF");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("LFO1 SYNC", "ON");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("LFO1 SYNC", "KEY");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (lfo1_sync) {
-//     case 0:
-//       midiCCOut(CClfo1_sync, 0x00);
-//       mcp1.digitalWrite(LFO1_SYNC_RED, LOW);
-//       mcp1.digitalWrite(LFO1_SYNC_GREEN, LOW);
-//       break;
-//     case 1:
-//       midiCCOut(CClfo1_sync, 0x20);
-//       mcp1.digitalWrite(LFO1_SYNC_RED, HIGH);
-//       mcp1.digitalWrite(LFO1_SYNC_GREEN, LOW);
-//       break;
-//     case 2:
-//       midiCCOut(CClfo1_sync, 0x40);
-//       mcp1.digitalWrite(LFO1_SYNC_RED, LOW);
-//       mcp1.digitalWrite(LFO1_SYNC_GREEN, HIGH);
-//       break;
-//   }
-// }
+FLASHMEM void updatelfo1_sync(bool announce) {
+  sendOffset(0x0C, 0xA5);
+  lastStepParam = 0xFF;
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    switch (lfo1_sync) {
+      case 0:
+        showCurrentParameterPage("LFO1 SYNC", "OFF");
+        break;
+      case 1:
+        showCurrentParameterPage("LFO1 SYNC", "ON");
+        break;
+      case 2:
+        showCurrentParameterPage("LFO1 SYNC", "KEY");
+        break;
+    }
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    switch (upperData[P_lfo1_sync]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0xA5, 0x00);
+        mcp1.digitalWrite(LFO1_SYNC_RED, LOW);
+        mcp1.digitalWrite(LFO1_SYNC_GREEN, LOW);
+        break;
 
-// FLASHMEM void updatelfo2_sync(bool announce) {
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (lfo2_sync) {
-//       case 0:
-//         showCurrentParameterPage("LFO2 SYNC", "OFF");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("LFO2 SYNC", "ON");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("LFO2 SYNC", "KEY");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (lfo2_sync) {
-//     case 0:
-//       midiCCOut(CClfo2_sync, 0x00);
-//       mcp2.digitalWrite(LFO2_SYNC_RED, LOW);
-//       mcp2.digitalWrite(LFO2_SYNC_GREEN, LOW);
-//       break;
-//     case 1:
-//       midiCCOut(CClfo2_sync, 0x20);
-//       mcp2.digitalWrite(LFO2_SYNC_RED, HIGH);
-//       mcp2.digitalWrite(LFO2_SYNC_GREEN, LOW);
-//       break;
-//     case 2:
-//       midiCCOut(CClfo2_sync, 0x40);
-//       mcp2.digitalWrite(LFO2_SYNC_RED, LOW);
-//       mcp2.digitalWrite(LFO2_SYNC_GREEN, HIGH);
-//       break;
-//   }
-// }
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0xA5, 0x20);
+        mcp1.digitalWrite(LFO1_SYNC_RED, HIGH);
+        mcp1.digitalWrite(LFO1_SYNC_GREEN, LOW);
+        break;
 
-// FLASHMEM void updatedco1_PWM_dyn(bool announce) {
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (dco1_PWM_dyn) {
-//       case 0:
-//         showCurrentParameterPage("DCO1 PWM", "OFF");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("DCO1 PWM", "DYN1");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("DCO1 PWM", "DYN2");
-//         break;
-//       case 3:
-//         showCurrentParameterPage("DCO1 PWM", "DYN3");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (dco1_PWM_dyn) {
-//     case 0:
-//       midiCCOut(CCdco1_PWM_dyn, 0x00);
-//       mcp1.digitalWrite(DCO1_PWM_DYN_RED, LOW);
-//       mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, LOW);
-//       break;
-//     case 1:
-//       midiCCOut(CCdco1_PWM_dyn, 0x20);
-//       mcp1.digitalWrite(DCO1_PWM_DYN_RED, HIGH);
-//       mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, LOW);
-//       break;
-//     case 2:
-//       midiCCOut(CCdco1_PWM_dyn, 0x40);
-//       mcp1.digitalWrite(DCO1_PWM_DYN_RED, LOW);
-//       mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, HIGH);
-//       break;
-//     case 3:
-//       midiCCOut(CCdco1_PWM_dyn, 0x60);
-//       mcp1.digitalWrite(DCO1_PWM_DYN_RED, HIGH);
-//       mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, HIGH);
-//       break;
-//   }
-// }
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0xA5, 0x40);
+        mcp1.digitalWrite(LFO1_SYNC_RED, LOW);
+        mcp1.digitalWrite(LFO1_SYNC_GREEN, HIGH);
+        break;
+    }
+  } else {
+    switch (lowerData[P_lfo1_sync]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0xA5, 0x00);
+        mcp1.digitalWrite(LFO1_SYNC_RED, LOW);
+        mcp1.digitalWrite(LFO1_SYNC_GREEN, LOW);
+        break;
 
-// FLASHMEM void updatedco2_PWM_dyn(bool announce) {
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (dco2_PWM_dyn) {
-//       case 0:
-//         showCurrentParameterPage("DCO2 PWM", "OFF");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("DCO2 PWM", "DYN1");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("DCO2 PWM", "DYN2");
-//         break;
-//       case 3:
-//         showCurrentParameterPage("DCO2 PWM", "DYN3");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (dco2_PWM_dyn) {
-//     case 0:
-//       midiCCOut(CCdco2_PWM_dyn, 0x00);
-//       mcp2.digitalWrite(DCO2_PWM_DYN_RED, LOW);
-//       mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, LOW);
-//       break;
-//     case 1:
-//       midiCCOut(CCdco2_PWM_dyn, 0x20);
-//       mcp2.digitalWrite(DCO2_PWM_DYN_RED, HIGH);
-//       mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, LOW);
-//       break;
-//     case 2:
-//       midiCCOut(CCdco2_PWM_dyn, 0x40);
-//       mcp2.digitalWrite(DCO2_PWM_DYN_RED, LOW);
-//       mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, HIGH);
-//       break;
-//     case 3:
-//       midiCCOut(CCdco2_PWM_dyn, 0x60);
-//       mcp2.digitalWrite(DCO2_PWM_DYN_RED, HIGH);
-//       mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, HIGH);
-//       break;
-//   }
-// }
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0xA5, 0x20);
+        mcp1.digitalWrite(LFO1_SYNC_RED, HIGH);
+        mcp1.digitalWrite(LFO1_SYNC_GREEN, LOW);
+        break;
 
-// FLASHMEM void updatedco1_PWM_env_source(bool announce) {
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (dco1_PWM_env_source) {
-//       case 0:
-//         showCurrentParameterPage("DCO1 PWM", "ENV1-");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("DCO1 PWM", "ENV1+");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("DCO1 PWM", "ENV2-");
-//         break;
-//       case 3:
-//         showCurrentParameterPage("DCO1 PWM", "ENV2+");
-//         break;
-//       case 4:
-//         showCurrentParameterPage("DCO1 PWM", "ENV3-");
-//         break;
-//       case 5:
-//         showCurrentParameterPage("DCO1 PWM", "ENV3+");
-//         break;
-//       case 6:
-//         showCurrentParameterPage("DCO1 PWM", "ENV4-");
-//         break;
-//       case 7:
-//         showCurrentParameterPage("DCO1 PWM", "ENV4+");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (dco1_PWM_env_source) {
-//     case 0:
-//       midiCCOut(CCdco1_PWM_env_source, 0x00);
-//       mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
-//       mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
-//       mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
-//       mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
-//       break;
-//     case 1:
-//       midiCCOut(CCdco1_PWM_env_source, 0x10);
-//       mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
-//       mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
-//       mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
-//       mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
-//       break;
-//     case 2:
-//       midiCCOut(CCdco1_PWM_env_source, 0x20);
-//       mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
-//       mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
-//       mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
-//       mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
-//       break;
-//     case 3:
-//       midiCCOut(CCdco1_PWM_env_source, 0x30);
-//       mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
-//       mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
-//       mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
-//       mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
-//       break;
-//     case 4:
-//       midiCCOut(CCdco1_PWM_env_source, 0x40);
-//       mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
-//       mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
-//       mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
-//       mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
-//       break;
-//     case 5:
-//       midiCCOut(CCdco1_PWM_env_source, 0x50);
-//       mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
-//       mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
-//       mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
-//       mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
-//       break;
-//     case 6:
-//       midiCCOut(CCdco1_PWM_env_source, 0x60);
-//       mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
-//       mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
-//       mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
-//       mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
-//       break;
-//     case 7:
-//       midiCCOut(CCdco1_PWM_env_source, 0x70);
-//       mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
-//       mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
-//       mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
-//       mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
-//       break;
-//   }
-// }
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0xA5, 0x40);
+        mcp1.digitalWrite(LFO1_SYNC_RED, LOW);
+        mcp1.digitalWrite(LFO1_SYNC_GREEN, HIGH);
+        break;
+    }
+  }
+}
 
-// FLASHMEM void updatedco2_PWM_env_source(bool announce) {
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (dco2_PWM_env_source) {
-//       case 0:
-//         showCurrentParameterPage("DCO2 PWM", "ENV1-");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("DCO2 PWM", "ENV1+");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("DCO2 PWM", "ENV2-");
-//         break;
-//       case 3:
-//         showCurrentParameterPage("DCO2 PWM", "ENV2+");
-//         break;
-//       case 4:
-//         showCurrentParameterPage("DCO2 PWM", "ENV3-");
-//         break;
-//       case 5:
-//         showCurrentParameterPage("DCO2 PWM", "ENV3+");
-//         break;
-//       case 6:
-//         showCurrentParameterPage("DCO2 PWM", "ENV4-");
-//         break;
-//       case 7:
-//         showCurrentParameterPage("DCO2 PWM", "ENV4+");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (dco2_PWM_env_source) {
-//     case 0:
-//       midiCCOut(CCdco2_PWM_env_source, 0x00);
-//       mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
-//       mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
-//       mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
-//       mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
-//       break;
-//     case 1:
-//       midiCCOut(CCdco2_PWM_env_source, 0x10);
-//       mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
-//       mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
-//       mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
-//       mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
-//       break;
-//     case 2:
-//       midiCCOut(CCdco2_PWM_env_source, 0x20);
-//       mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
-//       mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
-//       mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
-//       mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
-//       break;
-//     case 3:
-//       midiCCOut(CCdco2_PWM_env_source, 0x30);
-//       mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
-//       mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
-//       mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
-//       mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
-//       break;
-//     case 4:
-//       midiCCOut(CCdco1_PWM_env_source, 0x40);
-//       mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
-//       mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
-//       mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
-//       mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
-//       break;
-//     case 5:
-//       midiCCOut(CCdco2_PWM_env_source, 0x50);
-//       mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
-//       mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
-//       mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
-//       mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
-//       break;
-//     case 6:
-//       midiCCOut(CCdco2_PWM_env_source, 0x60);
-//       mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
-//       mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
-//       mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
-//       mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
-//       break;
-//     case 7:
-//       midiCCOut(CCdco2_PWM_env_source, 0x70);
-//       mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
-//       mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
-//       mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
-//       mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
-//       break;
-//   }
-// }
+FLASHMEM void updatelfo2_sync(bool announce) {
+  sendOffset(0x0D, 0xA5);
+  lastStepParam = 0xFF;
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    switch (lfo2_sync) {
+      case 0:
+        showCurrentParameterPage("LFO2 SYNC", "OFF");
+        break;
+      case 1:
+        showCurrentParameterPage("LFO2 SYNC", "ON");
+        break;
+      case 2:
+        showCurrentParameterPage("LFO2 SYNC", "KEY");
+        break;
+    }
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    switch (upperData[P_lfo2_sync]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0xA5, 0x00);
+        mcp2.digitalWrite(LFO2_SYNC_RED, LOW);
+        mcp2.digitalWrite(LFO2_SYNC_GREEN, LOW);
+        break;
 
-// FLASHMEM void updatedco1_PWM_lfo_source(bool announce) {
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (dco1_PWM_lfo_source) {
-//       case 0:
-//         showCurrentParameterPage("DCO1 PWM", "LFO1-");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("DCO1 PWM", "LFO1+");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("DCO1 PWM", "LFO2-");
-//         break;
-//       case 3:
-//         showCurrentParameterPage("DCO1 PWM", "LFO1+");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (dco1_PWM_lfo_source) {
-//     case 0:
-//       midiCCOut(CCdco1_PWM_lfo_source, 0x00);
-//       mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, LOW);
-//       mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, LOW);
-//       break;
-//     case 1:
-//       midiCCOut(CCdco1_PWM_lfo_source, 0x20);
-//       mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, HIGH);
-//       mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, LOW);
-//       break;
-//     case 2:
-//       midiCCOut(CCdco1_PWM_lfo_source, 0x40);
-//       mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, LOW);
-//       mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, HIGH);
-//       break;
-//     case 3:
-//       midiCCOut(CCdco1_PWM_lfo_source, 0x60);
-//       mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, HIGH);
-//       mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, HIGH);
-//       break;
-//   }
-// }
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0xA5, 0x20);
+        mcp2.digitalWrite(LFO2_SYNC_RED, HIGH);
+        mcp2.digitalWrite(LFO2_SYNC_GREEN, LOW);
+        break;
 
-// FLASHMEM void updatedco2_PWM_lfo_source(bool announce) {
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (dco2_PWM_lfo_source) {
-//       case 0:
-//         showCurrentParameterPage("DCO2 PWM", "LFO1-");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("DCO2 PWM", "LFO1+");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("DCO2 PWM", "LFO2-");
-//         break;
-//       case 3:
-//         showCurrentParameterPage("DCO2 PWM", "LFO1+");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (dco2_PWM_lfo_source) {
-//     case 0:
-//       midiCCOut(CCdco2_PWM_lfo_source, 0x00);
-//       mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, LOW);
-//       mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, LOW);
-//       break;
-//     case 1:
-//       midiCCOut(CCdco2_PWM_lfo_source, 0x20);
-//       mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, HIGH);
-//       mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, LOW);
-//       break;
-//     case 2:
-//       midiCCOut(CCdco2_PWM_lfo_source, 0x40);
-//       mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, LOW);
-//       mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, HIGH);
-//       break;
-//     case 3:
-//       midiCCOut(CCdco2_PWM_lfo_source, 0x60);
-//       mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, HIGH);
-//       mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, HIGH);
-//       break;
-//   }
-// }
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0xA5, 0x40);
+        mcp2.digitalWrite(LFO2_SYNC_RED, LOW);
+        mcp2.digitalWrite(LFO2_SYNC_GREEN, HIGH);
+        break;
+    }
+  } else {
+    switch (lowerData[P_lfo2_sync]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0xA5, 0x00);
+        mcp2.digitalWrite(LFO2_SYNC_RED, LOW);
+        mcp2.digitalWrite(LFO2_SYNC_GREEN, LOW);
+        break;
 
-// FLASHMEM void updatedco1_pitch_dyn(bool announce) {
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (dco1_pitch_dyn) {
-//       case 0:
-//         showCurrentParameterPage("DCO1 PITCH", "OFF");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("DCO1 PITCH", "DYN1");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("DCO1 PITCH", "DYN2");
-//         break;
-//       case 3:
-//         showCurrentParameterPage("DCO1 PITCH", "DYN3");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (dco1_pitch_dyn) {
-//     case 0:
-//       midiCCOut(CCdco1_pitch_dyn, 0x00);
-//       mcp4.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
-//       mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
-//       break;
-//     case 1:
-//       midiCCOut(CCdco1_pitch_dyn, 0x20);
-//       mcp4.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
-//       mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
-//       break;
-//     case 2:
-//       midiCCOut(CCdco1_pitch_dyn, 0x40);
-//       mcp4.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
-//       mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
-//       break;
-//     case 3:
-//       midiCCOut(CCdco1_pitch_dyn, 0x60);
-//       mcp4.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
-//       mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
-//       break;
-//   }
-// }
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0xA5, 0x20);
+        mcp2.digitalWrite(LFO2_SYNC_RED, HIGH);
+        mcp2.digitalWrite(LFO2_SYNC_GREEN, LOW);
+        break;
 
-// FLASHMEM void updatedco2_pitch_dyn(bool announce) {
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (dco2_pitch_dyn) {
-//       case 0:
-//         showCurrentParameterPage("DCO2 PITCH", "OFF");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("DCO2 PITCH", "DYN1");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("DCO2 PITCH", "DYN2");
-//         break;
-//       case 3:
-//         showCurrentParameterPage("DCO2 PITCH", "DYN3");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (dco2_pitch_dyn) {
-//     case 0:
-//       midiCCOut(CCdco2_pitch_dyn, 0x00);
-//       mcp3.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
-//       mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
-//       break;
-//     case 1:
-//       midiCCOut(CCdco2_pitch_dyn, 0x20);
-//       mcp3.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
-//       mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
-//       break;
-//     case 2:
-//       midiCCOut(CCdco2_pitch_dyn, 0x40);
-//       mcp3.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
-//       mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
-//       break;
-//     case 3:
-//       midiCCOut(CCdco2_pitch_dyn, 0x60);
-//       mcp3.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
-//       mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
-//       break;
-//   }
-// }
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0xA5, 0x40);
+        mcp2.digitalWrite(LFO2_SYNC_RED, LOW);
+        mcp2.digitalWrite(LFO2_SYNC_GREEN, HIGH);
+        break;
+    }
+  }
+}
 
-// FLASHMEM void updatedco1_pitch_lfo_source(bool announce) {
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (dco1_pitch_lfo_source) {
-//       case 0:
-//         showCurrentParameterPage("DCO1 PITCH", "LFO1-");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("DCO1 PITCH", "LFO1+");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("DCO1 PITCH", "LFO2-");
-//         break;
-//       case 3:
-//         showCurrentParameterPage("DCO1 PITCH", "LFO2+");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (dco1_pitch_lfo_source) {
-//     case 0:
-//       midiCCOut(CCdco1_pitch_lfo_source, 0x00);
-//       mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, LOW);
-//       mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, LOW);
-//       break;
-//     case 1:
-//       midiCCOut(CCdco1_pitch_lfo_source, 0x20);
-//       mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, HIGH);
-//       mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, LOW);
-//       break;
-//     case 2:
-//       midiCCOut(CCdco1_pitch_lfo_source, 0x40);
-//       mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, LOW);
-//       mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, HIGH);
-//       break;
-//     case 3:
-//       midiCCOut(CCdco1_pitch_lfo_source, 0x60);
-//       mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, HIGH);
-//       mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, HIGH);
-//       break;
-//   }
-// }
+FLASHMEM void updatedco1_PWM_dyn(bool announce) {
+  sendOffset(0x0C, 0x8E);
+  lastStepParam = 0xFF;
 
-// FLASHMEM void updatedco2_pitch_lfo_source(bool announce) {
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (dco2_pitch_lfo_source) {
-//       case 0:
-//         showCurrentParameterPage("DCO2 PITCH", "LFO1-");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("DCO2 PITCH", "LFO1+");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("DCO2 PITCH", "LFO2-");
-//         break;
-//       case 3:
-//         showCurrentParameterPage("DCO2 PITCH", "LFO2+");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (dco2_pitch_lfo_source) {
-//     case 0:
-//       midiCCOut(CCdco2_pitch_lfo_source, 0x00);
-//       mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, LOW);
-//       mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, LOW);
-//       break;
-//     case 1:
-//       midiCCOut(CCdco2_pitch_lfo_source, 0x20);
-//       mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, HIGH);
-//       mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, LOW);
-//       break;
-//     case 2:
-//       midiCCOut(CCdco2_pitch_lfo_source, 0x40);
-//       mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, LOW);
-//       mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, HIGH);
-//       break;
-//     case 3:
-//       midiCCOut(CCdco2_pitch_lfo_source, 0x60);
-//       mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, HIGH);
-//       mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, HIGH);
-//       break;
-//   }
-// }
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    switch (dco1_PWM_dyn) {
+      case 0:
+        showCurrentParameterPage("DCO1 PWM", "OFF");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO1 PWM", "DYN1");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO1 PWM", "DYN2");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO1 PWM", "DYN3");
+        break;
+    }
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    switch (upperData[P_dco1_PWM_dyn]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8E, 0x00);
+        mcp1.digitalWrite(DCO1_PWM_DYN_RED, LOW);
+        mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8E, 0x20);
+        mcp1.digitalWrite(DCO1_PWM_DYN_RED, HIGH);
+        mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, LOW);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8E, 0x40);
+        mcp1.digitalWrite(DCO1_PWM_DYN_RED, LOW);
+        mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, HIGH);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8E, 0x60);
+        mcp1.digitalWrite(DCO1_PWM_DYN_RED, HIGH);
+        mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, HIGH);
+        break;
+    }
+  } else {
+    switch (lowerData[P_dco1_PWM_dyn]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8E, 0x00);
+        mcp1.digitalWrite(DCO1_PWM_DYN_RED, LOW);
+        mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8E, 0x20);
+        mcp1.digitalWrite(DCO1_PWM_DYN_RED, HIGH);
+        mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, LOW);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8E, 0x40);
+        mcp1.digitalWrite(DCO1_PWM_DYN_RED, LOW);
+        mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, HIGH);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8E, 0x60);
+        mcp1.digitalWrite(DCO1_PWM_DYN_RED, HIGH);
+        mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, HIGH);
+        break;
+    }
+  }
+}
 
-// FLASHMEM void updatedco1_pitch_env_source(bool announce) {
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (dco1_pitch_env_source) {
-//       case 0:
-//         showCurrentParameterPage("DCO1 PITCH", "ENV1-");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("DCO1 PITCH", "ENV1+");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("DCO1 PITCH", "ENV2-");
-//         break;
-//       case 3:
-//         showCurrentParameterPage("DCO1 PITCH", "ENV2+");
-//         break;
-//       case 4:
-//         showCurrentParameterPage("DCO1 PITCH", "ENV3-");
-//         break;
-//       case 5:
-//         showCurrentParameterPage("DCO1 PITCH", "ENV3+");
-//         break;
-//       case 6:
-//         showCurrentParameterPage("DCO1 PITCH", "ENV4-");
-//         break;
-//       case 7:
-//         showCurrentParameterPage("DCO1 PITCH", "ENV4+");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (dco1_pitch_env_source) {
-//     case 0:
-//       midiCCOut(CCdco1_pitch_env_source, 0x00);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
-//       break;
-//     case 1:
-//       midiCCOut(CCdco1_pitch_env_source, 0x10);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
-//       break;
-//     case 2:
-//       midiCCOut(CCdco1_pitch_env_source, 0x20);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
-//       break;
-//     case 3:
-//       midiCCOut(CCdco1_pitch_env_source, 0x30);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
-//       break;
-//     case 4:
-//       midiCCOut(CCdco1_pitch_env_source, 0x40);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
-//       break;
-//     case 5:
-//       midiCCOut(CCdco1_pitch_env_source, 0x50);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
-//       break;
-//     case 6:
-//       midiCCOut(CCdco1_pitch_env_source, 0x60);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
-//       break;
-//     case 7:
-//       midiCCOut(CCdco1_pitch_env_source, 0x70);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
-//       mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
-//       break;
-//   }
-// }
+FLASHMEM void updatedco2_PWM_dyn(bool announce) {
+  sendOffset(0x0D, 0x8E);
+  lastStepParam = 0xFF;
 
-// FLASHMEM void updatedco2_pitch_env_source(bool announce) {
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (dco2_pitch_env_source) {
-//       case 0:
-//         showCurrentParameterPage("DCO2 PITCH", "ENV1-");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("DCO2 PITCH", "ENV1+");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("DCO2 PITCH", "ENV2-");
-//         break;
-//       case 3:
-//         showCurrentParameterPage("DCO2 PITCH", "ENV2+");
-//         break;
-//       case 4:
-//         showCurrentParameterPage("DCO2 PITCH", "ENV3-");
-//         break;
-//       case 5:
-//         showCurrentParameterPage("DCO2 PITCH", "ENV3+");
-//         break;
-//       case 6:
-//         showCurrentParameterPage("DCO2 PITCH", "ENV4-");
-//         break;
-//       case 7:
-//         showCurrentParameterPage("DCO2 PITCH", "ENV4+");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (dco2_pitch_env_source) {
-//     case 0:
-//       midiCCOut(CCdco2_pitch_env_source, 0x00);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
-//       break;
-//     case 1:
-//       midiCCOut(CCdco2_pitch_env_source, 0x10);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
-//       break;
-//     case 2:
-//       midiCCOut(CCdco2_pitch_env_source, 0x20);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
-//       break;
-//     case 3:
-//       midiCCOut(CCdco2_pitch_env_source, 0x30);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
-//       break;
-//     case 4:
-//       midiCCOut(CCdco2_pitch_env_source, 0x40);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
-//       break;
-//     case 5:
-//       midiCCOut(CCdco2_pitch_env_source, 0x50);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
-//       break;
-//     case 6:
-//       midiCCOut(CCdco2_pitch_env_source, 0x60);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
-//       break;
-//     case 7:
-//       midiCCOut(CCdco2_pitch_env_source, 0x70);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
-//       mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
-//       break;
-//   }
-// }
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    switch (dco2_PWM_dyn) {
+      case 0:
+        showCurrentParameterPage("DCO2 PWM", "OFF");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO2 PWM", "DYN1");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO2 PWM", "DYN2");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO2 PWM", "DYN3");
+        break;
+    }
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    switch (upperData[P_dco2_PWM_dyn]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8E, 0x00);
+        mcp2.digitalWrite(DCO2_PWM_DYN_RED, LOW);
+        mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8E, 0x20);
+        mcp2.digitalWrite(DCO2_PWM_DYN_RED, HIGH);
+        mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, LOW);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8E, 0x40);
+        mcp2.digitalWrite(DCO2_PWM_DYN_RED, LOW);
+        mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, HIGH);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8E, 0x60);
+        mcp2.digitalWrite(DCO2_PWM_DYN_RED, HIGH);
+        mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, HIGH);
+        break;
+    }
+  } else {
+    switch (lowerData[P_dco2_PWM_dyn]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8E, 0x00);
+        mcp2.digitalWrite(DCO2_PWM_DYN_RED, LOW);
+        mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8E, 0x20);
+        mcp2.digitalWrite(DCO2_PWM_DYN_RED, HIGH);
+        mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, LOW);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8E, 0x40);
+        mcp2.digitalWrite(DCO2_PWM_DYN_RED, LOW);
+        mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, HIGH);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8E, 0x60);
+        mcp2.digitalWrite(DCO2_PWM_DYN_RED, HIGH);
+        mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, HIGH);
+        break;
+    }
+  }
+}
+
+FLASHMEM void updatedco1_PWM_env_source(bool announce) {
+  sendOffset(0x0C, 0x8F);
+  lastStepParam = 0xFF;
+
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    switch (dco1_PWM_env_source) {
+      case 0:
+        showCurrentParameterPage("DCO1 PWM", "ENV1-");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO1 PWM", "ENV1+");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO1 PWM", "ENV2-");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO1 PWM", "ENV2+");
+        break;
+      case 4:
+        showCurrentParameterPage("DCO1 PWM", "ENV3-");
+        break;
+      case 5:
+        showCurrentParameterPage("DCO1 PWM", "ENV3+");
+        break;
+      case 6:
+        showCurrentParameterPage("DCO1 PWM", "ENV4-");
+        break;
+      case 7:
+        showCurrentParameterPage("DCO1 PWM", "ENV4+");
+        break;
+    }
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    switch (upperData[P_dco1_PWM_env_source]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x00);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
+        mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
+        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x10);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
+        mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
+        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x20);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
+        mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
+        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x30);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
+        mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
+        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
+        break;
+      case 4:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x40);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
+        mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
+        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
+        break;
+      case 5:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x50);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
+        mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
+        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
+        break;
+      case 6:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x60);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
+        mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
+        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
+        break;
+      case 7:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x70);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
+        mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
+        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
+        break;
+    }
+  } else {
+    switch (lowerData[P_dco1_PWM_env_source]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x00);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
+        mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
+        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x10);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
+        mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
+        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x20);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
+        mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
+        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x30);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
+        mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
+        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
+        break;
+      case 4:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x40);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
+        mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
+        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
+        break;
+      case 5:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x50);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
+        mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
+        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
+        break;
+      case 6:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x60);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
+        mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
+        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
+        break;
+      case 7:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x70);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
+        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
+        mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
+        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
+        break;
+    }
+  }
+}
+
+FLASHMEM void updatedco2_PWM_env_source(bool announce) {
+  sendOffset(0x0D, 0x8F);
+  lastStepParam = 0xFF;
+
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    switch (dco2_PWM_env_source) {
+      case 0:
+        showCurrentParameterPage("DCO2 PWM", "ENV1-");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO2 PWM", "ENV1+");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO2 PWM", "ENV2-");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO2 PWM", "ENV2+");
+        break;
+      case 4:
+        showCurrentParameterPage("DCO2 PWM", "ENV3-");
+        break;
+      case 5:
+        showCurrentParameterPage("DCO2 PWM", "ENV3+");
+        break;
+      case 6:
+        showCurrentParameterPage("DCO2 PWM", "ENV4-");
+        break;
+      case 7:
+        showCurrentParameterPage("DCO2 PWM", "ENV4+");
+        break;
+    }
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    switch (upperData[P_dco2_PWM_env_source]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x00);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
+        mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
+        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x10);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
+        mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
+        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x20);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
+        mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
+        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x30);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
+        mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
+        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
+        break;
+      case 4:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x40);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
+        mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
+        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
+        break;
+      case 5:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x50);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
+        mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
+        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
+        break;
+      case 6:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x60);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
+        mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
+        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
+        break;
+      case 7:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x70);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
+        mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
+        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
+        break;
+    }
+  } else {
+    switch (lowerData[P_dco2_PWM_env_source]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x00);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
+        mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
+        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x10);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
+        mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
+        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x20);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
+        mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
+        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x30);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
+        mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
+        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
+        break;
+      case 4:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x40);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
+        mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
+        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
+        break;
+      case 5:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x50);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
+        mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
+        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
+        break;
+      case 6:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x60);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
+        mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
+        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
+        break;
+      case 7:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x70);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
+        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
+        mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
+        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
+        break;
+    }
+  }
+}
+
+FLASHMEM void updatedco1_PWM_lfo_source(bool announce) {
+  sendOffset(0x0C, 0x8D);
+  lastStepParam = 0xFF;
+
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    switch (dco1_PWM_lfo_source) {
+      case 0:
+        showCurrentParameterPage("DCO1 PWM", "LFO1-");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO1 PWM", "LFO1+");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO1 PWM", "LFO2-");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO1 PWM", "LFO2+");
+        break;
+    }
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    switch (upperData[P_dco1_PWM_lfo_source]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8D, 0x00);
+        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, LOW);
+        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8D, 0x20);
+        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, LOW);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8D, 0x40);
+        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, LOW);
+        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, HIGH);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8D, 0x60);
+        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, HIGH);
+        break;
+    }
+  } else {
+    switch (lowerData[P_dco1_PWM_lfo_source]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8D, 0x00);
+        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, LOW);
+        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8D, 0x20);
+        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, LOW);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8D, 0x40);
+        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, LOW);
+        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, HIGH);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8D, 0x60);
+        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, HIGH);
+        break;
+    }
+  }
+}
+
+FLASHMEM void updatedco2_PWM_lfo_source(bool announce) {
+  sendOffset(0x0D, 0x8D);
+  lastStepParam = 0xFF;
+
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    switch (dco2_PWM_lfo_source) {
+      case 0:
+        showCurrentParameterPage("DCO2 PWM", "LFO1-");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO2 PWM", "LFO1+");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO2 PWM", "LFO2-");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO2 PWM", "LFO2+");
+        break;
+    }
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    switch (upperData[P_dco2_PWM_lfo_source]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8D, 0x00);
+        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, LOW);
+        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8D, 0x20);
+        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, HIGH);
+        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, LOW);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8D, 0x40);
+        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, LOW);
+        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, HIGH);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8D, 0x60);
+        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, HIGH);
+        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, HIGH);
+        break;
+    }
+  } else {
+    switch (lowerData[P_dco2_PWM_lfo_source]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8D, 0x00);
+        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, LOW);
+        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8D, 0x20);
+        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, HIGH);
+        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, LOW);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8D, 0x40);
+        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, LOW);
+        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, HIGH);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8D, 0x60);
+        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, HIGH);
+        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, HIGH);
+        break;
+    }
+  }
+}
+
+FLASHMEM void updatedco1_pitch_dyn(bool announce) {
+  sendOffset(0x0C, 0x86);
+  lastStepParam = 0xFF;
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    switch (dco1_pitch_dyn) {
+      case 0:
+        showCurrentParameterPage("DCO1 PITCH", "OFF");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO1 PITCH", "DYN1");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO1 PITCH", "DYN2");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO1 PITCH", "DYN3");
+        break;
+    }
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    switch (upperData[P_dco1_pitch_dyn]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x86, 0x00);
+        mcp4.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x86, 0x20);
+        mcp4.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x86, 0x40);
+        mcp4.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x86, 0x60);
+        mcp4.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
+        break;
+    }
+  } else {
+    switch (lowerData[P_dco1_pitch_dyn]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x86, 0x00);
+        mcp4.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x86, 0x20);
+        mcp4.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x86, 0x40);
+        mcp4.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x86, 0x60);
+        mcp4.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
+        break;
+    }
+  }
+}
+
+FLASHMEM void updatedco2_pitch_dyn(bool announce) {
+  sendOffset(0x0D, 0x86);
+  lastStepParam = 0xFF;
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    switch (dco2_pitch_dyn) {
+      case 0:
+        showCurrentParameterPage("DCO2 PITCH", "OFF");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO2 PITCH", "DYN1");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO2 PITCH", "DYN2");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO2 PITCH", "DYN3");
+        break;
+    }
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    switch (upperData[P_dco2_pitch_dyn]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x86, 0x00);
+        mcp3.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
+        mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x86, 0x20);
+        mcp3.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
+        mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x86, 0x40);
+        mcp3.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
+        mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x86, 0x60);
+        mcp3.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
+        mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
+        break;
+    }
+  } else {
+    switch (lowerData[P_dco2_pitch_dyn]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x86, 0x00);
+        mcp3.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
+        mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x86, 0x20);
+        mcp3.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
+        mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x86, 0x40);
+        mcp3.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
+        mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x86, 0x60);
+        mcp3.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
+        mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
+        break;
+    }
+  }
+}
+
+FLASHMEM void updatedco1_pitch_lfo_source(bool announce) {
+  sendOffset(0x0C, 0x84);
+  lastStepParam = 0xFF;
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    switch (dco1_pitch_lfo_source) {
+      case 0:
+        showCurrentParameterPage("DCO1 PITCH", "LFO1-");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO1 PITCH", "LFO1+");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO1 PITCH", "LFO2-");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO1 PITCH", "LFO2+");
+        break;
+    }
+    startParameterDisplay();
+  }
+
+  if (upperSW) {
+    switch (upperData[P_dco1_pitch_lfo_source]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x84, 0x00);
+        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x84, 0x20);
+        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, LOW);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x84, 0x40);
+        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, HIGH);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x84, 0x60);
+        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, HIGH);
+        break;
+    }
+  } else {
+    switch (lowerData[P_dco1_pitch_lfo_source]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x84, 0x00);
+        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x84, 0x20);
+        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, LOW);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x84, 0x40);
+        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, HIGH);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x84, 0x60);
+        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, HIGH);
+        break;
+    }
+  }
+}
+
+FLASHMEM void updatedco2_pitch_lfo_source(bool announce) {
+  sendOffset(0x0D, 0x84);
+  lastStepParam = 0xFF;
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    switch (dco2_pitch_lfo_source) {
+      case 0:
+        showCurrentParameterPage("DCO2 PITCH", "LFO1-");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO2 PITCH", "LFO1+");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO2 PITCH", "LFO2-");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO2 PITCH", "LFO2+");
+        break;
+    }
+    startParameterDisplay();
+  }
+
+  if (upperSW) {
+    switch (upperData[P_dco2_pitch_lfo_source]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x84, 0x00);
+        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x84, 0x20);
+        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, LOW);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x84, 0x40);
+        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, HIGH);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x84, 0x60);
+        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, HIGH);
+        break;
+    }
+  } else {
+    switch (lowerData[P_dco2_pitch_lfo_source]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x84, 0x00);
+        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x84, 0x20);
+        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, LOW);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x84, 0x40);
+        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, HIGH);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x84, 0x60);
+        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, HIGH);
+        break;
+    }
+  }
+}
+
+FLASHMEM void updatedco1_pitch_env_source(bool announce) {
+  sendOffset(0x0C, 0x87);
+  lastStepParam = 0xFF;
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    switch (dco1_pitch_env_source) {
+      case 0:
+        showCurrentParameterPage("DCO1 PITCH", "ENV1-");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO1 PITCH", "ENV1+");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO1 PITCH", "ENV2-");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO1 PITCH", "ENV2+");
+        break;
+      case 4:
+        showCurrentParameterPage("DCO1 PITCH", "ENV3-");
+        break;
+      case 5:
+        showCurrentParameterPage("DCO1 PITCH", "ENV3+");
+        break;
+      case 6:
+        showCurrentParameterPage("DCO1 PITCH", "ENV4-");
+        break;
+      case 7:
+        showCurrentParameterPage("DCO1 PITCH", "ENV4+");
+        break;
+    }
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    switch (upperData[P_dco1_pitch_env_source]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x00);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x10);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x20);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x30);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
+        break;
+      case 4:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x40);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
+        break;
+      case 5:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x50);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
+        break;
+      case 6:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x60);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
+        break;
+      case 7:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x70);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
+        break;
+    }
+  } else {
+    switch (lowerData[P_dco1_pitch_env_source]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x00);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x10);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x20);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x30);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
+        break;
+      case 4:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x40);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
+        break;
+      case 5:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x50);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
+        break;
+      case 6:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x60);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
+        break;
+      case 7:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x70);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
+        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
+        break;
+    }
+  }
+}
+
+FLASHMEM void updatedco2_pitch_env_source(bool announce) {
+  sendOffset(0x0D, 0x87);
+  lastStepParam = 0xFF;
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    switch (dco2_pitch_env_source) {
+      case 0:
+        showCurrentParameterPage("DCO2 PITCH", "ENV1-");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO2 PITCH", "ENV1+");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO2 PITCH", "ENV2-");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO2 PITCH", "ENV2+");
+        break;
+      case 4:
+        showCurrentParameterPage("DCO2 PITCH", "ENV3-");
+        break;
+      case 5:
+        showCurrentParameterPage("DCO2 PITCH", "ENV3+");
+        break;
+      case 6:
+        showCurrentParameterPage("DCO2 PITCH", "ENV4-");
+        break;
+      case 7:
+        showCurrentParameterPage("DCO2 PITCH", "ENV4+");
+        break;
+    }
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    switch (upperData[P_dco2_pitch_env_source]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x00);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x10);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x20);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x30);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
+        break;
+      case 4:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x40);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
+        break;
+      case 5:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x50);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
+        break;
+      case 6:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x60);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
+        break;
+      case 7:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x70);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
+        break;
+    }
+  } else {
+    switch (lowerData[P_dco2_pitch_env_source]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x00);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x10);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x20);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x30);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
+        break;
+      case 4:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x40);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
+        break;
+      case 5:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x50);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
+        break;
+      case 6:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x60);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
+        break;
+      case 7:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x70);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
+        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
+        break;
+    }
+  }
+}
 
 FLASHMEM void updateeditMode(bool announce) {
   if (announce && !suppressParamAnnounce) {
@@ -5014,495 +5181,742 @@ FLASHMEM void updateeditMode(bool announce) {
   }
 }
 
-// FLASHMEM void updatedco_mix_env_source(bool announce) {
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (dco_mix_env_source) {
-//       case 0:
-//         showCurrentParameterPage("DCO MIX", "ENV1-");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("DCO MIX", "ENV1+");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("DCO MIX", "ENV2-");
-//         break;
-//       case 3:
-//         showCurrentParameterPage("DCO MIX", "ENV2+");
-//         break;
-//       case 4:
-//         showCurrentParameterPage("DCO MIX", "ENV3-");
-//         break;
-//       case 5:
-//         showCurrentParameterPage("DCO MIX", "ENV3+");
-//         break;
-//       case 6:
-//         showCurrentParameterPage("DCO MIX", "ENV4-");
-//         break;
-//       case 7:
-//         showCurrentParameterPage("DCO MIX", "ENV4+");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (dco_mix_env_source) {
-//     case 0:
-//       midiCCOut(CCdco_mix_env_source, 0x00);
-//       mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
-//       mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
-//       mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
-//       mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
-//       break;
-//     case 1:
-//       midiCCOut(CCdco_mix_env_source, 0x10);
-//       mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
-//       mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
-//       mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
-//       mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
-//       break;
-//     case 2:
-//       midiCCOut(CCdco_mix_env_source, 0x20);
-//       mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
-//       mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
-//       mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
-//       mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
-//       break;
-//     case 3:
-//       midiCCOut(CCdco_mix_env_source, 0x30);
-//       mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
-//       mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
-//       mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
-//       mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
-//       break;
-//     case 4:
-//       midiCCOut(CCdco_mix_env_source, 0x40);
-//       mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
-//       mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
-//       mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
-//       mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
-//       break;
-//     case 5:
-//       midiCCOut(CCdco_mix_env_source, 0x50);
-//       mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
-//       mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
-//       mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
-//       mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
-//       break;
-//     case 6:
-//       midiCCOut(CCdco_mix_env_source, 0x60);
-//       mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
-//       mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
-//       mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
-//       mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
-//       break;
-//     case 7:
-//       midiCCOut(CCdco_mix_env_source, 0x70);
-//       mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
-//       mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
-//       mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
-//       mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
-//       break;
-//   }
-// }
+FLASHMEM void updatedco_mix_env_source(bool announce) {
+  lastStepParam = 0xFF;
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    switch (dco_mix_env_source) {
+      case 0:
+        showCurrentParameterPage("DCO MIX", "ENV1-");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO MIX", "ENV1+");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO MIX", "ENV2-");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO MIX", "ENV2+");
+        break;
+      case 4:
+        showCurrentParameterPage("DCO MIX", "ENV3-");
+        break;
+      case 5:
+        showCurrentParameterPage("DCO MIX", "ENV3+");
+        break;
+      case 6:
+        showCurrentParameterPage("DCO MIX", "ENV4-");
+        break;
+      case 7:
+        showCurrentParameterPage("DCO MIX", "ENV4+");
+        break;
+    }
+    startParameterDisplay();
+  }
 
-// FLASHMEM void updatedco_mix_dyn(bool announce) {
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (dco_mix_dyn) {
-//       case 0:
-//         showCurrentParameterPage("DCO MIX", "OFF");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("DCO MIX", "DYN1");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("DCO MIX", "DYN2");
-//         break;
-//       case 3:
-//         showCurrentParameterPage("DCO MIX", "DYN3");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (dco_mix_dyn) {
-//     case 0:
-//       midiCCOut(CCdco_mix_dyn, 0x00);
-//       mcp5.digitalWrite(DCO_MIX_DYN_RED, LOW);
-//       mcp5.digitalWrite(DCO_MIX_DYN_GREEN, LOW);
-//       break;
-//     case 1:
-//       midiCCOut(CCdco_mix_dyn, 0x20);
-//       mcp5.digitalWrite(DCO_MIX_DYN_RED, HIGH);
-//       mcp5.digitalWrite(DCO_MIX_DYN_GREEN, LOW);
-//       break;
-//     case 2:
-//       midiCCOut(CCdco_mix_dyn, 0x40);
-//       mcp5.digitalWrite(DCO_MIX_DYN_RED, LOW);
-//       mcp5.digitalWrite(DCO_MIX_DYN_GREEN, HIGH);
-//       break;
-//     case 3:
-//       midiCCOut(CCdco_mix_dyn, 0x60);
-//       mcp5.digitalWrite(DCO_MIX_DYN_RED, HIGH);
-//       mcp5.digitalWrite(DCO_MIX_DYN_GREEN, HIGH);
-//       break;
-//   }
-// }
+  if (upperSW) {
+    switch (upperData[P_dco_mix_env_source]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x94, 0x00);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x94, 0x10);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x94, 0x20);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x94, 0x30);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
+        break;
+      case 4:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x94, 0x40);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
+        break;
+      case 5:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x94, 0x50);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
+        break;
+      case 6:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x94, 0x60);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
+        break;
+      case 7:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x94, 0x70);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
+        break;
+    }
+  } else {
+    switch (lowerData[P_dco_mix_env_source]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x94, 0x00);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x94, 0x10);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x94, 0x20);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x94, 0x30);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
+        break;
+      case 4:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x94, 0x40);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
+        break;
+      case 5:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x94, 0x50);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
+        break;
+      case 6:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x94, 0x60);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
+        break;
+      case 7:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x94, 0x70);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
+        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
+        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
+        break;
+    }
+  }
+}
 
-// FLASHMEM void updatevcf_env_source(bool announce) {
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (vcf_env_source) {
-//       case 0:
-//         showCurrentParameterPage("VCF EG", "ENV1-");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("VCF EG", "ENV1+");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("VCF EG", "ENV2-");
-//         break;
-//       case 3:
-//         showCurrentParameterPage("VCF EG", "ENV2+");
-//         break;
-//       case 4:
-//         showCurrentParameterPage("VCF EG", "ENV3-");
-//         break;
-//       case 5:
-//         showCurrentParameterPage("VCF EG", "ENV3+");
-//         break;
-//       case 6:
-//         showCurrentParameterPage("VCF EG", "ENV4-");
-//         break;
-//       case 7:
-//         showCurrentParameterPage("VCF EG", "ENV4+");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (vcf_env_source) {
-//     case 0:
-//       midiCCOut(CCvcf_env_source, 0x00);
-//       mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
-//       mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
-//       mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
-//       mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
-//       break;
-//     case 1:
-//       midiCCOut(CCvcf_env_source, 0x10);
-//       mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
-//       mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
-//       mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
-//       mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
-//       break;
-//     case 2:
-//       midiCCOut(CCvcf_env_source, 0x20);
-//       mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
-//       mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
-//       mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
-//       mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
-//       break;
-//     case 3:
-//       midiCCOut(CCvcf_env_source, 0x30);
-//       mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
-//       mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
-//       mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
-//       mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
-//       break;
-//     case 4:
-//       midiCCOut(CCvcf_env_source, 0x40);
-//       mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
-//       mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
-//       mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
-//       mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
-//       break;
-//     case 5:
-//       midiCCOut(CCvcf_env_source, 0x50);
-//       mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
-//       mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
-//       mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
-//       mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
-//       break;
-//     case 6:
-//       midiCCOut(CCvcf_env_source, 0x60);
-//       mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
-//       mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
-//       mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
-//       mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
-//       break;
-//     case 7:
-//       midiCCOut(CCvcf_env_source, 0x70);
-//       mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
-//       mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
-//       mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
-//       mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
-//       break;
-//   }
-// }
+FLASHMEM void updatedco_mix_dyn(bool announce) {
+  lastStepParam = 0xFF;
 
-// FLASHMEM void updatevcf_dyn(bool announce) {
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (vcf_dyn) {
-//       case 0:
-//         showCurrentParameterPage("VCF ENV", "OFF");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("VCF ENV", "DYN1");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("VCF ENV", "DYN2");
-//         break;
-//       case 3:
-//         showCurrentParameterPage("VCF ENV", "DYN3");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (vcf_dyn) {
-//     case 0:
-//       midiCCOut(CCvcf_dyn, 0x00);
-//       mcp6.digitalWrite(VCF_DYN_RED, LOW);
-//       mcp6.digitalWrite(VCF_DYN_GREEN, LOW);
-//       break;
-//     case 1:
-//       midiCCOut(CCvcf_dyn, 0x20);
-//       mcp6.digitalWrite(VCF_DYN_RED, HIGH);
-//       mcp6.digitalWrite(VCF_DYN_GREEN, LOW);
-//       break;
-//     case 2:
-//       midiCCOut(CCvcf_dyn, 0x40);
-//       mcp6.digitalWrite(VCF_DYN_RED, LOW);
-//       mcp6.digitalWrite(VCF_DYN_GREEN, HIGH);
-//       break;
-//     case 3:
-//       midiCCOut(CCvcf_dyn, 0x60);
-//       mcp6.digitalWrite(VCF_DYN_RED, HIGH);
-//       mcp6.digitalWrite(VCF_DYN_GREEN, HIGH);
-//       break;
-//   }
-// }
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    switch (dco_mix_dyn) {
+      case 0:
+        showCurrentParameterPage("DCO MIX", "OFF");
+        break;
+      case 1:
+        showCurrentParameterPage("DCO MIX", "DYN1");
+        break;
+      case 2:
+        showCurrentParameterPage("DCO MIX", "DYN2");
+        break;
+      case 3:
+        showCurrentParameterPage("DCO MIX", "DYN3");
+        break;
+    }
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    switch (upperData[P_dco_mix_dyn]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x93, 0x00);
+        mcp5.digitalWrite(DCO_MIX_DYN_RED, LOW);
+        mcp5.digitalWrite(DCO_MIX_DYN_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x93, 0x20);
+        mcp5.digitalWrite(DCO_MIX_DYN_RED, HIGH);
+        mcp5.digitalWrite(DCO_MIX_DYN_GREEN, LOW);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x93, 0x40);
+        mcp5.digitalWrite(DCO_MIX_DYN_RED, LOW);
+        mcp5.digitalWrite(DCO_MIX_DYN_GREEN, HIGH);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x93, 0x60);
+        mcp5.digitalWrite(DCO_MIX_DYN_RED, HIGH);
+        mcp5.digitalWrite(DCO_MIX_DYN_GREEN, HIGH);
+        break;
+    }
+  } else {
+    switch (lowerData[P_dco_mix_dyn]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x93, 0x00);
+        mcp5.digitalWrite(DCO_MIX_DYN_RED, LOW);
+        mcp5.digitalWrite(DCO_MIX_DYN_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x93, 0x20);
+        mcp5.digitalWrite(DCO_MIX_DYN_RED, HIGH);
+        mcp5.digitalWrite(DCO_MIX_DYN_GREEN, LOW);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x93, 0x40);
+        mcp5.digitalWrite(DCO_MIX_DYN_RED, LOW);
+        mcp5.digitalWrite(DCO_MIX_DYN_GREEN, HIGH);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x93, 0x60);
+        mcp5.digitalWrite(DCO_MIX_DYN_RED, HIGH);
+        mcp5.digitalWrite(DCO_MIX_DYN_GREEN, HIGH);
+        break;
+    }
+  }
+}
 
-// FLASHMEM void updatevca_env_source(bool announce) {
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (vca_env_source) {
-//       case 0:
-//         showCurrentParameterPage("VCA EG", "ENV1");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("VCA EG", "ENV2");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("VCA EG", "ENV3");
-//         break;
-//       case 3:
-//         showCurrentParameterPage("VCA _EG", "ENV4");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (vca_env_source) {
-//     case 0:
-//       midiCCOut(CCvca_env_source, 0x00);
-//       mcp6.digitalWrite(VCA_ENV_SOURCE_RED, LOW);
-//       mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, LOW);
-//       break;
-//     case 1:
-//       midiCCOut(CCvca_env_source, 0x20);
-//       mcp6.digitalWrite(VCA_ENV_SOURCE_RED, LOW);
-//       mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, LOW);
-//       break;
-//     case 2:
-//       midiCCOut(CCvca_env_source, 0x40);
-//       mcp6.digitalWrite(VCA_ENV_SOURCE_RED, HIGH);
-//       mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, LOW);
-//       break;
-//     case 3:
-//       midiCCOut(CCvca_env_source, 0x60);
-//       mcp6.digitalWrite(VCA_ENV_SOURCE_RED, HIGH);
-//       mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, LOW);
-//       break;
-//   }
-// }
+FLASHMEM void updatevcf_env_source(bool announce) {
+  lastStepParam = 0xFF;
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    switch (vcf_env_source) {
+      case 0:
+        showCurrentParameterPage("VCF EG", "ENV1-");
+        break;
+      case 1:
+        showCurrentParameterPage("VCF EG", "ENV1+");
+        break;
+      case 2:
+        showCurrentParameterPage("VCF EG", "ENV2-");
+        break;
+      case 3:
+        showCurrentParameterPage("VCF EG", "ENV2+");
+        break;
+      case 4:
+        showCurrentParameterPage("VCF EG", "ENV3-");
+        break;
+      case 5:
+        showCurrentParameterPage("VCF EG", "ENV3+");
+        break;
+      case 6:
+        showCurrentParameterPage("VCF EG", "ENV4-");
+        break;
+      case 7:
+        showCurrentParameterPage("VCF EG", "ENV4+");
+        break;
+    }
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    switch (upperData[P_vcf_env_source]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9D, 0x00);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
+        mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
+        mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9D, 0x10);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
+        mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
+        mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9D, 0x20);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
+        mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
+        mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9D, 0x30);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
+        mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
+        mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
+        break;
+      case 4:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9D, 0x40);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
+        mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
+        mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
+        break;
+      case 5:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9D, 0x50);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
+        mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
+        mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
+        break;
+      case 6:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9D, 0x60);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
+        mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
+        mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
+        break;
+      case 7:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9D, 0x70);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
+        mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
+        mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
+        break;
+    }
+  } else {
+    switch (lowerData[P_vcf_env_source]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9D, 0x00);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
+        mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
+        mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9D, 0x10);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
+        mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
+        mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9D, 0x20);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
+        mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
+        mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9D, 0x30);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
+        mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
+        mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
+        break;
+      case 4:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9D, 0x40);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
+        mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
+        mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
+        break;
+      case 5:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9D, 0x50);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
+        mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
+        mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
+        break;
+      case 6:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9D, 0x60);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
+        mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
+        mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
+        break;
+      case 7:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9D, 0x70);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
+        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
+        mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
+        mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
+        break;
+    }
+  }
+}
 
-// FLASHMEM void updatevca_dyn(bool announce) {
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (vca_dyn) {
-//       case 0:
-//         showCurrentParameterPage("VCA ENV", "OFF");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("VCA ENV", "DYN1");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("VCA ENV", "DYN2");
-//         break;
-//       case 3:
-//         showCurrentParameterPage("VCA ENV", "DYN3");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (vca_dyn) {
-//     case 0:
-//       midiCCOut(CCvca_dyn, 0x00);
-//       mcp6.digitalWrite(VCA_DYN_RED, LOW);
-//       mcp6.digitalWrite(VCA_DYN_GREEN, LOW);
-//       break;
-//     case 1:
-//       midiCCOut(CCvca_dyn, 0x20);
-//       mcp6.digitalWrite(VCA_DYN_RED, HIGH);
-//       mcp6.digitalWrite(VCA_DYN_GREEN, LOW);
-//       break;
-//     case 2:
-//       midiCCOut(CCvca_dyn, 0x40);
-//       mcp6.digitalWrite(VCA_DYN_RED, LOW);
-//       mcp6.digitalWrite(VCA_DYN_GREEN, HIGH);
-//       break;
-//     case 3:
-//       midiCCOut(CCvca_dyn, 0x60);
-//       mcp6.digitalWrite(VCA_DYN_RED, HIGH);
-//       mcp6.digitalWrite(VCA_DYN_GREEN, HIGH);
-//       break;
-//   }
-// }
+FLASHMEM void updatevcf_dyn(bool announce) {
+  lastStepParam = 0xFF;
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    switch (vcf_dyn) {
+      case 0:
+        showCurrentParameterPage("VCF ENV", "OFF");
+        break;
+      case 1:
+        showCurrentParameterPage("VCF ENV", "DYN1");
+        break;
+      case 2:
+        showCurrentParameterPage("VCF ENV", "DYN2");
+        break;
+      case 3:
+        showCurrentParameterPage("VCF ENV", "DYN3");
+        break;
+    }
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    switch (upperData[P_vcf_dyn]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9C, 0x00);
+        mcp6.digitalWrite(VCF_DYN_RED, LOW);
+        mcp6.digitalWrite(VCF_DYN_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9C, 0x20);
+        mcp6.digitalWrite(VCF_DYN_RED, HIGH);
+        mcp6.digitalWrite(VCF_DYN_GREEN, LOW);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9C, 0x40);
+        mcp6.digitalWrite(VCF_DYN_RED, LOW);
+        mcp6.digitalWrite(VCF_DYN_GREEN, HIGH);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9C, 0x60);
+        mcp6.digitalWrite(VCF_DYN_RED, HIGH);
+        mcp6.digitalWrite(VCF_DYN_GREEN, HIGH);
+        break;
+    }
+  } else {
+    switch (lowerData[P_vcf_dyn]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9C, 0x00);
+        mcp6.digitalWrite(VCF_DYN_RED, LOW);
+        mcp6.digitalWrite(VCF_DYN_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9C, 0x20);
+        mcp6.digitalWrite(VCF_DYN_RED, HIGH);
+        mcp6.digitalWrite(VCF_DYN_GREEN, LOW);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9C, 0x40);
+        mcp6.digitalWrite(VCF_DYN_RED, LOW);
+        mcp6.digitalWrite(VCF_DYN_GREEN, HIGH);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9C, 0x60);
+        mcp6.digitalWrite(VCF_DYN_RED, HIGH);
+        mcp6.digitalWrite(VCF_DYN_GREEN, HIGH);
+        break;
+    }
+  }
+}
 
-// FLASHMEM void updatechorus(bool announce) {
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 0;
-//     switch (chorus) {
-//       case 0:
-//         showCurrentParameterPage("CHORUS", "Off");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("CHORUS", "1");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("CHORUS", "2");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (chorus) {
-//     case 0:
-//       midiCCOut(CCchorus_sw, 0x00);
-//       mcp6.digitalWrite(CHORUS_SELECT_RED, LOW);
-//       mcp6.digitalWrite(CHORUS_SELECT_GREEN, LOW);
-//       break;
-//     case 1:
-//       midiCCOut(CCchorus_sw, 0x20);
-//       mcp6.digitalWrite(CHORUS_SELECT_RED, HIGH);
-//       mcp6.digitalWrite(CHORUS_SELECT_GREEN, LOW);
-//       break;
-//     case 2:
-//       midiCCOut(CCchorus_sw, 0x40);
-//       mcp6.digitalWrite(CHORUS_SELECT_RED, LOW);
-//       mcp6.digitalWrite(CHORUS_SELECT_GREEN, HIGH);
-//       break;
-//   }
-// }
+FLASHMEM void updatevca_env_source(bool announce) {
+  lastStepParam = 0xFF;
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    switch (vca_env_source) {
+      case 0:
+        showCurrentParameterPage("VCA EG", "ENV1");
+        break;
+      case 1:
+        showCurrentParameterPage("VCA EG", "ENV2");
+        break;
+      case 2:
+        showCurrentParameterPage("VCA EG", "ENV3");
+        break;
+      case 3:
+        showCurrentParameterPage("VCA EG", "ENV4");
+        break;
+    }
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    switch (upperData[P_vca_env_source]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0xAE, 0x00);
+        mcp6.digitalWrite(VCA_ENV_SOURCE_RED, LOW);
+        mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0xAE, 0x20);
+        mcp6.digitalWrite(VCA_ENV_SOURCE_RED, HIGH);
+        mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, LOW);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0xAE, 0x40);
+        mcp6.digitalWrite(VCA_ENV_SOURCE_RED, LOW);
+        mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, HIGH);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0xAE, 0x60);
+        mcp6.digitalWrite(VCA_ENV_SOURCE_RED, HIGH);
+        mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, HIGH);
+        break;
+    }
+  } else {
+    switch (lowerData[P_vca_env_source]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0xAE, 0x00);
+        mcp6.digitalWrite(VCA_ENV_SOURCE_RED, LOW);
+        mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0xAE, 0x20);
+        mcp6.digitalWrite(VCA_ENV_SOURCE_RED, HIGH);
+        mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, LOW);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0xAE, 0x40);
+        mcp6.digitalWrite(VCA_ENV_SOURCE_RED, LOW);
+        mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, HIGH);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0xAE, 0x60);
+        mcp6.digitalWrite(VCA_ENV_SOURCE_RED, HIGH);
+        mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, HIGH);
+        break;
+    }
+  }
+}
 
-// FLASHMEM void updateportamento_sw(bool announce) {
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 1;
-//     switch (portamento_sw) {
-//       case 0:
-//         showCurrentParameterPage("PORTAMENTO", "OFF");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("PORTAMENTO", "LOWER");
-//         break;
-//       case 2:
-//         showCurrentParameterPage("PORTAMENTO", "UPPER");
-//         break;
-//       case 3:
-//         showCurrentParameterPage("PORTAMENTO", "BOTH");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (portamento_sw) {
-//     case 0:
-//       sendCustomSysEx((midiOutCh - 1), 0x2C, 0x00);
-//       delay(20);
-//       sendCustomSysEx((midiOutCh - 1), 0x23, 0x00);
-//       mcp2.digitalWrite(PORTAMENTO_LOWER_RED, LOW);
-//       mcp2.digitalWrite(PORTAMENTO_UPPER_GREEN, LOW);
-//       break;
-//     case 1:
-//       sendCustomSysEx((midiOutCh - 1), 0x23, 0x00);
-//       delay(20);
-//       sendCustomSysEx((midiOutCh - 1), 0x2C, 0x01);
-//       mcp2.digitalWrite(PORTAMENTO_LOWER_RED, HIGH);
-//       mcp2.digitalWrite(PORTAMENTO_UPPER_GREEN, LOW);
-//       break;
-//     case 2:
-//       sendCustomSysEx((midiOutCh - 1), 0x2C, 0x00);
-//       delay(20);
-//       sendCustomSysEx((midiOutCh - 1), 0x23, 0x01);
-//       mcp2.digitalWrite(PORTAMENTO_LOWER_RED, LOW);
-//       mcp2.digitalWrite(PORTAMENTO_UPPER_GREEN, HIGH);
-//       break;
-//     case 3:
-//       sendCustomSysEx((midiOutCh - 1), 0x23, 0x01);
-//       delay(20);
-//       sendCustomSysEx((midiOutCh - 1), 0x2C, 0x01);
-//       mcp2.digitalWrite(PORTAMENTO_LOWER_RED, HIGH);
-//       mcp2.digitalWrite(PORTAMENTO_UPPER_GREEN, HIGH);
-//       break;
-//   }
-// }
+FLASHMEM void updatevca_dyn(bool announce) {
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    switch (vca_dyn) {
+      case 0:
+        showCurrentParameterPage("VCA ENV", "OFF");
+        break;
+      case 1:
+        showCurrentParameterPage("VCA ENV", "DYN1");
+        break;
+      case 2:
+        showCurrentParameterPage("VCA ENV", "DYN2");
+        break;
+      case 3:
+        showCurrentParameterPage("VCA ENV", "DYN3");
+        break;
+    }
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    switch (upperData[P_vca_dyn]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9F, 0x00);
+        mcp6.digitalWrite(VCA_DYN_RED, LOW);
+        mcp6.digitalWrite(VCA_DYN_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9F, 0x20);
+        mcp6.digitalWrite(VCA_DYN_RED, HIGH);
+        mcp6.digitalWrite(VCA_DYN_GREEN, LOW);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9F, 0x40);
+        mcp6.digitalWrite(VCA_DYN_RED, LOW);
+        mcp6.digitalWrite(VCA_DYN_GREEN, HIGH);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9F, 0x60);
+        mcp6.digitalWrite(VCA_DYN_RED, HIGH);
+        mcp6.digitalWrite(VCA_DYN_GREEN, HIGH);
+        break;
+    }
+  } else {
+    switch (lowerData[P_vca_dyn]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9F, 0x00);
+        mcp6.digitalWrite(VCA_DYN_RED, LOW);
+        mcp6.digitalWrite(VCA_DYN_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9F, 0x20);
+        mcp6.digitalWrite(VCA_DYN_RED, HIGH);
+        mcp6.digitalWrite(VCA_DYN_GREEN, LOW);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9F, 0x40);
+        mcp6.digitalWrite(VCA_DYN_RED, LOW);
+        mcp6.digitalWrite(VCA_DYN_GREEN, HIGH);
+        break;
+      case 3:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9F, 0x60);
+        mcp6.digitalWrite(VCA_DYN_RED, HIGH);
+        mcp6.digitalWrite(VCA_DYN_GREEN, HIGH);
+        break;
+    }
+  }
+}
 
-// FLASHMEM void updateenv5stage(bool announce) {
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 2;
-//     switch (env5stage) {
-//       case 0:
-//         showCurrentParameterPage("5 STAGE", "ENVELOPE 1");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("5 STAGE", "ENVELOPE 2");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (env5stage) {
-//     case 0:
-//       mcp5.digitalWrite(ENV5STAGE_SELECT_RED, HIGH);
-//       mcp5.digitalWrite(ENV5STAGE_SELECT_GREEN, LOW);
-//       break;
-//     case 1:
-//       mcp5.digitalWrite(ENV5STAGE_SELECT_RED, LOW);
-//       mcp5.digitalWrite(ENV5STAGE_SELECT_GREEN, HIGH);
-//       break;
-//   }
-// }
+FLASHMEM void updatechorus(bool announce) {
+  lastStepParam = 0xFF;
 
-// FLASHMEM void updateadsr(bool announce) {
-//   if (announce && !suppressParamAnnounce) {
-//     displayMode = 2;
-//     switch (adsr) {
-//       case 0:
-//         showCurrentParameterPage("ADSR", "ENVELOPE 3");
-//         break;
-//       case 1:
-//         showCurrentParameterPage("ADSR", "ENVELOPE 4");
-//         break;
-//     }
-//     startParameterDisplay();
-//   }
-//   switch (adsr) {
-//     case 0:
-//       mcp6.digitalWrite(ADSR_SELECT_RED, HIGH);
-//       mcp6.digitalWrite(ADSR_SELECT_GREEN, LOW);
-//       break;
-//     case 1:
-//       mcp6.digitalWrite(ADSR_SELECT_RED, LOW);
-//       mcp6.digitalWrite(ADSR_SELECT_GREEN, HIGH);
-//       break;
-//   }
-// }
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 0;
+    switch (chorus) {
+      case 0:
+        showCurrentParameterPage("CHORUS", "OFF");
+        break;
+      case 1:
+        showCurrentParameterPage("CHORUS", "1");
+        break;
+      case 2:
+        showCurrentParameterPage("CHORUS", "2");
+        break;
+    }
+    startParameterDisplay();
+  }
+  if (upperSW) {
+    switch (upperData[P_chorus]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0xA0, 0x00);
+        mcp6.digitalWrite(CHORUS_SELECT_RED, LOW);
+        mcp6.digitalWrite(CHORUS_SELECT_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0xA0, 0x20);
+        mcp6.digitalWrite(CHORUS_SELECT_RED, HIGH);
+        mcp6.digitalWrite(CHORUS_SELECT_GREEN, LOW);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0xA0, 0x40);
+        mcp6.digitalWrite(CHORUS_SELECT_RED, LOW);
+        mcp6.digitalWrite(CHORUS_SELECT_GREEN, HIGH);
+        break;
+    }
+  } else {
+    switch (lowerData[P_chorus]) {
+      case 0:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0xA0, 0x00);
+        mcp6.digitalWrite(CHORUS_SELECT_RED, LOW);
+        mcp6.digitalWrite(CHORUS_SELECT_GREEN, LOW);
+        break;
+      case 1:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0xA0, 0x20);
+        mcp6.digitalWrite(CHORUS_SELECT_RED, HIGH);
+        mcp6.digitalWrite(CHORUS_SELECT_GREEN, LOW);
+        break;
+      case 2:
+        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0xA0, 0x40);
+        mcp6.digitalWrite(CHORUS_SELECT_RED, LOW);
+        mcp6.digitalWrite(CHORUS_SELECT_GREEN, HIGH);
+        break;
+    }
+  }
+}
+
+FLASHMEM void updateportamento_sw(bool announce) {
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 1;
+    switch (portamento_sw) {
+      case 0:
+        showCurrentParameterPage("PORTAMENTO", "OFF");
+        break;
+      case 1:
+        showCurrentParameterPage("PORTAMENTO", "LOWER");
+        break;
+      case 2:
+        showCurrentParameterPage("PORTAMENTO", "UPPER");
+        break;
+      case 3:
+        showCurrentParameterPage("PORTAMENTO", "BOTH");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (portamento_sw) {
+    case 0:
+      send3(kBoardLowerPrefix, 0xB5, 0x00);
+      send3(kBoardUpperPrefix, 0xB5, 0x00);
+      mcp2.digitalWrite(PORTAMENTO_LOWER_RED, LOW);
+      mcp2.digitalWrite(PORTAMENTO_UPPER_GREEN, LOW);
+      break;
+    case 1:
+      send3(kBoardLowerPrefix, 0xB5, 0x7F);
+      send3(kBoardUpperPrefix, 0xB5, 0x00);
+      mcp2.digitalWrite(PORTAMENTO_LOWER_RED, HIGH);
+      mcp2.digitalWrite(PORTAMENTO_UPPER_GREEN, LOW);
+      break;
+    case 2:
+      send3(kBoardLowerPrefix, 0xB5, 0x00);
+      send3(kBoardUpperPrefix, 0xB5, 0x7F);
+      mcp2.digitalWrite(PORTAMENTO_LOWER_RED, LOW);
+      mcp2.digitalWrite(PORTAMENTO_UPPER_GREEN, HIGH);
+      break;
+    case 3:
+      send3(kBoardLowerPrefix, 0xB5, 0x7F);
+      send3(kBoardUpperPrefix, 0xB5, 0x7F);
+      mcp2.digitalWrite(PORTAMENTO_LOWER_RED, HIGH);
+      mcp2.digitalWrite(PORTAMENTO_UPPER_GREEN, HIGH);
+      break;
+  }
+}
+
+FLASHMEM void updateenv5stage(bool announce) {
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 2;
+    switch (env5stage) {
+      case 0:
+        showCurrentParameterPage("5 STAGE", "ENVELOPE 1");
+        break;
+      case 1:
+        showCurrentParameterPage("5 STAGE", "ENVELOPE 2");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (env5stage) {
+    case 0:
+      mcp5.digitalWrite(ENV5STAGE_SELECT_RED, HIGH);
+      mcp5.digitalWrite(ENV5STAGE_SELECT_GREEN, LOW);
+      break;
+    case 1:
+      mcp5.digitalWrite(ENV5STAGE_SELECT_RED, LOW);
+      mcp5.digitalWrite(ENV5STAGE_SELECT_GREEN, HIGH);
+      break;
+  }
+}
+
+FLASHMEM void updateadsr(bool announce) {
+  if (announce && !suppressParamAnnounce) {
+    displayMode = 2;
+    switch (adsr) {
+      case 0:
+        showCurrentParameterPage("ADSR", "ENVELOPE 3");
+        break;
+      case 1:
+        showCurrentParameterPage("ADSR", "ENVELOPE 4");
+        break;
+    }
+    startParameterDisplay();
+  }
+  switch (adsr) {
+    case 0:
+      mcp6.digitalWrite(ADSR_SELECT_RED, HIGH);
+      mcp6.digitalWrite(ADSR_SELECT_GREEN, LOW);
+      break;
+    case 1:
+      mcp6.digitalWrite(ADSR_SELECT_RED, LOW);
+      mcp6.digitalWrite(ADSR_SELECT_GREEN, HIGH);
+      break;
+  }
+}
 
 void initRotaryEncoders() {
   for (auto &rotaryEncoder : rotaryEncoders) {
@@ -7208,6 +7622,7 @@ void recallPatch(int patchNo) {
   }
   delay(50);
   announce = true;
+  recallPatchFlag = true;
   File patchFile = SD.open(String(patchNo).c_str());
   if (!patchFile) {
     Serial.println("File not found");
@@ -7218,6 +7633,7 @@ void recallPatch(int patchNo) {
     patchFile.close();
   }
   announce = false;
+  recallPatchFlag = false;
 }
 
 void allNotesOff() {
@@ -7302,10 +7718,10 @@ String getCurrentPatchData() {
          + "," + String(upperData[P_env4_release]) + "," + String(lowerData[P_env4_release]) + "," + String(upperData[P_env4_adsr_mode]) + "," + String(lowerData[P_env4_adsr_mode]) + "," + String(upperData[P_chorus]) + "," + String(lowerData[P_chorus])
          + "," + String(upperData[P_portamento_sw]) + "," + String(lowerData[P_portamento_sw]) + "," + String(upperData[P_octave_down]) + "," + String(lowerData[P_octave_down]) + "," + String(upperData[P_octave_up]) + "," + String(lowerData[P_octave_up])
          + "," + String(upperData[P_mod_lfo]) + "," + String(lowerData[P_mod_lfo]) + "," + String(upperData[P_unisondetune]) + "," + String(lowerData[P_unisondetune]) + "," + String(upperData[P_bend_enable]) + "," + String(lowerData[P_bend_enable])
-         + "," + String(upperData[P_assign]) + "," + String(lowerData[P_assign]) + "," + String(toneNameU) + "," + String(toneNameL)
-         + "," + String(keyMode) + "," + String(dualdetune) + "," + String(at_vib) + "," + String(at_lpf) + "," + String(at_vol) + "," + String(balance)
-         + "," + String(portamento) + "," + String(volume) + "," + String(bend_range) + "," + String(chaseLevel) + "," + String(chaseMode) + "," + String(chaseTime)
-         + "," + String(chasePlay) + "," + String(bend_enable) + "," + String(after_enable);
+         + "," + String(upperData[P_assign]) + "," + String(lowerData[P_assign]) + "," + String(toneNameU) + "," + String(toneNameL) + "," + String(keyMode) + "," + String(dualdetune)
+         + "," + String(at_vib) + "," + String(at_lpf) + "," + String(at_vol) + "," + String(balance) + "," + String(portamento) + "," + String(volume)
+         + "," + String(bend_range) + "," + String(chaseLevel) + "," + String(chaseMode) + "," + String(chaseTime) + "," + String(chasePlay) + "," + String(bend_enable)
+         + "," + String(after_enable) + "," + String(upperData[P_toneNumber]) + "," + String(lowerData[P_toneNumber]) + "," + String(portamento);
 }
 
 void setCurrentPatchData(String data[]) {
@@ -7533,6 +7949,8 @@ void setCurrentPatchData(String data[]) {
   chasePlay = data[209].toInt();
   bend_enable = data[210].toInt();
   after_enable = data[211].toInt();
+  upperData[P_toneNumber] = data[212].toInt();
+  lowerData[P_toneNumber] = data[213].toInt();
 
   //Patchname
   updatePatchname();
@@ -7547,8 +7965,8 @@ void setCurrentPatchData(String data[]) {
 
 void updateButtons() {
   updateeditMode(0);
-  //updateenv5stage(0);
-  //updateadsr(0);
+  updateenv5stage(0);
+  updateadsr(0);
   LAST_PARAM = 0x00;
 }
 
@@ -7562,8 +7980,14 @@ void updateUpperToneData() {
   updatedco1_PW(0);
   updatedco1_PWM_env(0);
   updatedco1_PWM_lfo(0);
+  updatedco1_PWM_lfo_source(0);
+  updatedco1_PWM_env_source(0);
+  updatedco1_PWM_dyn(0);
   updatedco1_pitch_env(0);
   updatedco1_pitch_lfo(0);
+  updatedco1_pitch_env_source(0);
+  updatedco1_pitch_lfo_source(0);
+  updatedco1_pitch_dyn(0);
   updatedco1_wave(0);
   updatedco1_range(0);
   updatedco1_tune(0);
@@ -7577,14 +8001,22 @@ void updateUpperToneData() {
   updatedco2_PW(0);
   updatedco2_PWM_env(0);
   updatedco2_PWM_lfo(0);
+  updatedco2_PWM_lfo_source(0);
+  updatedco2_PWM_env_source(0);
+  updatedco2_PWM_dyn(0);
   updatedco2_pitch_env(0);
   updatedco2_pitch_lfo(0);
+  updatedco2_pitch_env_source(0);
+  updatedco2_pitch_lfo_source(0);
+  updatedco2_pitch_dyn(0);
   updatedco2_wave(0);
   updatedco2_range(0);
   updatedco2_tune(0);
   updatedco2_fine(0);
   updatedco2_level(0);
   updatedco2_mod(0);
+  updatedco_mix_env_source(0);
+  updatedco_mix_dyn(0);
 
   updatevcf_hpf(0);
   updatevcf_cutoff(0);
@@ -7593,6 +8025,8 @@ void updateUpperToneData() {
   updatevcf_env(0);
   updatevcf_lfo1(0);
   updatevcf_lfo2(0);
+  updatevcf_env_source(0);
+  updatevcf_dyn(0);
 
   updatetime1(0);
   updatelevel1(0);
@@ -7625,6 +8059,9 @@ void updateUpperToneData() {
   updateenv4_adsr_mode(0);
 
   updatevca_mod(0);
+  updatevca_dyn(0);
+  updatevca_env_source(0);
+  updatechorus(0);
 
 
   LAST_PARAM = 0x00;
@@ -7641,8 +8078,14 @@ void updateLowerToneData() {
   updatedco1_PW(0);
   updatedco1_PWM_env(0);
   updatedco1_PWM_lfo(0);
+  updatedco1_PWM_lfo_source(0);
+  updatedco1_PWM_env_source(0);
+  updatedco1_PWM_dyn(0);
   updatedco1_pitch_env(0);
   updatedco1_pitch_lfo(0);
+  updatedco1_pitch_env_source(0);
+  updatedco1_pitch_lfo_source(0);
+  updatedco1_pitch_dyn(0);
   updatedco1_wave(0);
   updatedco1_range(0);
   updatedco1_tune(0);
@@ -7656,14 +8099,22 @@ void updateLowerToneData() {
   updatedco2_PW(0);
   updatedco2_PWM_env(0);
   updatedco2_PWM_lfo(0);
+  updatedco2_PWM_lfo_source(0);
+  updatedco2_PWM_env_source(0);
+  updatedco2_PWM_dyn(0);
   updatedco2_pitch_env(0);
   updatedco2_pitch_lfo(0);
+  updatedco2_pitch_env_source(0);
+  updatedco2_pitch_lfo_source(0);
+  updatedco2_pitch_dyn(0);
   updatedco2_wave(0);
   updatedco2_range(0);
   updatedco2_tune(0);
   updatedco2_fine(0);
   updatedco2_level(0);
   updatedco2_mod(0);
+  updatedco_mix_env_source(0);
+  updatedco_mix_dyn(0);
 
   updatevcf_hpf(0);
   updatevcf_cutoff(0);
@@ -7672,6 +8123,8 @@ void updateLowerToneData() {
   updatevcf_env(0);
   updatevcf_lfo1(0);
   updatevcf_lfo2(0);
+  updatevcf_env_source(0);
+  updatevcf_dyn(0);
 
   updatetime1(0);
   updatelevel1(0);
@@ -7704,6 +8157,9 @@ void updateLowerToneData() {
   updateenv4_adsr_mode(0);
 
   updatevca_mod(0);
+  updatevca_dyn(0);
+  updatevca_env_source(0);
+  updatechorus(0);
 
   LAST_PARAM = 0x00;
   upperSW = upperSWsafe;
@@ -7720,7 +8176,9 @@ void updatePerformanceData() {
   updatedualdetune(0);
   updatebend_enable_button(0);
   updatebend_range(0);
+  updatemod_lfo(0);
   updateafter_enable_button(0);
+  updateportamento_sw(0);
 
   LAST_PARAM = 0x00;
 }
@@ -8187,201 +8645,201 @@ void mainButtonChanged(Button *btn, bool released) {
       }
       break;
 
-      // case LFO1_SYNC_BUTTON:
-      //   if (!released) {
-      //     lfo1_sync = lfo1_sync + 1;
-      //     if (lfo1_sync > 2) {
-      //       lfo1_sync = 0;
-      //     }
-      //     myControlChange(midiChannel, CClfo1_sync, lfo1_sync);
-      //   }
-      //   break;
+    case LFO1_SYNC_BUTTON:
+      if (!released) {
+        lfo1_sync = lfo1_sync + 1;
+        if (lfo1_sync > 2) {
+          lfo1_sync = 0;
+        }
+        myControlChange(midiChannel, CClfo1_sync, lfo1_sync);
+      }
+      break;
 
-      // case LFO2_SYNC_BUTTON:
-      //   if (!released) {
-      //     lfo2_sync = lfo2_sync + 1;
-      //     if (lfo2_sync > 2) {
-      //       lfo2_sync = 0;
-      //     }
-      //     myControlChange(midiChannel, CClfo2_sync, lfo2_sync);
-      //   }
-      //   break;
+    case LFO2_SYNC_BUTTON:
+      if (!released) {
+        lfo2_sync = lfo2_sync + 1;
+        if (lfo2_sync > 2) {
+          lfo2_sync = 0;
+        }
+        myControlChange(midiChannel, CClfo2_sync, lfo2_sync);
+      }
+      break;
 
-      // case DCO1_PWM_DYN_BUTTON:
-      //   if (!released) {
-      //     dco1_PWM_dyn = dco1_PWM_dyn + 1;
-      //     if (dco1_PWM_dyn > 3) {
-      //       dco1_PWM_dyn = 0;
-      //     }
-      //     myControlChange(midiChannel, CCdco1_PWM_dyn, dco1_PWM_dyn);
-      //   }
-      //   break;
+      case DCO1_PWM_DYN_BUTTON:
+        if (!released) {
+          dco1_PWM_dyn = dco1_PWM_dyn + 1;
+          if (dco1_PWM_dyn > 3) {
+            dco1_PWM_dyn = 0;
+          }
+          myControlChange(midiChannel, CCdco1_PWM_dyn, dco1_PWM_dyn);
+        }
+        break;
 
-      // case DCO2_PWM_DYN_BUTTON:
-      //   if (!released) {
-      //     dco2_PWM_dyn = dco2_PWM_dyn + 1;
-      //     if (dco2_PWM_dyn > 3) {
-      //       dco2_PWM_dyn = 0;
-      //     }
-      //     myControlChange(midiChannel, CCdco2_PWM_dyn, dco2_PWM_dyn);
-      //   }
-      //   break;
+      case DCO2_PWM_DYN_BUTTON:
+        if (!released) {
+          dco2_PWM_dyn = dco2_PWM_dyn + 1;
+          if (dco2_PWM_dyn > 3) {
+            dco2_PWM_dyn = 0;
+          }
+          myControlChange(midiChannel, CCdco2_PWM_dyn, dco2_PWM_dyn);
+        }
+        break;
 
-      // case DCO1_PWM_ENV_SOURCE_BUTTON:
-      //   if (!released) {
-      //     dco1_PWM_env_source = dco1_PWM_env_source + 2;
-      //     if (dco1_PWM_env_source > 7) {
-      //       dco1_PWM_env_source = 0;
-      //       dco1_PWM_env_pol = 0;
-      //     }
-      //     myControlChange(midiChannel, CCdco1_PWM_env_source, dco1_PWM_env_source);
-      //   }
-      //   break;
+    case DCO1_PWM_ENV_SOURCE_BUTTON:
+      if (!released) {
+        dco1_PWM_env_source = dco1_PWM_env_source + 2;
+        if (dco1_PWM_env_source > 7) {
+          dco1_PWM_env_source = 0;
+          dco1_PWM_env_pol = 0;
+        }
+        myControlChange(midiChannel, CCdco1_PWM_env_source, dco1_PWM_env_source);
+      }
+      break;
 
-      // case DCO2_PWM_ENV_SOURCE_BUTTON:
-      //   if (!released) {
-      //     dco2_PWM_env_source = dco2_PWM_env_source + 2;
-      //     if (dco2_PWM_env_source > 7) {
-      //       dco2_PWM_env_source = 0;
-      //       dco2_PWM_env_pol = 0;
-      //     }
-      //     myControlChange(midiChannel, CCdco2_PWM_env_source, dco2_PWM_env_source);
-      //   }
-      //   break;
+    case DCO2_PWM_ENV_SOURCE_BUTTON:
+      if (!released) {
+        dco2_PWM_env_source = dco2_PWM_env_source + 2;
+        if (dco2_PWM_env_source > 7) {
+          dco2_PWM_env_source = 0;
+          dco2_PWM_env_pol = 0;
+        }
+        myControlChange(midiChannel, CCdco2_PWM_env_source, dco2_PWM_env_source);
+      }
+      break;
 
-      // case DCO1_PWM_ENV_POLARITY_BUTTON:
-      //   if (!released) {
-      //     dco1_PWM_env_pol = !dco1_PWM_env_pol;
-      //     if (dco1_PWM_env_pol) {
-      //       dco1_PWM_env_source++;
-      //     }
-      //     if (!dco1_PWM_env_pol) {
-      //       dco1_PWM_env_source--;
-      //     }
-      //     myControlChange(midiChannel, CCdco1_PWM_env_source, dco1_PWM_env_source);
-      //   }
-      //   break;
+    case DCO1_PWM_ENV_POLARITY_BUTTON:
+      if (!released) {
+        dco1_PWM_env_pol = !dco1_PWM_env_pol;
+        if (dco1_PWM_env_pol) {
+          dco1_PWM_env_source++;
+        }
+        if (!dco1_PWM_env_pol) {
+          dco1_PWM_env_source--;
+        }
+        myControlChange(midiChannel, CCdco1_PWM_env_source, dco1_PWM_env_source);
+      }
+      break;
 
-      // case DCO2_PWM_ENV_POLARITY_BUTTON:
-      //   if (!released) {
-      //     dco2_PWM_env_pol = !dco2_PWM_env_pol;
-      //     if (dco2_PWM_env_pol) {
-      //       dco2_PWM_env_source++;
-      //     }
-      //     if (!dco2_PWM_env_pol) {
-      //       dco2_PWM_env_source--;
-      //     }
-      //     myControlChange(midiChannel, CCdco2_PWM_env_source, dco2_PWM_env_source);
-      //   }
-      //   break;
+    case DCO2_PWM_ENV_POLARITY_BUTTON:
+      if (!released) {
+        dco2_PWM_env_pol = !dco2_PWM_env_pol;
+        if (dco2_PWM_env_pol) {
+          dco2_PWM_env_source++;
+        }
+        if (!dco2_PWM_env_pol) {
+          dco2_PWM_env_source--;
+        }
+        myControlChange(midiChannel, CCdco2_PWM_env_source, dco2_PWM_env_source);
+      }
+      break;
 
-      // case DCO1_PWM_LFO_SOURCE_BUTTON:
-      //   if (!released) {
-      //     dco1_PWM_lfo_source = dco1_PWM_lfo_source + 1;
-      //     if (dco1_PWM_lfo_source > 3) {
-      //       dco1_PWM_lfo_source = 0;
-      //     }
-      //     myControlChange(midiChannel, CCdco1_PWM_lfo_source, dco1_PWM_lfo_source);
-      //   }
-      //   break;
+    case DCO1_PWM_LFO_SOURCE_BUTTON:
+      if (!released) {
+        dco1_PWM_lfo_source = dco1_PWM_lfo_source + 1;
+        if (dco1_PWM_lfo_source > 3) {
+          dco1_PWM_lfo_source = 0;
+        }
+        myControlChange(midiChannel, CCdco1_PWM_lfo_source, dco1_PWM_lfo_source);
+      }
+      break;
 
-      // case DCO2_PWM_LFO_SOURCE_BUTTON:
-      //   if (!released) {
-      //     dco2_PWM_lfo_source = dco2_PWM_lfo_source + 1;
-      //     if (dco2_PWM_lfo_source > 3) {
-      //       dco2_PWM_lfo_source = 0;
-      //     }
-      //     myControlChange(midiChannel, CCdco2_PWM_lfo_source, dco2_PWM_lfo_source);
-      //   }
-      //   break;
+    case DCO2_PWM_LFO_SOURCE_BUTTON:
+      if (!released) {
+        dco2_PWM_lfo_source = dco2_PWM_lfo_source + 1;
+        if (dco2_PWM_lfo_source > 3) {
+          dco2_PWM_lfo_source = 0;
+        }
+        myControlChange(midiChannel, CCdco2_PWM_lfo_source, dco2_PWM_lfo_source);
+      }
+      break;
 
-      // case DCO1_PITCH_DYN_BUTTON:
-      //   if (!released) {
-      //     dco1_pitch_dyn = dco1_pitch_dyn + 1;
-      //     if (dco1_pitch_dyn > 3) {
-      //       dco1_pitch_dyn = 0;
-      //     }
-      //     myControlChange(midiChannel, CCdco1_pitch_dyn, dco1_pitch_dyn);
-      //   }
-      //   break;
+    case DCO1_PITCH_DYN_BUTTON:
+      if (!released) {
+        dco1_pitch_dyn = dco1_pitch_dyn + 1;
+        if (dco1_pitch_dyn > 3) {
+          dco1_pitch_dyn = 0;
+        }
+        myControlChange(midiChannel, CCdco1_pitch_dyn, dco1_pitch_dyn);
+      }
+      break;
 
-      // case DCO2_PITCH_DYN_BUTTON:
-      //   if (!released) {
-      //     dco2_pitch_dyn = dco2_pitch_dyn + 1;
-      //     if (dco2_pitch_dyn > 3) {
-      //       dco2_pitch_dyn = 0;
-      //     }
-      //     myControlChange(midiChannel, CCdco2_pitch_dyn, dco2_pitch_dyn);
-      //   }
-      //   break;
+    case DCO2_PITCH_DYN_BUTTON:
+      if (!released) {
+        dco2_pitch_dyn = dco2_pitch_dyn + 1;
+        if (dco2_pitch_dyn > 3) {
+          dco2_pitch_dyn = 0;
+        }
+        myControlChange(midiChannel, CCdco2_pitch_dyn, dco2_pitch_dyn);
+      }
+      break;
 
-      // case DCO1_PITCH_LFO_SOURCE_BUTTON:
-      //   if (!released) {
-      //     dco1_pitch_lfo_source = dco1_pitch_lfo_source + 1;
-      //     if (dco1_pitch_lfo_source > 3) {
-      //       dco1_pitch_lfo_source = 0;
-      //     }
-      //     myControlChange(midiChannel, CCdco1_pitch_lfo_source, dco1_pitch_lfo_source);
-      //   }
-      //   break;
+    case DCO1_PITCH_LFO_SOURCE_BUTTON:
+      if (!released) {
+        dco1_pitch_lfo_source = dco1_pitch_lfo_source + 1;
+        if (dco1_pitch_lfo_source > 3) {
+          dco1_pitch_lfo_source = 0;
+        }
+        myControlChange(midiChannel, CCdco1_pitch_lfo_source, dco1_pitch_lfo_source);
+      }
+      break;
 
-      // case DCO2_PITCH_LFO_SOURCE_BUTTON:
-      //   if (!released) {
-      //     dco2_pitch_lfo_source = dco2_pitch_lfo_source + 1;
-      //     if (dco2_pitch_lfo_source > 3) {
-      //       dco2_pitch_lfo_source = 0;
-      //     }
-      //     myControlChange(midiChannel, CCdco2_pitch_lfo_source, dco2_pitch_lfo_source);
-      //   }
-      //   break;
+    case DCO2_PITCH_LFO_SOURCE_BUTTON:
+      if (!released) {
+        dco2_pitch_lfo_source = dco2_pitch_lfo_source + 1;
+        if (dco2_pitch_lfo_source > 3) {
+          dco2_pitch_lfo_source = 0;
+        }
+        myControlChange(midiChannel, CCdco2_pitch_lfo_source, dco2_pitch_lfo_source);
+      }
+      break;
 
-      // case DCO1_PITCH_ENV_SOURCE_BUTTON:
-      //   if (!released) {
-      //     dco1_pitch_env_source = dco1_pitch_env_source + 2;
-      //     if (dco1_pitch_env_source > 7) {
-      //       dco1_pitch_env_source = 0;
-      //       dco1_pitch_env_pol = 0;
-      //     }
-      //     myControlChange(midiChannel, CCdco1_pitch_env_source, dco1_pitch_env_source);
-      //   }
-      //   break;
+    case DCO1_PITCH_ENV_SOURCE_BUTTON:
+      if (!released) {
+        dco1_pitch_env_source = dco1_pitch_env_source + 2;
+        if (dco1_pitch_env_source > 7) {
+          dco1_pitch_env_source = 0;
+          dco1_pitch_env_pol = 0;
+        }
+        myControlChange(midiChannel, CCdco1_pitch_env_source, dco1_pitch_env_source);
+      }
+      break;
 
-      // case DCO2_PITCH_ENV_SOURCE_BUTTON:
-      //   if (!released) {
-      //     dco2_pitch_env_source = dco2_pitch_env_source + 2;
-      //     if (dco2_pitch_env_source > 7) {
-      //       dco2_pitch_env_source = 0;
-      //       dco2_pitch_env_pol = 0;
-      //     }
-      //     myControlChange(midiChannel, CCdco2_pitch_env_source, dco2_pitch_env_source);
-      //   }
-      //   break;
+    case DCO2_PITCH_ENV_SOURCE_BUTTON:
+      if (!released) {
+        dco2_pitch_env_source = dco2_pitch_env_source + 2;
+        if (dco2_pitch_env_source > 7) {
+          dco2_pitch_env_source = 0;
+          dco2_pitch_env_pol = 0;
+        }
+        myControlChange(midiChannel, CCdco2_pitch_env_source, dco2_pitch_env_source);
+      }
+      break;
 
-      // case DCO1_PITCH_ENV_POLARITY_BUTTON:
-      //   if (!released) {
-      //     dco1_pitch_env_pol = !dco1_pitch_env_pol;
-      //     if (dco1_pitch_env_pol) {
-      //       dco1_pitch_env_source++;
-      //     }
-      //     if (!dco1_pitch_env_pol) {
-      //       dco1_pitch_env_source--;
-      //     }
-      //     myControlChange(midiChannel, CCdco1_pitch_env_source, dco1_pitch_env_pol);
-      //   }
-      //   break;
+    case DCO1_PITCH_ENV_POLARITY_BUTTON:
+      if (!released) {
+        dco1_pitch_env_pol = !dco1_pitch_env_pol;
+        if (dco1_pitch_env_pol) {
+          dco1_pitch_env_source++;
+        }
+        if (!dco1_pitch_env_pol) {
+          dco1_pitch_env_source--;
+        }
+        myControlChange(midiChannel, CCdco1_pitch_env_source, dco1_pitch_env_pol);
+      }
+      break;
 
-      // case DCO2_PITCH_ENV_POLARITY_BUTTON:
-      //   if (!released) {
-      //     dco2_pitch_env_pol = !dco2_pitch_env_pol;
-      //     if (dco2_pitch_env_pol) {
-      //       dco2_pitch_env_source++;
-      //     }
-      //     if (!dco2_pitch_env_pol) {
-      //       dco2_pitch_env_source--;
-      //     }
-      //     myControlChange(midiChannel, CCdco2_pitch_env_source, dco2_pitch_env_pol);
-      //   }
-      //   break;
+    case DCO2_PITCH_ENV_POLARITY_BUTTON:
+      if (!released) {
+        dco2_pitch_env_pol = !dco2_pitch_env_pol;
+        if (dco2_pitch_env_pol) {
+          dco2_pitch_env_source++;
+        }
+        if (!dco2_pitch_env_pol) {
+          dco2_pitch_env_source--;
+        }
+        myControlChange(midiChannel, CCdco2_pitch_env_source, dco2_pitch_env_pol);
+      }
+      break;
 
     case LOWER_BUTTON:
       if (!released) {
@@ -8397,127 +8855,130 @@ void mainButtonChanged(Button *btn, bool released) {
       }
       break;
 
-      // case DCO_MIX_ENV_SOURCE_BUTTON:
-      //   if (!released) {
-      //     dco_mix_env_source = dco_mix_env_source + 2;
-      //     if (dco_mix_env_source > 7) {
-      //       dco_mix_env_source = 0;
-      //       dco_mix_env_pol = 0;
-      //     }
-      //     myControlChange(midiChannel, CCdco_mix_env_source, dco_mix_env_source);
-      //   }
-      //   break;
+    case DCO_MIX_ENV_SOURCE_BUTTON:
+      if (!released) {
+        dco_mix_env_source = dco_mix_env_source + 2;
+        if (dco_mix_env_source > 7) {
+          dco_mix_env_source = 0;
+          dco_mix_env_pol = 0;
+        }
+        myControlChange(midiChannel, CCdco_mix_env_source, dco_mix_env_source);
+      }
+      break;
 
-      // case DCO_MIX_ENV_POLARITY_BUTTON:
-      //   if (!released) {
-      //     dco_mix_env_pol = !dco_mix_env_pol;
-      //     if (dco_mix_env_pol) {
-      //       dco_mix_env_source++;
-      //     }
-      //     if (!dco_mix_env_pol) {
-      //       dco_mix_env_source--;
-      //     }
-      //     myControlChange(midiChannel, CCdco_mix_env_source, dco_mix_env_source);
-      //   }
-      //   break;
+    case DCO_MIX_ENV_POLARITY_BUTTON:
+      if (!released) {
+        dco_mix_env_pol = !dco_mix_env_pol;
+        if (dco_mix_env_pol) {
+          dco_mix_env_source++;
+        }
+        if (!dco_mix_env_pol) {
+          dco_mix_env_source--;
+        }
+        myControlChange(midiChannel, CCdco_mix_env_source, dco_mix_env_source);
+      }
+      break;
 
-      // case DCO_MIX_DYN_BUTTON:
-      //   if (!released) {
-      //     dco_mix_dyn = dco_mix_dyn + 1;
-      //     if (dco_mix_dyn > 3) {
-      //       dco_mix_dyn = 0;
-      //     }
-      //     myControlChange(midiChannel, CCdco_mix_dyn, dco_mix_dyn);
-      //   }
-      //   break;
+    case DCO_MIX_DYN_BUTTON:
+      if (!released) {
+        dco_mix_dyn = dco_mix_dyn + 1;
+        if (dco_mix_dyn > 3) {
+          dco_mix_dyn = 0;
+        }
+        myControlChange(midiChannel, CCdco_mix_dyn, dco_mix_dyn);
+      }
+      break;
 
-      // case VCF_ENV_SOURCE_BUTTON:
-      //   if (!released) {
-      //     vcf_env_source = vcf_env_source + 2;
-      //     if (vcf_env_source > 7) {
-      //       vcf_env_source = 0;
-      //       vcf_env_pol = 0;
-      //     }
-      //     myControlChange(midiChannel, CCvcf_env_source, vcf_env_source);
-      //   }
-      //   break;
+    case VCF_ENV_SOURCE_BUTTON:
+      if (!released) {
+        vcf_env_source = vcf_env_source + 2;
+        if (vcf_env_source > 7) {
+          vcf_env_source = 0;
+          vcf_env_pol = 0;
+        }
+        myControlChange(midiChannel, CCvcf_env_source, vcf_env_source);
+      }
+      break;
 
-      // case VCF_ENV_POLARITY_BUTTON:
-      //   if (!released) {
-      //     vcf_env_pol = !vcf_env_pol;
-      //     if (vcf_env_pol) {
-      //       vcf_env_source++;
-      //     }
-      //     if (!vcf_env_pol) {
-      //       vcf_env_source--;
-      //     }
-      //     myControlChange(midiChannel, CCvcf_env_source, vcf_env_source);
-      //   }
-      //   break;
+    case VCF_ENV_POLARITY_BUTTON:
+      if (!released) {
+        vcf_env_pol = !vcf_env_pol;
+        if (vcf_env_pol) {
+          vcf_env_source++;
+        }
+        if (!vcf_env_pol) {
+          vcf_env_source--;
+        }
+        myControlChange(midiChannel, CCvcf_env_source, vcf_env_source);
+      }
+      break;
 
-      // case VCF_DYN_BUTTON:
-      //   if (!released) {
-      //     vcf_dyn = vcf_dyn + 1;
-      //     if (vcf_dyn > 3) {
-      //       vcf_dyn = 0;
-      //     }
-      //     myControlChange(midiChannel, CCvcf_dyn, vcf_dyn);
-      //   }
-      //   break;
+    case VCF_DYN_BUTTON:
+      if (!released) {
+        vcf_dyn = vcf_dyn + 1;
+        if (vcf_dyn > 3) {
+          vcf_dyn = 0;
+        }
+        myControlChange(midiChannel, CCvcf_dyn, vcf_dyn);
+      }
+      break;
 
-      // case VCA_ENV_SOURCE_BUTTON:
-      //   if (!released) {
-      //     vca_env_source = vca_env_source + 1;
-      //     if (vca_env_source > 3) {
-      //       vca_env_source = 0;
-      //     }
-      //     myControlChange(midiChannel, CCvca_env_source, vca_env_source);
-      //   }
-      //   break;
+    case VCA_ENV_SOURCE_BUTTON:
+      if (!released) {
+        vca_env_source = vca_env_source + 1;
+        if (vca_env_source > 3) {
+          vca_env_source = 0;
+        }
+        myControlChange(midiChannel, CCvca_env_source, vca_env_source);
+      }
+      break;
 
-      // case VCA_DYN_BUTTON:
-      //   if (!released) {
-      //     vca_dyn = vca_dyn + 1;
-      //     if (vca_dyn > 3) {
-      //       vca_dyn = 0;
-      //     }
-      //     myControlChange(midiChannel, CCvca_dyn, vca_dyn);
-      //   }
-      //   break;
+    case VCA_DYN_BUTTON:
+      if (!released) {
+        vca_dyn = vca_dyn + 1;
+        if (vca_dyn > 3) {
+          vca_dyn = 0;
+        }
+        myControlChange(midiChannel, CCvca_dyn, vca_dyn);
+      }
+      break;
 
-      // case CHORUS_BUTTON:
-      //   if (!released) {
-      //     chorus = chorus + 1;
-      //     if (chorus > 2) {
-      //       chorus = 0;
-      //     }
-      //     myControlChange(midiChannel, CCchorus_sw, chorus);
-      //   }
-      //   break;
+    case CHORUS_BUTTON:
+      if (!released) {
+        chorus = chorus + 1;
+        if (chorus > 2) {
+          chorus = 0;
+        }
+        myControlChange(midiChannel, CCchorus_sw, chorus);
+      }
+      break;
 
-      // case PORTAMENTO_BUTTON:
-      //   if (!released) {
-      //     portamento_sw = portamento_sw + 1;
-      //     if (portamento_sw > 3) {
-      //       portamento_sw = 0;
-      //     }
-      //     myControlChange(midiChannel, CCportamento_sw, portamento_sw);
-      //   }
-      //   break;
+    case PORTAMENTO_BUTTON:
+      if (!released) {
+        portamento_sw = portamento_sw + 1;
+        if (portamento_sw > 3) {
+          portamento_sw = 0;
+        }
+        if (portamento_sw != 0 && (keyMode == 1 || keyMode == 2)) {
+          portamento_sw = 3;
+        }
+        myControlChange(midiChannel, CCportamento_sw, portamento_sw);
+      }
+      break;
 
-      // case ENV5STAGE_SELECT_BUTTON:
-      //   if (!released) {
-      //     env5stage = !env5stage;
-      //     myControlChange(midiChannel, CCenv5stage, env5stage);
-      //   }
-      //   break;
+    case ENV5STAGE_SELECT_BUTTON:
+      if (!released) {
+        env5stage = !env5stage;
+        myControlChange(midiChannel, CCenv5stage, env5stage);
+      }
+      break;
 
-      // case ADSR_SELECT_BUTTON:
-      //   if (!released) {
-      //     adsr = !adsr;
-      //     myControlChange(midiChannel, CCadsr, adsr);
-      //   }
-      //   break;
+    case ADSR_SELECT_BUTTON:
+      if (!released) {
+        adsr = !adsr;
+        myControlChange(midiChannel, CCadsr, adsr);
+      }
+      break;
   }
 }
 
@@ -8559,7 +9020,7 @@ void checkMux() {
   if (reread1 || mux1Read > (mux1ValuesPrev[muxInput] + QUANTISE_FACTOR) || mux1Read < (mux1ValuesPrev[muxInput] - QUANTISE_FACTOR)) {
 
     mux1ValuesPrev[muxInput] = mux1Read;
-    mux1Read = (mux1Read >> resolutionFrig);
+    mux1Read = (uint8_t)constrain(map(mux1Read, 0, 255, 0, 127), 0, 127);
 
     // During RE_READ pass: do not announce UI
     bool prevSuppress = suppressParamAnnounce;
@@ -8617,7 +9078,7 @@ void checkMux() {
   if (reread2 || mux2Read > (mux2ValuesPrev[muxInput] + QUANTISE_FACTOR) || mux2Read < (mux2ValuesPrev[muxInput] - QUANTISE_FACTOR)) {
 
     mux2ValuesPrev[muxInput] = mux2Read;
-    mux2Read = (mux2Read >> resolutionFrig);
+    mux2Read = (uint8_t)constrain(map(mux2Read, 0, 255, 0, 127), 0, 127);
 
     // During RE_READ pass: do not announce UI
     bool prevSuppress = suppressParamAnnounce;
@@ -8678,7 +9139,7 @@ void checkMux() {
   if (reread3 || mux3Read > (mux3ValuesPrev[muxInput] + QUANTISE_FACTOR) || mux3Read < (mux3ValuesPrev[muxInput] - QUANTISE_FACTOR)) {
 
     mux3ValuesPrev[muxInput] = mux3Read;
-    mux3Read = (mux3Read >> resolutionFrig);
+    mux3Read = (uint8_t)constrain(map(mux3Read, 0, 255, 0, 127), 0, 127);
 
     // During RE_READ pass: do not announce UI
     bool prevSuppress = suppressParamAnnounce;
@@ -8742,7 +9203,7 @@ void checkMux() {
   if (reread4 || mux4Read > (mux4ValuesPrev[muxInput] + QUANTISE_FACTOR) || mux4Read < (mux4ValuesPrev[muxInput] - QUANTISE_FACTOR)) {
 
     mux4ValuesPrev[muxInput] = mux4Read;
-    mux4Read = (mux4Read >> resolutionFrig);
+    mux4Read = (uint8_t)constrain(map(mux4Read, 0, 255, 0, 127), 0, 127);
 
     // During RE_READ pass: do not announce UI
     bool prevSuppress = suppressParamAnnounce;
@@ -8858,10 +9319,6 @@ void checkMux() {
   if (manualSyncInProgress && !anyMuxNeedsReread()) {
     manualSyncInProgress = false;
     suppressParamAnnounce = false;
-
-    // Optional: one clean UI update at end
-    //showPatchPage("--", "Manual", "--", "Manual");
-    //startParameterDisplay();
   }
 }
 

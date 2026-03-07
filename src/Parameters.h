@@ -171,6 +171,7 @@ String toneNameU = INITTONEU;
 String toneNameL = INITTONEL;
 bool encCW = true;  //This is to set the encoder to increment when turned CW - Settings Option
 bool announce = true;
+bool recallPatchFlag = true;
 byte accelerate = 1;
 int speed = 1;
 bool updateParams = false;  //(EEPROM)
@@ -302,6 +303,7 @@ int patchData[30];
 #define P_octave_up 98
 #define P_bend_enable 99
 #define P_assign 100
+#define P_toneNumber 101
 
 int arpRangeU;
 int arpRangeL;
@@ -313,8 +315,9 @@ int at_lpf;
 int at_vol;
 int balance;
 int portamento;
+int portamento_sw;
 int volume;
-int dualdetune;
+int dualdetune = 0x2C;
 int bend_range;
 int bend_enable;
 int after_enable;
@@ -420,6 +423,7 @@ static constexpr uint8_t kDualDetuneParam2 = 0xBE; // TODO: set your actual para
 static constexpr uint8_t kDetuneZeroPos   = 0x2C; // "00"
 static constexpr uint8_t kDetuneNegZero   = 0x2B; // "-00"
 static constexpr uint8_t kDetuneMax       = 0x6B; // "+50"
+constexpr uint8_t TUNE_442HZ = 0x41;  // 442.0 Hz threshold
 
 // Pitch bend
 
@@ -430,11 +434,53 @@ static constexpr bool kInvertPb14 = true;
 
 // None saved variables
 
+int lfo1_sync = 0;
+int lfo2_sync = 0;
+int chorus = 0;
+int vca_env_source = 0;
+int vca_dyn = 0;
+int vcf_dyn = 0;
+int vcf_env_source = 0;
+int vcf_env_pol = 0;
+int dco_mix_dyn = 0;
+int dco_mix_env_source = 0;
+int dco_mix_env_pol = 0;
+int dco1_pitch_lfo_source = 0;
+int dco2_pitch_lfo_source = 0;
+int dco1_pitch_env_source = 0;
+int dco2_pitch_env_source = 0;
+int dco1_pitch_env_pol = 0;
+int dco2_pitch_env_pol = 0;
+int dco1_pitch_dyn = 0;
+int dco2_pitch_dyn = 0;
+int dco1_PWM_lfo_source = 0;
+int dco2_PWM_lfo_source = 0;
+int dco1_PWM_env_source = 0;
+int dco2_PWM_env_source = 0;
+int dco1_PWM_env_pol = 0;
+int dco2_PWM_env_pol = 0;
+int dco1_PWM_dyn = 0;
+int dco2_PWM_dyn = 0;
+int masterTune = 0;
+
 int oldkeyMode = -1;
 int adsr = 0;
 int env5stage = 0;
 bool upperSW = false;
 bool oldupperSW = false;
+
+
+uint8_t lowerMT1 = 0x2C;
+uint8_t lowerMT2 = 0x2C;
+uint8_t upperMT1 = 0x2C;
+uint8_t upperMT2 = 0x2C;
+constexpr uint8_t TUNE_CENTER   = 0x2C;  // A 440 Hz / 0 detune
+constexpr uint8_t TUNE_MIN      = 0x00;
+constexpr uint8_t TUNE_MAX      = 0x7F;
+constexpr uint8_t DETUNE_MAX    = 0x6B;  // physical slider max
+constexpr uint8_t DETUNE_CENTER = 64;  // slider center, display shows "00"
+uint8_t lastStepParam = 0xFF;
+uint8_t lastModWheelValue = 0;
 
 uint8_t LAST_PARAM = 0x00;
 uint8_t EXTRA_OFFSET = 0x00;

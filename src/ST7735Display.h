@@ -52,11 +52,14 @@ void renderCurrentPatchPage() {
     lcd.print(patches.first().patchName);
     lcd.setCursor(35, 0);
     lcd.write(byte(0));
+    lcd.print(upperData[P_toneNumber]);
     lcd.setCursor(39, 0);
     lcd.write(byte(0));
     // lower section of screen
     lcd.setCursor(0, 1);
-    lcd.print("A1                                  39");
+    lcd.print("A1");
+    lcd.setCursor(36, 1);
+    lcd.print(lowerData[P_toneNumber]);
 }
 
 void renderCurrentParameterPage() {
@@ -134,21 +137,20 @@ void renderDeleteMessagePage() {
 }
 
 void renderSavePage() {
-  // tft.fillScreen(ST7735_BLACK);
-  // tft.setFont(&FreeSansBold18pt7b);
-  // tft.setCursor(5, 34);
-  // tft.setTextColor(ST7735_YELLOW);
-  // tft.setTextSize(1);
-  // tft.println("Save?");
-  // tft.drawFastHLine(10, 66, tft.width() - 20, ST7735_RED);
-  // tft.setFont(&FreeSans9pt7b);
-  // tft.fillRect(0, 75, tft.width(), 23, ST7735_RED);
-  // tft.setCursor(5, 81);
-  // tft.setTextColor(ST7735_YELLOW);
-  // tft.println(patches.last().patchNo);
-  // tft.setCursor(40, 81);
-  // tft.setTextColor(ST7735_WHITE);
-  // tft.println(patches.last().patchName);
+  lcd.clear();
+  
+  // Line 1: "Save?" prompt with patch number
+  lcd.setCursor(0, 0);
+  lcd.print("Save? Patch: ");
+  lcd.print(patches.last().patchNo);
+  
+  // Line 2: Patch name (truncate if needed to fit 40 chars)
+  lcd.setCursor(0, 1);
+  String patchName = patches.last().patchName;
+  if (patchName.length() > 40) {
+    patchName = patchName.substring(0, 37) + "...";
+  }
+  lcd.print(patchName);
 }
 
 void renderReinitialisePage() {
@@ -214,18 +216,43 @@ void renderUpDown(uint16_t x, uint16_t y, uint16_t colour) {
 
 
 void renderSettingsPage() {
-  // tft.fillScreen(ST7735_BLACK);
-  // tft.setFont(&FreeSans12pt7b);
-  // tft.setTextColor(ST7735_YELLOW);
-  // tft.setTextSize(1);
-  // tft.setCursor(0, 34);
-  // tft.println(currentSettingsOption);
-  // if (currentSettingsPart == SETTINGS) renderUpDown(140, 42, ST7735_YELLOW);
-  // tft.drawFastHLine(10, 66, tft.width() - 20, ST7735_RED);
-  // tft.setTextColor(ST7735_WHITE);
-  // tft.setCursor(5, 84);
-  // tft.println(currentSettingsValue);
-  // if (currentSettingsPart == SETTINGSVALUE) renderUpDown(140, 90, ST7735_WHITE);
+  lcd.clear();
+  
+  // Line 1: Setting name with up/down indicators on the right
+  lcd.setCursor(0, 0);
+  lcd.print("PARAMETER ");
+  lcd.setCursor(10, 0);
+  String optionName = currentSettingsOption;
+  if (optionName.length() > 27) {
+    optionName = optionName.substring(0, 27);
+  }
+  lcd.print(optionName);
+  
+  // Up/down indicators for SETTINGS navigation (right side of line 1)
+  lcd.setCursor(38, 0);
+  if (currentSettingsPart == SETTINGS) {
+    lcd.write(byte(1));  // Up triangle
+  } else {
+    lcd.print("  ");
+  }
+  
+  // Line 2: Setting value with up/down indicators on the right
+  lcd.setCursor(0, 1);
+  lcd.print("VALUE ");
+  lcd.setCursor(10, 1);
+  String valueStr = String(currentSettingsValue);
+  if (valueStr.length() > 27) {
+    valueStr = valueStr.substring(0, 27);
+  }
+  lcd.print(valueStr);
+  
+  // Up/down indicators for SETTINGSVALUE navigation (right side of line 2)
+  lcd.setCursor(38, 1);
+  if (currentSettingsPart == SETTINGSVALUE) {
+    lcd.write(byte(2));  // Down triangle
+  } else {
+    lcd.print("  ");
+  }
 }
 
 void showCurrentParameterPage(const char *param, float val, int pType) {

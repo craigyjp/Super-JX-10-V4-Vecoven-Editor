@@ -240,8 +240,6 @@ void ensureJX10BankFolder(uint8_t bank) {
   String folderPath = "/bank" + String(bank);
   if (!SD.exists(folderPath.c_str())) {
     SD.mkdir(folderPath.c_str());
-    Serial.print(F("Created folder: "));
-    Serial.println(folderPath);
   }
 }
 
@@ -266,8 +264,6 @@ void ensureJX10BankInitialized(uint8_t bank) {
         // Replace the first field (patch name) with our default name
         String initData = defaultName + "," + INITPATCH;
         savePatch(path.c_str(), initData);
-        Serial.print(F("Created patch: "));
-        Serial.println(path);
       }
     }
   }
@@ -486,11 +482,11 @@ void myProgramChange(byte channel, byte program) {
 
   state = PATCH;
   recallPatch(currentBank, group, slot);
-  Serial.print(F("MIDI Pgm Change: "));
-  Serial.print(program);
-  Serial.print(F(" -> "));
-  Serial.print((char)('A' + group));
-  Serial.println(slot);
+  // Serial.print(F("MIDI Pgm Change: "));
+  // Serial.print(program);
+  // Serial.print(F(" -> "));
+  // Serial.print((char)('A' + group));
+  // Serial.println(slot);
   state = PARAMETER;
 }
 
@@ -7418,8 +7414,6 @@ void recallPatch(int bank, int group, int slot) {
   currentGroup = group;
   currentSlot = slot;
   showPatchPage(getPatchLabel(group, slot), patchName);
-  Serial.print(F("Recalled: "));
-  Serial.println(path);
 }
 
 // Recall using current position
@@ -8246,8 +8240,6 @@ void handlePatchButton(int group, int slot) {
         currentBank = group;  // group A-H maps directly to bank 0-7
         bankSelectMode = false;
         state = PARAMETER;
-        Serial.print(F("Bank selected: "));
-        Serial.println(currentBank);
         updateScreen();
       }
       // 1-8 buttons ignored while in bank-select mode
@@ -9055,7 +9047,7 @@ void mainButtonChanged(Button *btn, bool released) {
         if (!dco1_pitch_env_pol) {
           dco1_pitch_env_source = dco1_pitch_env_source - 16;
         }
-        myControlChange(midiChannel, CCdco1_pitch_env_source, dco1_pitch_env_pol);
+        myControlChange(midiChannel, CCdco1_pitch_env_source, dco1_pitch_env_source);
       }
       break;
 
@@ -9068,7 +9060,7 @@ void mainButtonChanged(Button *btn, bool released) {
         if (!dco2_pitch_env_pol) {
           dco2_pitch_env_source = dco2_pitch_env_source - 16;
         }
-        myControlChange(midiChannel, CCdco2_pitch_env_source, dco2_pitch_env_pol);
+        myControlChange(midiChannel, CCdco2_pitch_env_source, dco2_pitch_env_source);
       }
       break;
 

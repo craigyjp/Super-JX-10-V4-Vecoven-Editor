@@ -86,9 +86,24 @@ static inline void decodeEnvMode(uint8_t raw, uint8_t &source, uint8_t &pol) {
   pol = (raw % 2 == 0) ? 1 : 0;
 }
 
+static inline void decodeVCAEnvMode(uint8_t raw, uint8_t &source) {
+  switch (raw) {
+    case 0:
+      source = 64;
+      // Tone.params[TP_ENV2_ATTACK] = 0;
+      // Tone.params[TP_ENV2_DECAY] = 0;
+      // Tone.params[TP_ENV2_SUSTAIN] = 127;
+      // Tone.params[TP_ENV2_RELEASE] = 0;
+      break;
+
+    case 32: source = 64; break;
+    default: source = 64; break;  // safe fallback
+  }
+}
+
 static inline void decodeDCORange(uint8_t raw, uint8_t &source) {
   switch (raw) {
-    case 0:  source = 0; break;
+    case 0: source = 0; break;
     case 32: source = 1; break;
     case 64: source = 2; break;
     case 96: source = 3; break;
@@ -98,7 +113,7 @@ static inline void decodeDCORange(uint8_t raw, uint8_t &source) {
 
 static inline void decodeLFOWave(uint8_t raw, uint8_t &source) {
   switch (raw) {
-    case 0:  source = 0; break;
+    case 0: source = 0; break;
     case 16: source = 1; break;
     case 32: source = 2; break;
     case 48: source = 3; break;
@@ -109,7 +124,7 @@ static inline void decodeLFOWave(uint8_t raw, uint8_t &source) {
 
 static inline void decodeKeyFollow(uint8_t raw, uint8_t &source) {
   switch (raw) {
-    case 0:  source = 0; break;
+    case 0: source = 0; break;
     case 16: source = 1; break;
     case 32: source = 2; break;
     case 48: source = 3; break;
@@ -183,6 +198,8 @@ bool loadToneFile(const char *path, uint8_t offset) {
   Serial.println(path);
   return true;
 }
+
+
 
 // ---------------------------------------------------------------------------
 // Copy a source file to a destination path on SD
@@ -261,12 +278,14 @@ void loadToneToSlot(uint8_t toneIndex, bool upper) {
   uint8_t dcoEnvSrc, dcoEnvPol;
   uint8_t mixEnvSrc, mixEnvPol;
   uint8_t vcfEnvSrc, vcfEnvPol;
+  uint8_t vcaEnvSrc;
   uint8_t dco1Range, dco1Wave;
   uint8_t dco2Range, dco2Wave;
   uint8_t lfo1Wave, dcoMode, keyFollow1, keyFollow2;
   decodeEnvMode(t.params[TP_DCO_ENV_MODE], dcoEnvSrc, dcoEnvPol);
   decodeEnvMode(t.params[TP_MIXER_ENV_MODE], mixEnvSrc, mixEnvPol);
   decodeEnvMode(t.params[TP_VCF_ENV_MODE], vcfEnvSrc, vcfEnvPol);
+  decodeVCAEnvMode(t.params[TP_VCA_ENV_MODE], vcaEnvSrc);
   decodeDCORange(t.params[TP_DCO1_RANGE], dco1Range);
   decodeDCORange(t.params[TP_DCO1_WAVE], dco1Wave);
   decodeDCORange(t.params[TP_DCO2_RANGE], dco2Range);
@@ -274,7 +293,7 @@ void loadToneToSlot(uint8_t toneIndex, bool upper) {
   decodeLFOWave(t.params[TP_LFO_WAVE], lfo1Wave);
   decodeDCORange(t.params[TP_DCO2_CROSSMOD], dcoMode);
   decodeKeyFollow(t.params[TP_ENV1_KEY_FOLLOW], keyFollow1);
-  decodeKeyFollow(t.params[TP_ENV2_KEY_FOLLOW], keyFollow1);
+  decodeKeyFollow(t.params[TP_ENV2_KEY_FOLLOW], keyFollow2);
 
   // --- DCO1 ---
   data[P_dco1_range] = dco1Range;
@@ -295,7 +314,7 @@ void loadToneToSlot(uint8_t toneIndex, bool upper) {
   data[P_dco1_PWM_lfo_source] = 0;
 
   // --- DCO2 ---
-  data[P_dco2_range]  = dco2Range;
+  data[P_dco2_range] = dco2Range;
   data[P_dco2_wave] = dco2Wave;
   data[P_dco2_tune] = t.params[TP_DCO2_TUNE];
   data[P_dco2_fine] = t.params[TP_DCO2_FINE];
@@ -348,7 +367,7 @@ void loadToneToSlot(uint8_t toneIndex, bool upper) {
   // --- VCA ---
   data[P_vca_mod] = t.params[TP_VCA_LEVEL];
   data[P_vca_dyn] = t.params[TP_VCA_DYNAMICS];
-  data[P_vca_env_source] = t.params[TP_VCA_ENV_MODE];
+  data[P_vca_env_source] = vcaEnvSrc;
 
   // --- Chorus ---
   data[P_chorus] = t.params[TP_CHORUS];

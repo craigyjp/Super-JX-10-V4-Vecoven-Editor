@@ -77,84 +77,6 @@ bool holdLatchedUpper[128] = {0};
 
 bool sustainPedalDown = false;     // CCsustain >= 64
 
-// JP8 Arpeggiator
-// -------------------- ARP CONFIG --------------------
-
-// External clock pulse handling
-volatile uint16_t arpExtTickCount = 0;
-volatile uint32_t lastExtPulseUs = 0;
-const uint16_t ARP_EXT_CLOCK_LOSS_MS = 250;
-
-// Debounce / minimum pulse spacing (microseconds)
-const uint32_t EXT_PULSE_MIN_US = 1500;
-
-// LED flash request from ISR
-volatile bool extClkLedPulseReq = false;
-volatile uint32_t extClkLedPulseAtMs = 0;
-
-// LED pulse width (ms)
-const uint16_t EXT_LED_PULSE_MS = 30;
-
-enum ArpMode : uint8_t { ARP_OFF=0, ARP_UP, ARP_DOWN, ARP_UPDOWN, ARP_RANDOM };
-enum ArpClockSrc : uint8_t { ARPCLK_INTERNAL=0, ARPCLK_EXTERNAL, ARPCLK_MIDI };
-
-volatile ArpClockSrc arpClockSrc = ARPCLK_INTERNAL;
-
-enum ArpMidiDiv : uint8_t { ARP_DIV_8TH=0, ARP_DIV_8TH_TRIP, ARP_DIV_16TH };
-volatile ArpMidiDiv arpMidiDiv = ARP_DIV_16TH;
-
-// Your existing arpRate (0..255 assumed)
-extern uint8_t arpRate;
-
-// External / MIDI clock step accumulator
-volatile uint16_t arpClkTickCount = 0;     // counts pulses/ticks until a step
-volatile uint8_t arpTicksPerStep = 6;     // default: 16th @ MIDI clock (24ppqn -> 6 ticks)
-bool midiClockRunning = false;          // true after Start/Continue, false after Stop
-// 0 = 8th, 1 = 8th triplet, 2 = 16th
-uint8_t arpMidiDivSW = 2; // pick your default
-
-volatile ArpMode arpMode = ARP_OFF;
-volatile uint8_t arpRange = 4;         // 1..4 octaves
-
-volatile uint16_t arpStepMs = 125;      // step interval in ms (internal clock)
-volatile float arpGate = 0.50f;         // not strictly needed; we do step-boundary note off
-
-// In Split mode, JP-8 assigns arp to LOWER only. We'll honor that.
-bool arpLowerOnlyWhenSplit = true;
-
-// Prevent arp notes from affecting hold/keyDown tracking
-bool arpInjecting = false;
-
-uint8_t arpPattern[8] = {0};
-uint8_t arpLen = 0;
-
-// Transport over unfolded pattern
-int16_t arpPos = -1;    // index into unfolded sequence
-int8_t  arpDir = +1;    // for UPDOWN ping-pong
-
-// Current sounding arp note (so we can note-off at next step)
-bool arpNoteActive = false;
-uint8_t arpCurrentNote = 0;
-uint8_t arpCurrentVel = 100;
-
-// Internal clock
-uint32_t arpLastStepMs = 0;
-bool arpRunning = false;
-
-float arpHzTarget  = 4.0f;   // desired Hz from pot
-float arpHzSmooth  = 4.0f;   // smoothed Hz used by engine
-uint32_t arpNextStepUs = 0;  // absolute time of next step (micros)
-uint32_t arpLastSmoothUs = 0;
-
-// Remember last arp range (JP-8: defaults to 4 after power-up, then remembers last used)
-uint8_t lastArpRange = 4;
-bool arpEverEnabledSinceBoot = false;
-
-// Save/restore keyboard assign modes when arp forces Poly2
-uint8_t savedLowerKBMode = 0;
-uint8_t savedUpperKBMode = 0;
-bool arpForcedPoly2 = false;
-
 // Encoders - is it needed?
 
 // adding encoders
@@ -195,11 +117,58 @@ uint8_t uiLfoAmt      = 0;    // LFO depth to filter
 volatile bool pitchDirty = true;
 elapsedMillis msSincePitchUpdate;
 
+// ---------------------------------------------------------------------------
+// Bank select blink state (for Recall-button bank-select mode)
+// ---------------------------------------------------------------------------
+
+bool bankSelectMode    = false;   // true while waiting for A-H bank choice
+bool saveToBankMode    = false;   // true when bank-select is for save destination
+int  saveTargetBank    = 0;
+int  saveTargetGroup   = 0;
+int  saveTargetSlot    = 0;
+
+unsigned long bankBlinkTimer = 0;
+bool bankBlinkState = false;
+#define BANK_BLINK_INTERVAL 300  // ms
+
+// ---------------------------------------------------------------------------------
+// --- Tone entry state ---
+// ---------------------------------------------------------------------------------
+
+unsigned long toneBlinkTimer = 0;
+bool toneBlinkState = false;
+#define TONE_BLINK_INTERVAL 300
+
+int8_t  toneDigit1     = -1;   // -1 = no digit entered yet
+int8_t  toneEntryBuffer = 0;
+bool    toneEntryActive = false;
+
+// Sysex reception
+// ---------------------Sysex variables
+
+const int totalBytes = 3200;
+byte ramArray[64][156]; // Array to store SysEx data
+byte sysexBuff(156);
+byte data(156);
+byte sysexData[156];
+bool sysexComplete = false;
+bool receivingSysEx = false; // Flag to indicate if a SysEx message is in progress
+uint16_t byteIndex = 0;
+uint8_t currentBlock = 0;
+
+static constexpr uint8_t  DEVICE_ID_EXPECTED = 0x01;
+static constexpr uint8_t  CMD_PATCH_DUMP     = 0x01;
+static constexpr uint8_t  VERSION_EXPECTED   = 0x01;
+static constexpr uint8_t  NAME_LEN = 13;
+static constexpr uint16_t PARAM_COUNT = 60;
+static constexpr uint16_t EXPECTED_INNER_LEN = 154;
+
 // New JX parameters
 
 int upperData[102];
 int lowerData[102];
-int swapData[102];
+int upperswapData[102];
+int lowerswapData[102];
 int panelData[102];
 int patchData[30];
 
@@ -254,8 +223,8 @@ int patchData[30];
 #define P_dco_mix_env_pol 48
 #define P_dco_mix_env_source 49
 #define P_dco_mix_dyn 50
-#define P_dco_mix_dynU 51
-#define P_dco_mix_dynL 52
+#define P_toneName 51
+#define P_spare 52
 #define P_vcf_hpf 53
 #define P_vcf_cutoff 54
 #define P_vcf_res 55
@@ -414,7 +383,11 @@ static constexpr uint8_t kBalanceParam = 0x9E;
 static constexpr uint8_t kBoardLowerPrefix = 0xF1;
 static constexpr uint8_t kBoardUpperPrefix = 0xF9;
 static constexpr uint8_t kBoardBothPrefix  = 0xF4; // keyMode 1/2 broadcast
-static constexpr uint8_t kMaxLevel = 0x60;         // 96
+static constexpr uint8_t kBoardOffset0Prefix  = 0x0C;
+static constexpr uint8_t kBoardOffset1Prefix  = 0x0D;
+static constexpr uint8_t kBoardOffset2Prefix  = 0x0E;
+static constexpr uint8_t kBoardOffset3Prefix  = 0x0F;
+static constexpr uint8_t kMaxLevel = 0x69;         // 96
 
 
 // Dual detune
@@ -485,6 +458,7 @@ uint8_t lastModWheelValue = 0;
 uint8_t LAST_PARAM = 0x00;
 uint8_t EXTRA_OFFSET = 0x00;
 uint8_t board = 0xF4;
+#define NO_OFFSET 0xFE
 
 boolean dual_button;
 boolean split_button;
@@ -502,6 +476,14 @@ byte oldsplitTrans = 0;
 int lowerTranspose = 0;
 int lowerSplitVoicePointer = 0;
 int upperSplitVoicePointer = 0;
+int lowerUnisonVoicePointer = 0;
+int upperUnisonVoicePointer = 0;
+int wholeUnisonVoicePointer = 0;
+
+// Voice board setup
+
+volatile bool voice1ResetTriggered = false;
+volatile bool voice2ResetTriggered = false;
 
 // 5x8 custom chars (each row uses bits 0..4)
 

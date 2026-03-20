@@ -1,203 +1,133 @@
-/*
-  TSynth patch saving and recall works like an analogue polysynth from the late 70s (Prophet 5).
-  When you recall a patch, all the front panel controls will be different values from those saved in the patch. Moving them will cause a jump to the current value.
+// JX-10 style patch management
+// SD structure: /bank0/ .. /bank7/  containing files 11-88
+// where tens digit = group (A=1..H=8), units digit = slot (1-8)
+// e.g. bank2/35 = bank 2, group C (3), slot 5
 
-  BACK
-  Cancels current mode such as save, recall, delete and rename patches
+// Forward declarations - defined in main.ino
+String getCurrentPatchData();
+void setCurrentPatchData(String data[]);
+void showPatchPage(String number, String patchName);
 
-  RECALL
-  Recall shows list of patches. Use encoder to move through list.
-  Enter button on encoder chooses highlighted patch or press Recall again.
-  Recall also recalls the current patch settings if the panel controls have been altered.
-  Holding Recall for 1.5s will initialise the synth with all the current panel control settings - the synth sounds the same as the controls are set.
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
 
-
-  SAVE
-  Save will save the current settings to a new patch at the end of the list or you can use the encoder to overwrite an existing patch.
-  Press Save again to save it. If you want to name/rename the patch, press the encoder enter button and use the encoder and enter button to choose an alphanumeric name.
-  Holding Save for 1.5s will go into a patch deletion mode. Use encoder and enter button to choose and delete patch. Patch numbers will be changed on the SD card to be consecutive again.
-*/
-//Agileware CircularBuffer available in libraries manager
-#include <CircularBuffer.hpp>
+#define NUM_BANKS   8   // banks 0-7, selected via Recall + A-H
+#define NUM_GROUPS  8   // groups A-H (1-8), rows of patch buttons
+#define NUM_SLOTS   8   // slots 1-8, columns of patch buttons
 
 #define TOTALCHARS 63
-
-const char CHARACTERS[TOTALCHARS] = {'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0'};
+const char CHARACTERS[TOTALCHARS] = {
+  'a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z',
+  'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z',
+  ' ','1','2','3','4','5','6','7','8','9','0'
+};
 int charIndex = 0;
 char currentCharacter = 0;
 String renamedPatch = "";
 
-struct PatchNoAndName
-{
-  int patchNo;
-  String patchName;
-};
+// ---------------------------------------------------------------------------
+// Current position state
+// group: 0-7 (A-H), slot: 1-8, bank: 0-7
+// ---------------------------------------------------------------------------
+int currentBank  = 0;   // active bank (0-7)
+int currentGroup = 0;   // active group 0=A .. 7=H
+int currentSlot  = 1;   // active slot 1-8
 
-CircularBuffer<PatchNoAndName, PATCHES_LIMIT> patches;
+// ---------------------------------------------------------------------------
+// Build SD file path:  /bankN/GS   e.g.  /bank2/35
+// group is 0-based internally, file uses 1-based tens digit
+// ---------------------------------------------------------------------------
+String getPatchPath(int bank, int group, int slot) {
+  // group 0-7 -> file tens digit 1-8
+  int fileNum = (group + 1) * 10 + slot;
+  return "/bank" + String(bank) + "/" + String(fileNum);
+}
 
-size_t readField(File *file, char *str, size_t size, const char *delim)
-{
+// Convenience overload using current position
+String getCurrentPatchPath() {
+  return getPatchPath(currentBank, currentGroup, currentSlot);
+}
+
+// Human-readable label e.g. "B3"
+String getPatchLabel(int group, int slot) {
+  return String((char)('A' + group)) + String(slot);
+}
+
+// ---------------------------------------------------------------------------
+// Low-level file helpers  (unchanged from original)
+// ---------------------------------------------------------------------------
+size_t readField(File *file, char *str, size_t size, const char *delim) {
   char ch;
   size_t n = 0;
-  while ((n + 1) < size && file->read(&ch, 1) == 1)
-  {
-    // Delete CR.
-    if (ch == '\r')
-    {
-      continue;
-    }
+  while ((n + 1) < size && file->read(&ch, 1) == 1) {
+    if (ch == '\r') continue;
     str[n++] = ch;
-    if (strchr(delim, ch))
-    {
-      break;
-    }
+    if (strchr(delim, ch)) break;
   }
   str[n] = '\0';
   return n;
 }
 
-void recallPatchData(File patchFile, String data[])
-{
-  //Read patch data from file and set current patch parameters
-  size_t n;     // Length of returned field with delimiter.
-  char str[20]; // Must hold longest field with delimiter and zero byte.
+void recallPatchData(File patchFile, String data[]) {
+  size_t n;
+  char str[20];
   int i = 0;
-  while (patchFile.available() && i < NO_OF_PARAMS)
-  {
+  while (patchFile.available() && i < NO_OF_PARAMS) {
     n = readField(&patchFile, str, sizeof(str), ",\n");
-    // done if Error or at EOF.
-    if (n == 0)
-      break;
-    // Print the type of delimiter.
-    if (str[n - 1] == ',' || str[n - 1] == '\n')
-    {
-      // Remove the delimiter.
+    if (n == 0) break;
+    if (str[n - 1] == ',' || str[n - 1] == '\n') {
       str[n - 1] = 0;
-    }
-    else
-    {
-      // At eof, too long, or read error.  Too long is error.
+    } else {
       Serial.print(patchFile.available() ? F("error: ") : F("eof:   "));
     }
-    // Print the field.
-    //    Serial.print(i);
-    //    Serial.print(" - ");
-    //    Serial.println(str);
     data[i++] = String(str);
   }
 }
 
-int compare(const void *a, const void *b) {
-  return ((PatchNoAndName*)a)->patchNo - ((PatchNoAndName*)b)->patchNo;
-}
-
-void sortPatches()
-{
-  int arraySize = patches.size();
-  //Sort patches buffer to be consecutive ascending patchNo order
-  struct PatchNoAndName arrayToSort[arraySize];
-
-  for (int i = 0; i < arraySize; ++i)
-  {
-    arrayToSort[i] = patches[i];
-  }
-  qsort(arrayToSort, arraySize, sizeof(PatchNoAndName), compare);
-  patches.clear();
-
-  for (int i = 0; i < arraySize; ++i)
-  {
-    patches.push(arrayToSort[i]);
-  }
-}
-
-void loadPatches()
-{
-  File file = SD.open("/");
-  patches.clear();
-  while (true)
-  {
-    String data[NO_OF_PARAMS]; //Array of data read in
-    File patchFile = file.openNextFile();
-    if (!patchFile)
-    {
-      break;
-    }
-    if (patchFile.isDirectory())
-    {
-      Serial.println("Ignoring Dir");
-    }
-    else
-    {
-      recallPatchData(patchFile, data);
-      patches.push(PatchNoAndName{atoi(patchFile.name()), data[0]});
-      Serial.println(String(patchFile.name()) + ":" + data[0]);
-    }
-    patchFile.close();
-  }
-  sortPatches();
-}
-
-void savePatch(const char *patchNo, String patchData)
-{
-  // Serial.print("savePatch Patch No:");
-  //  Serial.println(patchNo);
-  //Overwrite existing patch by deleting
-  if (SD.exists(patchNo))
-  {
-    SD.remove(patchNo);
-  }
-  File patchFile = SD.open(patchNo, FILE_WRITE);
-  if (patchFile)
-  {
-    //    Serial.print("Writing Patch No:");
-    //    Serial.println(patchNo);
-    //Serial.println(patchData);
+// ---------------------------------------------------------------------------
+// Save / Delete
+// ---------------------------------------------------------------------------
+void savePatch(const char *path, String patchData) {
+  if (SD.exists(path)) SD.remove(path);
+  File patchFile = SD.open(path, FILE_WRITE);
+  if (patchFile) {
     patchFile.println(patchData);
     patchFile.close();
-  }
-  else
-  {
-    Serial.print("Error writing Patch file:");
-    Serial.println(patchNo);
+  } else {
+    Serial.print(F("Error writing patch: "));
+    Serial.println(path);
   }
 }
 
-void savePatch(const char *patchNo, String patchData[])
-{
+void savePatch(const char *path, String patchData[]) {
   String dataString = patchData[0];
-  for (int i = 1; i < NO_OF_PARAMS; i++)
-  {
-    dataString = dataString + "," + patchData[i];
+  for (int i = 1; i < NO_OF_PARAMS; i++) {
+    dataString += "," + patchData[i];
   }
-  savePatch(patchNo, dataString);
+  savePatch(path, dataString);
 }
 
-void deletePatch(const char *patchNo)
-{
-  if (SD.exists(patchNo)) SD.remove(patchNo);
+// Save current patch to current bank/group/slot
+void saveCurrentPatch() {
+  String path = getCurrentPatchPath();
+  patchName = patchName.length() > 0 ? patchName : INITPATCHNAME;
+  savePatch(path.c_str(), getCurrentPatchData());
+  showPatchPage(getPatchLabel(currentGroup, currentSlot), patchName);
+  Serial.print(F("Saved to "));
+  Serial.println(path);
 }
 
-void renumberPatchesOnSD() {
-  for (int i = 0; i < patches.size(); i++)
-  {
-    String data[NO_OF_PARAMS]; //Array of data read in
-    File file = SD.open(String(patches[i].patchNo).c_str());
-    if (file) {
-      recallPatchData(file, data);
-      file.close();
-      savePatch(String(i + 1).c_str(), data);
-    }
-  }
-  deletePatch(String(patches.size() + 1).c_str()); //Delete final patch which is duplicate of penultimate patch
-}
-
-void setPatchesOrdering(int no) {
-  if (patches.size() < 2)return;
-  while (patches.first().patchNo != no) {
-    patches.push(patches.shift());
-  }
-}
-
-void resetPatchesOrdering() {
-  setPatchesOrdering(1);
+// Save to an explicit bank/group/slot (used by save-to-destination flow)
+void savePatchTo(int bank, int group, int slot) {
+  String path = getPatchPath(bank, group, slot);
+  patchName = patchName.length() > 0 ? patchName : INITPATCHNAME;
+  savePatch(path.c_str(), getCurrentPatchData());
+  // Update current position to where we just saved
+  currentBank  = bank;
+  currentGroup = group;
+  currentSlot  = slot;
+  showPatchPage(getPatchLabel(currentGroup, currentSlot), patchName);
+  Serial.print(F("Saved to "));
+  Serial.println(path);
 }

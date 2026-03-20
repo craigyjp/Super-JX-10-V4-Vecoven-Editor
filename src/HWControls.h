@@ -17,7 +17,8 @@ ADC *adc = new ADC();
 #define BACK_SW 36
 
 #define VOICE_CLOCK 9
-#define VOICE_RESET 28
+#define VOICE1_RESET 37
+#define VOICE2_RESET 38
 
 #define ENCODER_PINA 4
 #define ENCODER_PINB 5
@@ -268,8 +269,8 @@ Button tone_9_Button = Button(&mcp1, 13, TONE_9_BUTTON, &mainButtonChanged);
 Button dco2_PWM_env_pol_Button = Button(&mcp2, 3, DCO2_PWM_ENV_POLARITY_BUTTON, &mainButtonChanged);
 Button dco2_PWM_env_src_Button = Button(&mcp2, 4, DCO2_PWM_ENV_SOURCE_BUTTON, &mainButtonChanged);
 Button dco2_PWM_dyn_Button = Button(&mcp2, 5, DCO2_PWM_DYN_BUTTON, &mainButtonChanged);
-Button patch_8_Button = Button(&mcp2, 12, PATCH_8_BUTTON, &mainButtonChanged);
-Button bank_h_Button = Button(&mcp2, 13, BANK_H_BUTTON, &mainButtonChanged);
+Button patch_8_Button = Button(&mcp2, 13, PATCH_8_BUTTON, &mainButtonChanged);
+Button bank_h_Button = Button(&mcp2, 12, BANK_H_BUTTON, &mainButtonChanged);
 
 
 Button dco2_PWM_lfo_src_Button = Button(&mcp3, 0, DCO2_PWM_LFO_SOURCE_BUTTON, &mainButtonChanged);
@@ -322,9 +323,9 @@ Button midi_Button = Button(&mcp9, 2, MIDI_BUTTON, &mainButtonChanged);
 Button pedal_Button = Button(&mcp9, 8, PEDAL_BUTTON, &mainButtonChanged);
 Button c1_Button = Button(&mcp9, 9, C1_BUTTON, &mainButtonChanged);
 Button c2_Button = Button(&mcp9, 10, C2_BUTTON, &mainButtonChanged);
-Button seq_start_stop_Button = Button(&mcp9, 12, SEQ_START_STOP_BUTTON, &mainButtonChanged);
+Button seq_record_Button = Button(&mcp9, 12, SEQ_RECORD_BUTTON, &mainButtonChanged);
 Button seq_function_Button = Button(&mcp9, 13, SEQ_FUNCTION_BUTTON, &mainButtonChanged);
-Button seq_record_Button = Button(&mcp9, 14, SEQ_RECORD_BUTTON, &mainButtonChanged);
+Button seq_start_stop_Button = Button(&mcp9, 14, SEQ_START_STOP_BUTTON, &mainButtonChanged);
 
 Button lower_Button = Button(&mcp10, 1, LOWER_BUTTON, &mainButtonChanged);
 Button upper_Button = Button(&mcp10, 0, UPPER_BUTTON, &mainButtonChanged);
@@ -336,68 +337,35 @@ Button param_Button = Button(&mcp10, 10, PARAM_BUTTON, &mainButtonChanged);
 Button value_Button = Button(&mcp10, 11, VALUE_BUTTON, &mainButtonChanged);
 Button name_Button = Button(&mcp10, 12, NAME_BUTTON, &mainButtonChanged);
 
-Button bank_a_Button = Button(&mcp11, 0, BANK_A_BUTTON, &mainButtonChanged);
-Button bank_b_Button = Button(&mcp11, 1, BANK_B_BUTTON, &mainButtonChanged);
-Button bank_c_Button = Button(&mcp11, 2, BANK_C_BUTTON, &mainButtonChanged);
-Button bank_d_Button = Button(&mcp11, 3, BANK_D_BUTTON, &mainButtonChanged);
-Button bank_e_Button = Button(&mcp11, 4, BANK_E_BUTTON, &mainButtonChanged);
-Button bank_f_Button = Button(&mcp11, 5, BANK_F_BUTTON, &mainButtonChanged);
-Button bank_g_Button = Button(&mcp11, 6, BANK_G_BUTTON, &mainButtonChanged);
-Button patch_1_Button = Button(&mcp11, 8, PATCH_1_BUTTON, &mainButtonChanged);
-Button patch_2_Button = Button(&mcp11, 9, PATCH_2_BUTTON, &mainButtonChanged);
-Button patch_3_Button = Button(&mcp11, 10, PATCH_3_BUTTON, &mainButtonChanged);
-Button patch_4_Button = Button(&mcp11, 11, PATCH_4_BUTTON, &mainButtonChanged);
-Button patch_5_Button = Button(&mcp11, 12, PATCH_5_BUTTON, &mainButtonChanged);
-Button patch_6_Button = Button(&mcp11, 13, PATCH_6_BUTTON, &mainButtonChanged);
-Button patch_7_Button = Button(&mcp11, 14, PATCH_7_BUTTON, &mainButtonChanged);
+Button bank_a_Button = Button(&mcp11, 8, BANK_A_BUTTON, &mainButtonChanged);
+Button bank_b_Button = Button(&mcp11, 9, BANK_B_BUTTON, &mainButtonChanged);
+Button bank_c_Button = Button(&mcp11, 10, BANK_C_BUTTON, &mainButtonChanged);
+Button bank_d_Button = Button(&mcp11, 11, BANK_D_BUTTON, &mainButtonChanged);
+Button bank_e_Button = Button(&mcp11, 12, BANK_E_BUTTON, &mainButtonChanged);
+Button bank_f_Button = Button(&mcp11, 13, BANK_F_BUTTON, &mainButtonChanged);
+Button bank_g_Button = Button(&mcp11, 14, BANK_G_BUTTON, &mainButtonChanged);
+Button patch_1_Button = Button(&mcp11, 0, PATCH_1_BUTTON, &mainButtonChanged);
+Button patch_2_Button = Button(&mcp11, 1, PATCH_2_BUTTON, &mainButtonChanged);
+Button patch_3_Button = Button(&mcp11, 2, PATCH_3_BUTTON, &mainButtonChanged);
+Button patch_4_Button = Button(&mcp11, 3, PATCH_4_BUTTON, &mainButtonChanged);
+Button patch_5_Button = Button(&mcp11, 4, PATCH_5_BUTTON, &mainButtonChanged);
+Button patch_6_Button = Button(&mcp11, 5, PATCH_6_BUTTON, &mainButtonChanged);
+Button patch_7_Button = Button(&mcp11, 6, PATCH_7_BUTTON, &mainButtonChanged);
 
 Button after_enable_Button = Button(&mcp12, 5, AFTER_ENABLE_BUTTON, &mainButtonChanged);
 
 Button *mainButtons[] = {
-  &lfo1_sync_Button,
-  &lfo2_sync_Button,
-  &dco1_PWM_env_src_Button,
-  &dco2_PWM_env_src_Button,
-  &dco1_PWM_env_pol_Button,
-  &dco2_PWM_env_pol_Button,
-  &dco1_PWM_dyn_Button,
-  &dco2_PWM_dyn_Button,
-  &dco1_PWM_lfo_src_Button,
-  &dco2_PWM_lfo_src_Button,
-  &dco1_pitch_lfo_src_Button,
-  &dco2_pitch_lfo_src_Button,
-  &dco1_pitch_dyn_Button,
-  &dco2_pitch_dyn_Button,
-  &dco1_pitch_env_pol_Button,
-  &dco2_pitch_env_pol_Button,
-  &dco1_pitch_env_src_Button,
-  &dco1_pitch_env_src_Button,
-  &dco2_pitch_env_src_Button,
-  &dco_mix_env_pol_Button,
-  &dco_mix_env_src_Button,
-  &vcf_env_pol_Button,
-  &dco_mix_dyn_Button,
-  &env5stage_select_Button,
-  &vca_dyn_Button,
-  &vca_env_src_Button,
-  &vcf_env_src_Button,
-  &vcf_dyn_Button,
-  &adsr_select_Button,
-  &lower_Button,
-  &upper_Button,
-  &chorus_Button,
-  &portamento_Button,
-  &octave_down_Button,
-  &octave_up_Button,
-  &bend_enable_Button,
-  &key_single_Button,
-  &assign_poly_Button,
-  &assign_mono_Button,
-  &assign_uni_Button,
-  &key_dual_Button,
-  &key_split_Button,
-  &key_special_Button,
-  &after_enable_Button,
+  &lfo1_sync_Button, &lfo2_sync_Button, &dco1_PWM_env_src_Button, &dco2_PWM_env_src_Button, &dco1_PWM_env_pol_Button, &dco2_PWM_env_pol_Button, &dco1_PWM_dyn_Button, &dco2_PWM_dyn_Button,
+  &dco1_PWM_lfo_src_Button, &dco2_PWM_lfo_src_Button, &dco1_pitch_lfo_src_Button, &dco2_pitch_lfo_src_Button, &dco1_pitch_dyn_Button, &dco2_pitch_dyn_Button,
+  &dco1_pitch_env_pol_Button, &dco2_pitch_env_pol_Button, &dco1_pitch_env_src_Button, &dco1_pitch_env_src_Button, &dco2_pitch_env_src_Button,
+  &dco_mix_env_pol_Button, &dco_mix_env_src_Button, &vcf_env_pol_Button, &dco_mix_dyn_Button, &env5stage_select_Button,
+  &vca_dyn_Button, &vca_env_src_Button, &vcf_env_src_Button, &vcf_dyn_Button, &adsr_select_Button, &lower_Button, &upper_Button, &chorus_Button, &portamento_Button,
+  &octave_down_Button, &octave_up_Button, &bend_enable_Button, &key_single_Button, &assign_poly_Button, &assign_mono_Button, &assign_uni_Button,
+  &key_dual_Button, &key_split_Button, &key_special_Button, &after_enable_Button,
+  &patch_1_Button, &patch_2_Button, &patch_3_Button, &patch_4_Button, &patch_5_Button, &patch_6_Button, &patch_7_Button, &patch_8_Button,
+  &bank_a_Button, &bank_b_Button, &bank_c_Button, &bank_d_Button, &bank_e_Button, &bank_f_Button, &bank_g_Button, &bank_h_Button,
+  &tone_enter_Button, &seq_start_stop_Button, &seq_function_Button, &seq_record_Button,
+  &tone_0_Button, &tone_1_Button, &tone_2_Button, &tone_3_Button, &tone_4_Button, &tone_5_Button, &tone_6_Button, &tone_7_Button, &tone_8_Button, &tone_9_Button
 };
 
 Button *allButtons[] = {
@@ -407,7 +375,11 @@ Button *allButtons[] = {
   &dco_mix_env_pol_Button, &dco_mix_env_src_Button, &vcf_env_pol_Button, &dco_mix_dyn_Button, &env5stage_select_Button,
   &vca_dyn_Button, &vca_env_src_Button, &vcf_env_src_Button, &vcf_dyn_Button, &adsr_select_Button, &lower_Button, &upper_Button, &chorus_Button, &portamento_Button,
   &octave_down_Button, &octave_up_Button, &bend_enable_Button, &key_single_Button, &assign_poly_Button, &assign_mono_Button, &assign_uni_Button,
-  &key_dual_Button, &key_split_Button, &key_special_Button, &after_enable_Button
+  &key_dual_Button, &key_split_Button, &key_special_Button, &after_enable_Button,
+  &patch_1_Button, &patch_2_Button, &patch_3_Button, &patch_4_Button, &patch_5_Button, &patch_6_Button, &patch_7_Button, &patch_8_Button,
+  &bank_a_Button, &bank_b_Button, &bank_c_Button, &bank_d_Button, &bank_e_Button, &bank_f_Button, &bank_g_Button, &bank_h_Button,
+  &tone_enter_Button, &seq_start_stop_Button, &seq_function_Button, &seq_record_Button,
+  &tone_0_Button, &tone_1_Button, &tone_2_Button, &tone_3_Button, &tone_4_Button, &tone_5_Button, &tone_6_Button, &tone_7_Button, &tone_8_Button, &tone_9_Button
 };
 
 // an array of vectors to hold pointers to the encoders on each MCP
@@ -604,8 +576,8 @@ void setupHardware() {
   pinMode(MUX3_S, INPUT_DISABLE);
   pinMode(MUX4_S, INPUT_DISABLE);
 
-  pinMode(VOICE_RESET, OUTPUT);
-  digitalWrite(VOICE_RESET, HIGH);
+  pinMode(VOICE1_RESET, INPUT_PULLUP);
+  pinMode(VOICE2_RESET, INPUT_PULLUP);
 
   //Switches
   pinMode(RECALL_SW, INPUT_PULLUP);  //On encoder

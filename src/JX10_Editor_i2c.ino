@@ -11,22 +11,26 @@
 #include "Button.h"
 #include "HWControls.h"
 #include "EepromMgr.h"
+#include "Arp.h"
+#include "ToneLoader.h"
 #include "DisplayValues.h"
 #include "imxrt.h"
 #include <map>
 
 std::map<int, int> voiceAssignment;
 
-#define PARAMETER 0      //The main page for displaying the current patch and control (parameter) changes
-#define RECALL 1         //Patches list
-#define SAVE 2           //Save patch page
-#define REINITIALISE 3   // Reinitialise message
-#define PATCH 4          // Show current patch bypassing PARAMETER
-#define PATCHNAMING 5    // Patch naming page
-#define DELETE 6         //Delete patch page
-#define DELETEMSG 7      //Delete patch message page
+#define PARAMETER 0     //The main page for displaying the current patch and control (parameter) changes
+#define RECALL 1        //Patches list
+#define SAVE 2          //Save patch page
+#define REINITIALISE 3  // Reinitialise message
+#define PATCH 4         // Show current patch bypassing PARAMETER
+#define PATCHNAMING 5   // Patch naming page
+#define BANK_SELECT 6
+#define BANK_SELECT_SAVE 7
 #define SETTINGS 8       //Settings page
 #define SETTINGSVALUE 9  //Settings page
+#define ARP_EDIT 10
+#define ARP_EDITVALUE 11
 
 unsigned int state = PARAMETER;
 
@@ -55,6 +59,15 @@ void initButtons();
 void updateUpperToneData();
 void updateLowerToneData();
 
+// ISRs must be short - just set flags
+void VOICE1_RESET_ISR() {
+  voice1ResetTriggered = true;
+}
+
+void VOICE2_RESET_ISR() {
+  voice2ResetTriggered = true;
+}
+
 void setup() {
   Serial.begin(115200);
   Serial3.begin(31250, SERIAL_8N1);
@@ -67,24 +80,18 @@ void setup() {
   setupHardware();
   primeMuxBaseline();
 
+  // Attach interrupts - trigger on FALLING edge (HIGH -> LOW)
+  attachInterrupt(digitalPinToInterrupt(VOICE1_RESET), VOICE1_RESET_ISR, FALLING);
+  attachInterrupt(digitalPinToInterrupt(VOICE2_RESET), VOICE2_RESET_ISR, FALLING);
+
   delay(100);
 
-  cardStatus = SD.begin(BUILTIN_SDCARD);
-  if (cardStatus) {
-    Serial.println("SD card is connected");
-    //Get patch numbers and names from SD card
-    loadPatches();
-    if (patches.size() == 0) {
-      //save an initialised patch to SD card
-      savePatch("1", INITPATCH);
-      loadPatches();
-    }
-  } else {
-    Serial.println("SD card is not connected or unusable");
+  // ---------------------------------------------------------------------------
+  // SD startup - replaces old cardStatus block in setup()
+  // ---------------------------------------------------------------------------
+  initSDCard();
 
-    //reinitialiseToPanel();
-    showPatchPage("No SD", "conn'd / usable");
-  }
+  delay(100);
 
   // Set PWM frequency to 8 MHz
   analogWriteFrequency(VOICE_CLOCK, 8000000);
@@ -152,6 +159,12 @@ void setup() {
   usbMIDI.setHandleControlChange(myControlConvert);
   usbMIDI.setHandleProgramChange(myProgramChange);
   usbMIDI.setHandleAfterTouchChannel(myAfterTouch);
+  usbMIDI.setHandleClock(arpOnMidiClockTick);
+  usbMIDI.setHandleStart(arpOnMidiStart);
+  usbMIDI.setHandleStop(arpOnMidiStop);
+  usbMIDI.setHandleContinue(arpOnMidiContinue);
+  usbMIDI.setHandleSystemExclusive(handleSysexByte);
+
 
   MIDI.begin();
   MIDI.setHandleNoteOn(myNoteOn);
@@ -160,6 +173,11 @@ void setup() {
   MIDI.setHandleControlChange(myControlConvert);
   MIDI.setHandleProgramChange(myProgramChange);
   MIDI.setHandleAfterTouchChannel(myAfterTouch);
+  MIDI.setHandleClock(arpOnMidiClockTick);
+  MIDI.setHandleStart(arpOnMidiStart);
+  MIDI.setHandleStop(arpOnMidiStop);
+  MIDI.setHandleContinue(arpOnMidiContinue);
+  MIDI.setHandleSystemExclusive(handleSysexByte);
   MIDI.turnThruOn(midi::Thru::Mode::Off);
   Serial.println("MIDI In DIN Listening");
 
@@ -169,30 +187,36 @@ void setup() {
   //Read MIDI Out Channel from EEPROM
   midiOutCh = getMIDIOutCh();
 
-  recallPatch(patchNo);
+  arpInit();
+
+  loadInitialPatch();
   bootInitInProgress = false;
   suppressParamAnnounce = false;
   startParameterDisplay();
 }
 
+void initSDCard() {
+  cardStatus = SD.begin(BUILTIN_SDCARD);
+  if (cardStatus) {
+    Serial.println(F("SD card is connected"));
+    ensureAllBanksInitialized();  // create folders/files if missing
+  } else {
+    Serial.println(F("SD card is not connected or unusable"));
+    showPatchPage("No SD", "conn'd / usable");
+  }
+}
+
 void sendInitSequence() {
-  mcp10.digitalWrite(LOWER_SELECT, HIGH);
-  digitalWrite(VOICE_RESET, LOW);
-  delay(10);
-  digitalWrite(VOICE_RESET, HIGH);
+  mcp9.digitalWrite(PATCH_LED_RED, HIGH);
+  mcp9.digitalWrite(TONE_LED_RED, HIGH);
+
   delay(1);
   // 8x F1
   for (int i = 0; i < 16; i++) {
     Serial3.write((uint8_t)0xF1);
     delay(100);
   }
-  delay(100);
 
-  mcp10.digitalWrite(UPPER_SELECT, HIGH);
-  digitalWrite(VOICE_RESET, LOW);
-  delay(10);
-  digitalWrite(VOICE_RESET, HIGH);
-  delay(1);
   // 8x F9
   for (int i = 0; i < 16; i++) {
     Serial3.write((uint8_t)0xF9);
@@ -200,10 +224,196 @@ void sendInitSequence() {
   }
 
   Serial3.flush();  // wait until bytes have left the TX buffer
-  delay(100);
-  mcp10.digitalWrite(LOWER_SELECT, LOW);
-  mcp10.digitalWrite(UPPER_SELECT, LOW);
+
+  // Invalidate running status since we wrote a prefix directly
+  board = 0x00;
+  EXTRA_OFFSET = 0xFF;
 }
+
+// ---------------------------------------------------------------------------
+// SD Initialisation - JX-10 style
+// Creates /bank0 .. /bank7 folders and populates files 11-88 if missing
+// ---------------------------------------------------------------------------
+
+// Ensure a single bank folder exists
+void ensureJX10BankFolder(uint8_t bank) {
+  String folderPath = "/bank" + String(bank);
+  if (!SD.exists(folderPath.c_str())) {
+    SD.mkdir(folderPath.c_str());
+    Serial.print(F("Created folder: "));
+    Serial.println(folderPath);
+  }
+}
+
+// Ensure all 8 bank folders exist
+void ensureJX10BankFolders() {
+  for (uint8_t bank = 0; bank < NUM_BANKS; bank++) {
+    ensureJX10BankFolder(bank);
+  }
+}
+
+// Populate a single bank with default patches for any missing slots
+void ensureJX10BankInitialized(uint8_t bank) {
+  ensureJX10BankFolder(bank);
+  for (uint8_t group = 1; group <= NUM_GROUPS; group++) {  // 1-8 (A-H)
+    for (uint8_t slot = 1; slot <= NUM_SLOTS; slot++) {    // 1-8
+      uint8_t fileNum = group * 10 + slot;                 // e.g. 11, 12 .. 88
+      String path = "/bank" + String(bank) + "/" + String(fileNum);
+      if (!SD.exists(path.c_str())) {
+        // Build a default patch name e.g. "A1 Init" for group A slot 1
+        String defaultName = String((char)('A' + group - 1)) + String(slot) + " Init";
+        // INITPATCH is your existing default patch data string constant
+        // Replace the first field (patch name) with our default name
+        String initData = defaultName + "," + INITPATCH;
+        savePatch(path.c_str(), initData);
+        Serial.print(F("Created patch: "));
+        Serial.println(path);
+      }
+    }
+  }
+}
+
+// Populate all banks - only fills missing files, safe to call on every boot
+void ensureAllBanksInitialized() {
+  for (uint8_t bank = 0; bank < NUM_BANKS; bank++) {
+    ensureJX10BankInitialized(bank);
+    ensureToneFiles(bank);
+  }
+}
+
+//
+// --------------------------- Handle sysex dumps ----------------------- //
+//
+
+void handleSysexByte(byte *data, unsigned length) {
+  // Only set up for the first call in a SysEx message
+  if (!receivingSysEx) {
+    receivingSysEx = true;
+    showCurrentParameterPage("SysEx", "Dump in progress");
+    startParameterDisplay();  // or whatever minimal text overlay you already use
+  }
+
+  // Store incoming bytes in sysexData array across blocks
+  for (unsigned i = 0; i < length; i++) {
+    ramArray[currentBlock][byteIndex] = data[i];
+    byteIndex++;
+
+    // Move to the next block if the current block is full
+    if (byteIndex >= 156) {
+      byteIndex = 0;
+      currentBlock++;
+    }
+  }
+
+  // Check if we’ve received all 64 blocks
+  if (currentBlock >= 64) {
+    sysexComplete = true;
+    receivingSysEx = false;  // Clear flag as SysEx message is complete
+    Serial.println("Sysex Dump Complete");
+    currentBlock = 0;
+  }
+}
+
+static inline uint8_t slotToRC(uint8_t slot) {
+  // slot: 0..63
+  uint8_t r = (slot / 8) + 1;    // 1..8
+  uint8_t c = (slot % 8) + 1;    // 1..8
+  return (uint8_t)(r * 10 + c);  // 11..88
+}
+
+static inline uint8_t unNibble(uint8_t hi, uint8_t lo) {
+  return (uint8_t)((hi << 4) | (lo & 0x0F));
+}
+
+bool decodeOneBlock(uint8_t blockIdx, uint8_t &rcOut, char *nameOut, uint8_t *paramsOut) {
+  uint8_t *m = ramArray[blockIdx];
+
+  if (m[0] != 0xF0 || m[155] != 0xF7) return false;
+  if (m[1] != 0x00 || m[2] != 0x7D || m[3] != 0x01) return false;
+  if (m[4] != DEVICE_ID_EXPECTED || m[5] != CMD_PATCH_DUMP || m[6] != VERSION_EXPECTED) return false;
+
+  uint8_t slot = m[7];
+  if (slot > 63) return false;
+
+  rcOut = slotToRC(slot);
+
+  // name: nibbles start at 8
+  for (uint8_t i = 0; i < 13; i++) {
+    nameOut[i] = (char)unNibble(m[8 + i * 2], m[8 + i * 2 + 1]);
+  }
+  nameOut[13] = '\0';
+
+  // params: nibbles start at 34
+  for (uint16_t i = 0; i < 60; i++) {
+    paramsOut[i] = unNibble(m[34 + i * 2], m[34 + i * 2 + 1]);
+  }
+
+  return true;
+}
+
+String buildPatchDataStringFromParams(const char *name, const uint8_t *p60) {
+
+  // // Start with a known-good init patch so the format is always valid
+  // String s = defaultPatchDataString();
+
+  // // Tokenize by comma
+  // const int MAXTOK = 256;
+  // String tok[MAXTOK];
+  // int nt = 0;
+
+  // int start = 0;
+  // while (nt < MAXTOK) {
+  //   int comma = s.indexOf(',', start);
+  //   if (comma < 0) {
+  //     tok[nt++] = s.substring(start);
+  //     break;
+  //   }
+  //   tok[nt++] = s.substring(start, comma);
+  //   start = comma + 1;
+  // }
+
+  // // Token 0 = patch name
+  // tok[0] = String(name);
+
+  // // Tokens 1..60 = your parameters
+  // for (int i = 0; i < PARAM_COUNT; i++) {
+  //   int idx = 1 + i;
+  //   if (idx >= nt) break;      // safety if init format shorter
+  //   tok[idx] = String((int)p60[i]);
+  // }
+
+  // Rebuild string
+  String out;
+  // out.reserve(s.length());
+
+  // for (int i = 0; i < nt; i++) {
+  //   if (i) out += ",";
+  //   out += tok[i];
+  // }
+
+  return out;
+}
+
+void decodeAndStoreDump() {
+
+  showCurrentParameterPage("SysEx", "Dump Complete");
+  startParameterDisplay();  // or whatever minimal text overlay you already use
+
+  for (uint8_t b = 0; b < 64; b++) {
+    uint8_t rc;
+    char name[14];
+    uint8_t params[60];
+
+    if (!decodeOneBlock(b, rc, name, params)) continue;
+
+    String patchData = buildPatchDataStringFromParams(name, params);
+    savePatch(String(rc).c_str(), patchData);
+  }
+  loadInitialPatch();
+  updateScreen();
+}
+
+// ----------------------END Of SYSEX ------------------------ //
 
 inline uint8_t clampTune(int16_t val) {
   if (val < TUNE_MIN) return TUNE_MIN;
@@ -268,11 +478,19 @@ void startParameterDisplay() {
 }
 
 void myProgramChange(byte channel, byte program) {
+  if (program > 63) return;  // only 64 patches in a bank
+
+  // Convert 0-63 to group (0-7) and slot (1-8)
+  int group = program / 8;       // 0-7  (A-H)
+  int slot = (program % 8) + 1;  // 1-8
+
   state = PATCH;
-  patchNo = program + 1;
-  recallPatch(patchNo);
-  Serial.print("MIDI Pgm Change:");
-  Serial.println(patchNo);
+  recallPatch(currentBank, group, slot);
+  Serial.print(F("MIDI Pgm Change: "));
+  Serial.print(program);
+  Serial.print(F(" -> "));
+  Serial.print((char)('A' + group));
+  Serial.println(slot);
   state = PARAMETER;
 }
 
@@ -282,18 +500,16 @@ void myAfterTouch(byte channel, byte value) {
   switch (after_enable) {
 
     case 1:
-      //send3(kBoardUpperPrefix, 0xB3, 0x00);
-      send3(kBoardLowerPrefix, 0xB3, value);
+      sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0xB3, value);
       break;
 
     case 2:
-      send3(kBoardUpperPrefix, 0xB3, value);
-      //send3(kBoardLowerPrefix, 0xB3, 0x00);
+      sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0xB3, value);
       break;
 
     case 3:
-      send3(kBoardLowerPrefix, 0xB3, value);
-      send3(kBoardUpperPrefix, 0xB3, value);
+      sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0xB3, value);
+      sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0xB3, value);
       break;
 
     case 0:
@@ -317,6 +533,33 @@ static inline uint8_t map_u8_round(uint16_t x, uint16_t in_min, uint16_t in_max,
   return clamp_u8(y, out_min, out_max);
 }
 
+void sendVoiceParam(uint8_t prefix, uint8_t offset, uint8_t param, uint8_t value) {
+
+  // In whole mode (keyMode 1 or 2) both boards respond to F4 broadcast
+  if (keyMode == 1 || keyMode == 2) {
+    prefix = kBoardBothPrefix;
+  }
+
+  // --- Board prefix (running status) ---
+  if (prefix != board) {
+    Serial3.write(prefix);
+    board = prefix;
+  }
+
+  // --- Offset (running status) ---
+  if (offset != NO_OFFSET) {
+    if (offset != EXTRA_OFFSET) {
+      Serial3.write(0xFD);
+      Serial3.write(offset);
+      EXTRA_OFFSET = offset;
+    }
+  }
+
+  // --- Parameter + value always sent ---
+  Serial3.write(param);
+  Serial3.write(value);
+}
+
 static inline void send5(uint8_t a, uint8_t b, uint8_t c, uint8_t d, uint8_t e) {
   Serial3.write(a);
   Serial3.write(b);
@@ -324,19 +567,9 @@ static inline void send5(uint8_t a, uint8_t b, uint8_t c, uint8_t d, uint8_t e) 
   Serial3.write(d);
   Serial3.write((uint8_t)(e & 0x7F));
   Serial3.flush();
-}
-
-static inline void send3(uint8_t a, uint8_t b, uint8_t c) {
-  Serial3.write(a);
-  Serial3.write(b);
-  Serial3.write((uint8_t)(c & 0x7F));
-  Serial3.flush();
-}
-
-static inline void send2(uint8_t a, uint8_t b) {
-  Serial3.write(a);
-  Serial3.write((uint8_t)(b & 0x7F));
-  Serial3.flush();
+  // Invalidate running status since we wrote a prefix directly
+  board = 0x00;
+  EXTRA_OFFSET = 0xFF;
 }
 
 // Convert signed pitch bend (-8192 to +8191) to unsigned 14-bit (0 to 16383)
@@ -387,13 +620,13 @@ void myPitchBend(byte channel, int pitchValue) {
 
       // Send sign change message when crossing zero
       if (signVal != lastSign) {
-        send3(kPrefixBroadcast, kPitchSignParam, signVal);
+        sendVoiceParam(kPrefixBroadcast, NO_OFFSET, kPitchSignParam, signVal);
         lastSign = signVal;
       }
 
       // Send magnitude updates
       if (mag != lastMag) {
-        send3(kBoardLowerPrefix, kPitchValueParam, mag);
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, kPitchValueParam, mag);
         lastMag = mag;
       }
 
@@ -402,13 +635,13 @@ void myPitchBend(byte channel, int pitchValue) {
     case 2:
       // Send sign change message when crossing zero
       if (signVal != lastSign) {
-        send3(kPrefixBroadcast, kPitchSignParam, signVal);
+        sendVoiceParam(kPrefixBroadcast, NO_OFFSET, kPitchSignParam, signVal);
         lastSign = signVal;
       }
 
       // Send magnitude updates
       if (mag != lastMag) {
-        send3(kBoardUpperPrefix, kPitchValueParam, mag);
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, kPitchValueParam, mag);
         lastMag = mag;
       }
       break;
@@ -416,14 +649,14 @@ void myPitchBend(byte channel, int pitchValue) {
     case 3:
       // Send sign change message when crossing zero
       if (signVal != lastSign) {
-        send3(kPrefixBroadcast, kPitchSignParam, signVal);
+        sendVoiceParam(kPrefixBroadcast, NO_OFFSET, kPitchSignParam, signVal);
         lastSign = signVal;
       }
 
       // Send magnitude updates
       if (mag != lastMag) {
-        send3(kBoardLowerPrefix, kPitchValueParam, mag);
-        send3(kBoardUpperPrefix, kPitchValueParam, mag);
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, kPitchValueParam, mag);
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, kPitchValueParam, mag);
         lastMag = mag;
       }
       break;
@@ -439,8 +672,9 @@ void sendModToBoards(uint8_t wheelValue) {
   uint8_t lowerMod = (uint8_t)((wheelValue * lowerData[P_mod_lfo]) / 127);
   uint8_t upperMod = (uint8_t)((wheelValue * upperData[P_mod_lfo]) / 127);
 
-  send3(0xF1, 0xBC, lowerMod);
-  send3(0xF9, 0xBC, upperMod);
+  sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0xBC, upperMod);
+  sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0xBC, lowerMod);
+  ;
 }
 
 void myControlConvert(byte channel, byte control, byte value) {
@@ -842,7 +1076,7 @@ void myControlChange(byte channel, byte control, int value) {
         lowerData[P_dco2_wave] = map(value, 0, 127, 0, 3);
         if (keyMode == 2) upperData[P_dco2_wave] = lowerData[P_dco2_wave];
       }
-      dco1_wave_str = upperSW ? upperData[P_dco2_wave] : lowerData[P_dco2_wave];
+      dco2_wave_str = upperSW ? upperData[P_dco2_wave] : lowerData[P_dco2_wave];
       updatedco2_wave(1);
       break;
 
@@ -1422,6 +1656,22 @@ void myControlChange(byte channel, byte control, int value) {
       updaterelease(1);
       break;
 
+    case CCadsr_mode:
+      if (upperSW) {
+        upperData[P_adsr_mode] = map(value, 0, 127, 0, 7);
+        if (keyMode == 1) {
+          lowerData[P_adsr_mode] = upperData[P_adsr_mode];
+        }
+      } else {
+        lowerData[P_adsr_mode] = map(value, 0, 127, 0, 7);
+        if (keyMode == 2) {
+          upperData[P_adsr_mode] = lowerData[P_adsr_mode];
+        }
+      }
+      adsr_mode_str = upperSW ? upperData[P_adsr_mode] : lowerData[P_adsr_mode];
+      updateadsr_mode(1);
+      break;
+
     case CC4attack:
       if (upperSW) {
         upperData[P_env4_attack] = value;
@@ -1484,22 +1734,6 @@ void myControlChange(byte channel, byte control, int value) {
       }
       env4_release_str = value;
       updateenv4_release(1);
-      break;
-
-    case CCadsr_mode:
-      if (upperSW) {
-        upperData[P_adsr_mode] = map(value, 0, 127, 0, 7);
-        if (keyMode == 1) {
-          lowerData[P_adsr_mode] = upperData[P_adsr_mode];
-        }
-      } else {
-        lowerData[P_adsr_mode] = map(value, 0, 127, 0, 7);
-        if (keyMode == 2) {
-          upperData[P_adsr_mode] = lowerData[P_adsr_mode];
-        }
-      }
-      adsr_mode_str = upperSW ? upperData[P_adsr_mode] : lowerData[P_adsr_mode];
-      updateadsr_mode(1);
       break;
 
     case CC4adsr_mode:
@@ -1909,81 +2143,7 @@ void myControlChange(byte channel, byte control, int value) {
   }
 }
 
-void sendOffset(uint8_t offset, uint8_t parameter) {
-  if (EXTRA_OFFSET != offset || LAST_PARAM != parameter || keyMode != oldkeyMode || upperSW != oldupperSW) {
-    sendSerialOffset(0xFD, offset);
-    EXTRA_OFFSET = offset;
-    LAST_PARAM = parameter;
-    oldkeyMode = keyMode;
-    oldupperSW = upperSW;
-  }
-}
-
-void sendSerialOffset(uint8_t extra, uint8_t offset) {
-  if (upperSW) {
-    board = 0xF9;
-  } else {
-    board = 0xF1;
-  }
-
-  if (keyMode == 1 || keyMode == 2) {
-    board = 0xF4;
-  }
-
-  Serial3.write(board);
-  Serial3.write(extra);
-  Serial3.write(offset);
-  Serial3.flush();
-}
-
-void sendExtraOffset(uint8_t offset, uint8_t parameter) {
-  if (EXTRA_OFFSET != offset || LAST_PARAM != parameter || keyMode != oldkeyMode || upperSW != oldupperSW) {
-    sendExtraOffsetSerial(0xFD, offset);
-    EXTRA_OFFSET = offset;
-    LAST_PARAM = parameter;
-    oldkeyMode = keyMode;
-    oldupperSW = upperSW;
-  }
-}
-
-void sendExtraOffsetSerial(uint8_t extra, uint8_t offset) {
-  Serial3.write(extra);
-  Serial3.write(offset);
-  Serial3.flush();
-}
-
-void sendNoOffset(uint8_t parameter) {
-  if (LAST_PARAM != parameter || keyMode != oldkeyMode || upperSW != oldupperSW) {
-    sendSerialBoard(parameter);
-    LAST_PARAM = parameter;
-    oldkeyMode = keyMode;
-    oldupperSW = upperSW;
-  }
-}
-
-void sendSerialBoard(uint8_t parameter) {
-  if (upperSW) {
-    board = 0xF9;
-  } else {
-    board = 0xF1;
-  }
-
-  if (keyMode == 1 || keyMode == 2 || parameter == 0xB0) {
-    board = 0xF4;
-  }
-
-  Serial3.write(board);
-  Serial3.flush();
-}
-
-void sendParamValue(uint8_t param, uint8_t value) {
-  Serial3.write(param);
-  Serial3.write((uint8_t)(value & 0x7F));  // keep 0..127
-  Serial3.flush();
-}
-
 FLASHMEM void updatelfo1_wave(bool announce) {
-  sendOffset(0x0C, 0xA1);
 
   const uint8_t newStep = upperSW ? upperData[P_lfo1_wave] : lowerData[P_lfo1_wave];
 
@@ -2003,7 +2163,11 @@ FLASHMEM void updatelfo1_wave(bool announce) {
   }
 
   if (changed || recallPatchFlag) {
-    sendParamValue(0xA1, lfowaveStepToValue(newStep));
+    if (upperSW) {
+      sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0xA1, lfowaveStepToValue(newStep));
+    } else {
+      sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0xA1, lfowaveStepToValue(newStep));
+    }
     lastStep = newStep;
   }
 }
@@ -2045,13 +2209,12 @@ FLASHMEM void updatebend_range(bool announce) {
   }
 
   if (changed || recallPatchFlag) {
-    sendParamValue(0xB7, bendStepToValue(newStep));
+    sendVoiceParam(kBoardBothPrefix, NO_OFFSET, 0xB7, bendStepToValue(newStep));
     lastStep = newStep;
   }
 }
 
 FLASHMEM void updatelfo1_rate(bool announce) {
-  sendOffset(0x0C, 0xA3);
   lastStepParam = 0xFF;
   lfo1_rate_str = map(lfo1_rate_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2060,14 +2223,13 @@ FLASHMEM void updatelfo1_rate(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xA3, (uint8_t)upperData[P_lfo1_rate]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0xA3, (uint8_t)upperData[P_lfo1_rate]);
   } else {
-    sendParamValue(0xA3, (uint8_t)lowerData[P_lfo1_rate]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0xA3, (uint8_t)lowerData[P_lfo1_rate]);
   }
 }
 
 FLASHMEM void updatelfo1_delay(bool announce) {
-  sendOffset(0x0C, 0xA2);
   lastStepParam = 0xFF;
   lfo1_delay_str = map(lfo1_delay_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2076,14 +2238,13 @@ FLASHMEM void updatelfo1_delay(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xA2, (uint8_t)upperData[P_lfo1_delay]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0xA2, (uint8_t)upperData[P_lfo1_delay]);
   } else {
-    sendParamValue(0xA2, (uint8_t)lowerData[P_lfo1_delay]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0xA2, (uint8_t)lowerData[P_lfo1_delay]);
   }
 }
 
 FLASHMEM void updatelfo1_lfo2(bool announce) {
-  sendOffset(0x0C, 0xA4);
   lastStepParam = 0xFF;
   lfo1_lfo2_str = map(lfo1_lfo2_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2092,14 +2253,13 @@ FLASHMEM void updatelfo1_lfo2(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xA4, (uint8_t)upperData[P_lfo1_lfo2]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0xA4, (uint8_t)upperData[P_lfo1_lfo2]);
   } else {
-    sendParamValue(0xA4, (uint8_t)lowerData[P_lfo1_lfo2]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0xA4, (uint8_t)lowerData[P_lfo1_lfo2]);
   }
 }
 
 FLASHMEM void updatedco1_PW(bool announce) {
-  sendOffset(0x0C, 0x8A);
   lastStepParam = 0xFF;
   dco1_PW_str = map(dco1_PW_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2108,14 +2268,13 @@ FLASHMEM void updatedco1_PW(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0x8A, (uint8_t)upperData[P_dco1_PW]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x8A, (uint8_t)upperData[P_dco1_PW]);
   } else {
-    sendParamValue(0x8A, (uint8_t)lowerData[P_dco1_PW]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x8A, (uint8_t)lowerData[P_dco1_PW]);
   }
 }
 
 FLASHMEM void updatedco1_PWM_env(bool announce) {
-  sendOffset(0x0C, 0x8B);
   lastStepParam = 0xFF;
   dco1_PWM_env_str = map(dco1_PWM_env_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2124,14 +2283,13 @@ FLASHMEM void updatedco1_PWM_env(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0x8B, (uint8_t)upperData[P_dco1_PWM_env]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x8B, (uint8_t)upperData[P_dco1_PWM_env]);
   } else {
-    sendParamValue(0x8B, (uint8_t)lowerData[P_dco1_PWM_env]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x8B, (uint8_t)lowerData[P_dco1_PWM_env]);
   }
 }
 
 FLASHMEM void updatedco1_PWM_lfo(bool announce) {
-  sendOffset(0x0C, 0x8C);
   lastStepParam = 0xFF;
   dco1_PWM_lfo_str = map(dco1_PWM_lfo_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2140,14 +2298,13 @@ FLASHMEM void updatedco1_PWM_lfo(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0x8C, (uint8_t)upperData[P_dco1_PWM_lfo]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x8C, (uint8_t)upperData[P_dco1_PWM_lfo]);
   } else {
-    sendParamValue(0x8C, (uint8_t)lowerData[P_dco1_PWM_lfo]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x8C, (uint8_t)lowerData[P_dco1_PWM_lfo]);
   }
 }
 
 FLASHMEM void updatedco1_pitch_env(bool announce) {
-  sendOffset(0x0C, 0x85);
   lastStepParam = 0xFF;
   dco1_pitch_env_str = map(dco1_pitch_env_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2156,14 +2313,13 @@ FLASHMEM void updatedco1_pitch_env(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0x85, (uint8_t)upperData[P_dco1_pitch_env]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x85, (uint8_t)upperData[P_dco1_pitch_env]);
   } else {
-    sendParamValue(0x85, (uint8_t)lowerData[P_dco1_pitch_env]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x85, (uint8_t)lowerData[P_dco1_pitch_env]);
   }
 }
 
 FLASHMEM void updatedco1_pitch_lfo(bool announce) {
-  sendOffset(0x0C, 0x83);
   lastStepParam = 0xFF;
   dco1_pitch_lfo_str = map(dco1_pitch_lfo_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2172,14 +2328,13 @@ FLASHMEM void updatedco1_pitch_lfo(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0x83, (uint8_t)upperData[P_dco1_pitch_lfo]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x83, (uint8_t)upperData[P_dco1_pitch_lfo]);
   } else {
-    sendParamValue(0x83, (uint8_t)lowerData[P_dco1_pitch_lfo]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x83, (uint8_t)lowerData[P_dco1_pitch_lfo]);
   }
 }
 
 FLASHMEM void updatedco1_wave(bool announce) {
-  sendOffset(0x0C, 0x81);
   const uint8_t newStep = upperSW ? upperData[P_dco1_wave] : lowerData[P_dco1_wave];
 
   static uint8_t lastStep = 0xFF;
@@ -2198,13 +2353,16 @@ FLASHMEM void updatedco1_wave(bool announce) {
   }
 
   if (changed || recallPatchFlag) {
-    sendParamValue(0x81, dco1waveStepToValue(newStep));
+    if (upperSW) {
+      sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x81, dco1waveStepToValue(newStep));
+    } else {
+      sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x81, dco1waveStepToValue(newStep));
+    }
     lastStep = newStep;
   }
 }
 
 FLASHMEM void updatedco1_range(bool announce) {
-  sendOffset(0x0C, 0x80);
   const uint8_t newStep = upperSW ? upperData[P_dco1_range] : lowerData[P_dco1_range];
 
   static uint8_t lastStep = 0xFF;
@@ -2223,13 +2381,16 @@ FLASHMEM void updatedco1_range(bool announce) {
   }
 
   if (changed || recallPatchFlag) {
-    sendParamValue(0x80, dco1rangeStepToValue(newStep));
+    if (upperSW) {
+      sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x80, dco1rangeStepToValue(newStep));
+    } else {
+      sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x80, dco1rangeStepToValue(newStep));
+    }
     lastStep = newStep;
   }
 }
 
 FLASHMEM void updatedco1_tune(bool announce) {
-  sendOffset(0x0C, 0x82);
   lastStepParam = 0xFF;
   dco1_tune_str = map(dco1_tune_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2238,14 +2399,13 @@ FLASHMEM void updatedco1_tune(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0x82, (uint8_t)upperData[P_dco1_tune]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x82, (uint8_t)upperData[P_dco1_tune]);
   } else {
-    sendParamValue(0x82, (uint8_t)lowerData[P_dco1_tune]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x82, (uint8_t)lowerData[P_dco1_tune]);
   }
 }
 
 FLASHMEM void updatedco1_xmod(bool announce) {
-  sendOffset(0x0C, 0x88);
   const uint8_t newStep = upperSW ? upperData[P_dco1_mode] : lowerData[P_dco1_mode];
 
   static uint8_t lastStep = 0xFF;
@@ -2264,13 +2424,16 @@ FLASHMEM void updatedco1_xmod(bool announce) {
   }
 
   if (changed || recallPatchFlag) {
-    sendParamValue(0x88, dco1xmodStepToValue(newStep));
+    if (upperSW) {
+      sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x88, dco1xmodStepToValue(newStep));
+    } else {
+      sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x88, dco1xmodStepToValue(newStep));
+    }
     lastStep = newStep;
   }
 }
 
 FLASHMEM void updatelfo2_wave(bool announce) {
-  sendOffset(0x0D, 0xA1);
   const uint8_t newStep = upperSW ? upperData[P_lfo2_wave] : lowerData[P_lfo2_wave];
 
   static uint8_t lastStep = 0xFF;
@@ -2289,13 +2452,16 @@ FLASHMEM void updatelfo2_wave(bool announce) {
   }
 
   if (changed || recallPatchFlag) {
-    sendParamValue(0xA1, lfowaveStepToValue(newStep));
+    if (upperSW) {
+      sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0xA1, lfowaveStepToValue(newStep));
+    } else {
+      sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0xA1, lfowaveStepToValue(newStep));
+    }
     lastStep = newStep;
   }
 }
 
 FLASHMEM void updatelfo2_rate(bool announce) {
-  sendOffset(0x0D, 0xA3);
   lastStepParam = 0xFF;
   lfo2_rate_str = map(lfo2_rate_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2304,14 +2470,13 @@ FLASHMEM void updatelfo2_rate(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xA3, (uint8_t)upperData[P_lfo2_rate]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0xA3, (uint8_t)upperData[P_lfo2_rate]);
   } else {
-    sendParamValue(0xA3, (uint8_t)lowerData[P_lfo2_rate]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0xA3, (uint8_t)lowerData[P_lfo2_rate]);
   }
 }
 
 FLASHMEM void updatelfo2_delay(bool announce) {
-  sendOffset(0x0D, 0xA2);
   lastStepParam = 0xFF;
   lfo2_delay_str = map(lfo2_delay_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2320,14 +2485,13 @@ FLASHMEM void updatelfo2_delay(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xA2, (uint8_t)upperData[P_lfo2_delay]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0xA2, (uint8_t)upperData[P_lfo2_delay]);
   } else {
-    sendParamValue(0xA2, (uint8_t)lowerData[P_lfo2_delay]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0xA2, (uint8_t)lowerData[P_lfo2_delay]);
   }
 }
 
 FLASHMEM void updatelfo2_lfo1(bool announce) {
-  sendOffset(0x0D, 0xA4);
   lastStepParam = 0xFF;
   lfo2_lfo1_str = map(lfo2_lfo1_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2336,14 +2500,13 @@ FLASHMEM void updatelfo2_lfo1(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xA4, (uint8_t)upperData[P_lfo2_lfo1]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0xA4, (uint8_t)upperData[P_lfo2_lfo1]);
   } else {
-    sendParamValue(0xA4, (uint8_t)lowerData[P_lfo2_lfo1]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0xA4, (uint8_t)lowerData[P_lfo2_lfo1]);
   }
 }
 
 FLASHMEM void updatedco2_PW(bool announce) {
-  sendOffset(0x0D, 0x8A);
   lastStepParam = 0xFF;
   dco2_PW_str = map(dco2_PW_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2352,14 +2515,13 @@ FLASHMEM void updatedco2_PW(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0x8A, (uint8_t)upperData[P_dco2_PW]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x8A, (uint8_t)upperData[P_dco2_PW]);
   } else {
-    sendParamValue(0x8A, (uint8_t)lowerData[P_dco2_PW]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x8A, (uint8_t)lowerData[P_dco2_PW]);
   }
 }
 
 FLASHMEM void updatedco2_PWM_env(bool announce) {
-  sendOffset(0x0D, 0x8B);
   lastStepParam = 0xFF;
   dco2_PWM_env_str = map(dco2_PWM_env_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2368,14 +2530,13 @@ FLASHMEM void updatedco2_PWM_env(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0x8B, (uint8_t)upperData[P_dco2_PWM_env]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x8B, (uint8_t)upperData[P_dco2_PWM_env]);
   } else {
-    sendParamValue(0x8B, (uint8_t)lowerData[P_dco2_PWM_env]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x8B, (uint8_t)lowerData[P_dco2_PWM_env]);
   }
 }
 
 FLASHMEM void updatedco2_PWM_lfo(bool announce) {
-  sendOffset(0x0D, 0x8C);
   lastStepParam = 0xFF;
   dco2_PWM_lfo_str = map(dco2_PWM_lfo_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2384,14 +2545,13 @@ FLASHMEM void updatedco2_PWM_lfo(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0x8C, (uint8_t)upperData[P_dco2_PWM_lfo]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x8C, (uint8_t)upperData[P_dco2_PWM_lfo]);
   } else {
-    sendParamValue(0x8C, (uint8_t)lowerData[P_dco2_PWM_lfo]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x8C, (uint8_t)lowerData[P_dco2_PWM_lfo]);
   }
 }
 
 FLASHMEM void updatedco2_pitch_env(bool announce) {
-  sendOffset(0x0D, 0x85);
   lastStepParam = 0xFF;
   dco2_pitch_env_str = map(dco2_pitch_env_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2400,14 +2560,13 @@ FLASHMEM void updatedco2_pitch_env(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0x85, (uint8_t)upperData[P_dco2_pitch_env]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x85, (uint8_t)upperData[P_dco2_pitch_env]);
   } else {
-    sendParamValue(0x85, (uint8_t)lowerData[P_dco2_pitch_env]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x85, (uint8_t)lowerData[P_dco2_pitch_env]);
   }
 }
 
 FLASHMEM void updatedco2_pitch_lfo(bool announce) {
-  sendOffset(0x0D, 0x83);
   lastStepParam = 0xFF;
   dco2_pitch_lfo_str = map(dco2_pitch_lfo_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2416,14 +2575,13 @@ FLASHMEM void updatedco2_pitch_lfo(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0x83, (uint8_t)upperData[P_dco2_pitch_lfo]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x83, (uint8_t)upperData[P_dco2_pitch_lfo]);
   } else {
-    sendParamValue(0x83, (uint8_t)lowerData[P_dco2_pitch_lfo]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x83, (uint8_t)lowerData[P_dco2_pitch_lfo]);
   }
 }
 
 FLASHMEM void updatedco2_wave(bool announce) {
-  sendOffset(0x0D, 0x81);
   const uint8_t newStep = upperSW ? upperData[P_dco2_wave] : lowerData[P_dco2_wave];
 
   static uint8_t lastStep = 0xFF;
@@ -2442,13 +2600,16 @@ FLASHMEM void updatedco2_wave(bool announce) {
   }
 
   if (changed || recallPatchFlag) {
-    sendParamValue(0x81, dco1waveStepToValue(newStep));
+    if (upperSW) {
+      sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x81, dco1waveStepToValue(newStep));
+    } else {
+      sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x81, dco1waveStepToValue(newStep));
+    }
     lastStep = newStep;
   }
 }
 
 FLASHMEM void updatedco2_range(bool announce) {
-  sendOffset(0x0D, 0x80);
   const uint8_t newStep = upperSW ? upperData[P_dco2_range] : lowerData[P_dco2_range];
 
   static uint8_t lastStep = 0xFF;
@@ -2467,13 +2628,16 @@ FLASHMEM void updatedco2_range(bool announce) {
   }
 
   if (changed || recallPatchFlag) {
-    sendParamValue(0x80, dco1rangeStepToValue(newStep));
+    if (upperSW) {
+      sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x80, dco1rangeStepToValue(newStep));
+    } else {
+      sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x80, dco1rangeStepToValue(newStep));
+    }
     lastStep = newStep;
   }
 }
 
 FLASHMEM void updatedco2_tune(bool announce) {
-  sendOffset(0x0D, 0x82);
   lastStepParam = 0xFF;
   dco2_tune_str = map(dco2_tune_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2482,14 +2646,13 @@ FLASHMEM void updatedco2_tune(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0x82, (uint8_t)upperData[P_dco2_tune]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x82, (uint8_t)upperData[P_dco2_tune]);
   } else {
-    sendParamValue(0x82, (uint8_t)lowerData[P_dco2_tune]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x82, (uint8_t)lowerData[P_dco2_tune]);
   }
 }
 
 FLASHMEM void updatedco2_fine(bool announce) {
-  sendOffset(0x0D, 0x89);
   lastStepParam = 0xFF;
   dco2_fine_str = map(dco2_fine_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2498,14 +2661,13 @@ FLASHMEM void updatedco2_fine(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0x89, (uint8_t)upperData[P_dco2_fine]);
+    sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x89, (uint8_t)upperData[P_dco2_fine]);
   } else {
-    sendParamValue(0x89, (uint8_t)lowerData[P_dco2_fine]);
+    sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x89, (uint8_t)lowerData[P_dco2_fine]);
   }
 }
 
 FLASHMEM void updatedco1_level(bool announce) {
-  sendNoOffset(0x90);
   lastStepParam = 0xFF;
   dco1_level_str = map(dco1_level_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2514,14 +2676,13 @@ FLASHMEM void updatedco1_level(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0x90, (uint8_t)upperData[P_dco1_level]);
+    sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x90, (uint8_t)upperData[P_dco1_level]);
   } else {
-    sendParamValue(0x90, (uint8_t)lowerData[P_dco1_level]);
+    sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x90, (uint8_t)lowerData[P_dco1_level]);
   }
 }
 
 FLASHMEM void updatedco2_level(bool announce) {
-  sendNoOffset(0x91);
   lastStepParam = 0xFF;
   dco2_level_str = map(dco2_level_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2530,14 +2691,13 @@ FLASHMEM void updatedco2_level(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0x91, (uint8_t)upperData[P_dco2_level]);
+    sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x91, (uint8_t)upperData[P_dco2_level]);
   } else {
-    sendParamValue(0x91, (uint8_t)lowerData[P_dco2_level]);
+    sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x91, (uint8_t)lowerData[P_dco2_level]);
   }
 }
 
 FLASHMEM void updatedco2_mod(bool announce) {
-  sendNoOffset(0x87);
   lastStepParam = 0xFF;
   dco2_mod_str = map(dco2_mod_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2546,14 +2706,13 @@ FLASHMEM void updatedco2_mod(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0x87, (uint8_t)upperData[P_dco2_mod]);
+    sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x92, (uint8_t)upperData[P_dco2_mod]);
   } else {
-    sendParamValue(0x87, (uint8_t)lowerData[P_dco2_mod]);
+    sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x92, (uint8_t)lowerData[P_dco2_mod]);
   }
 }
 
 FLASHMEM void updatevcf_hpf(bool announce) {
-  sendNoOffset(0x95);
   lastStepParam = 0xFF;
   vcf_hpf_str = map(vcf_hpf_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2562,14 +2721,13 @@ FLASHMEM void updatevcf_hpf(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0x95, (uint8_t)upperData[P_vcf_hpf]);
+    sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x95, (uint8_t)upperData[P_vcf_hpf]);
   } else {
-    sendParamValue(0x95, (uint8_t)lowerData[P_vcf_hpf]);
+    sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x95, (uint8_t)lowerData[P_vcf_hpf]);
   }
 }
 
 FLASHMEM void updatevcf_cutoff(bool announce) {
-  sendNoOffset(0x96);
   lastStepParam = 0xFF;
   vcf_cutoff_str = map(vcf_cutoff_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2578,14 +2736,13 @@ FLASHMEM void updatevcf_cutoff(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0x96, (uint8_t)upperData[P_vcf_cutoff]);
+    sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x96, (uint8_t)upperData[P_vcf_cutoff]);
   } else {
-    sendParamValue(0x96, (uint8_t)lowerData[P_vcf_cutoff]);
+    sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x96, (uint8_t)lowerData[P_vcf_cutoff]);
   }
 }
 
 FLASHMEM void updatevcf_res(bool announce) {
-  sendNoOffset(0x97);
   lastStepParam = 0xFF;
   vcf_res_str = map(vcf_res_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2594,14 +2751,13 @@ FLASHMEM void updatevcf_res(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0x97, (uint8_t)upperData[P_vcf_res]);
+    sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x97, (uint8_t)upperData[P_vcf_res]);
   } else {
-    sendParamValue(0x97, (uint8_t)lowerData[P_vcf_res]);
+    sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x97, (uint8_t)lowerData[P_vcf_res]);
   }
 }
 
 FLASHMEM void updatevcf_kb(bool announce) {
-  sendNoOffset(0x9B);
   lastStepParam = 0xFF;
   vcf_kb_str = map(vcf_kb_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2610,14 +2766,13 @@ FLASHMEM void updatevcf_kb(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0x9B, (uint8_t)upperData[P_vcf_kb]);
+    sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x9B, (uint8_t)upperData[P_vcf_kb]);
   } else {
-    sendParamValue(0x9B, (uint8_t)lowerData[P_vcf_kb]);
+    sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x9B, (uint8_t)lowerData[P_vcf_kb]);
   }
 }
 
 FLASHMEM void updatevcf_env(bool announce) {
-  sendNoOffset(0x9A);
   lastStepParam = 0xFF;
   vcf_env_str = map(vcf_env_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2626,14 +2781,13 @@ FLASHMEM void updatevcf_env(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0x9A, (uint8_t)upperData[P_vcf_env]);
+    sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x9A, (uint8_t)upperData[P_vcf_env]);
   } else {
-    sendParamValue(0x9A, (uint8_t)lowerData[P_vcf_env]);
+    sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x9A, (uint8_t)lowerData[P_vcf_env]);
   }
 }
 
 FLASHMEM void updatevcf_lfo1(bool announce) {
-  sendNoOffset(0x98);
   lastStepParam = 0xFF;
   vcf_lfo1_str = map(vcf_lfo1_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2642,14 +2796,13 @@ FLASHMEM void updatevcf_lfo1(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0x98, (uint8_t)upperData[P_vcf_lfo1]);
+    sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x98, (uint8_t)upperData[P_vcf_lfo1]);
   } else {
-    sendParamValue(0x98, (uint8_t)lowerData[P_vcf_lfo1]);
+    sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x98, (uint8_t)lowerData[P_vcf_lfo1]);
   }
 }
 
 FLASHMEM void updatevcf_lfo2(bool announce) {
-  sendNoOffset(0x99);
   lastStepParam = 0xFF;
   vcf_lfo2_str = map(vcf_lfo2_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2658,30 +2811,24 @@ FLASHMEM void updatevcf_lfo2(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0x99, (uint8_t)upperData[P_vcf_lfo2]);
+    sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x99, (uint8_t)upperData[P_vcf_lfo2]);
   } else {
-    sendParamValue(0x99, (uint8_t)lowerData[P_vcf_lfo2]);
+    sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x99, (uint8_t)lowerData[P_vcf_lfo2]);
   }
 }
 
 FLASHMEM void updatevca_mod(bool announce) {
-  sendNoOffset(0x9E);
   lastStepParam = 0xFF;
-  vca_mod_str = map(vca_mod_str, 0, 127, 0, 99);
+  vca_mod_str = map(upperSW ? upperData[P_vca_mod] : lowerData[P_vca_mod], 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("VCA MODULATION", String(vca_mod_str));
+    showCurrentParameterPage("VCA LEVEL", String(vca_mod_str));
     startParameterDisplay();
   }
-  if (upperSW) {
-    sendParamValue(0x9E, (uint8_t)upperData[P_vca_mod]);
-  } else {
-    sendParamValue(0x9E, (uint8_t)lowerData[P_vca_mod]);
-  }
+  sendVCABalance();
 }
 
 FLASHMEM void updateat_vib(bool announce) {
-  sendExtraOffset(0x01, 0xB8);
   lastStepParam = 0xFF;
   at_vib_str = map(at_vib_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2689,11 +2836,14 @@ FLASHMEM void updateat_vib(bool announce) {
     showCurrentParameterPage("AT VIB", String(at_vib_str));
     startParameterDisplay();
   }
-  sendParamValue(0xB8, (uint8_t)at_vib);
+  if (upperSW) {
+    sendVoiceParam(kBoardUpperPrefix, 0x01, 0xB8, (uint8_t)at_vib);
+  } else {
+    sendVoiceParam(kBoardLowerPrefix, 0x01, 0xB8, (uint8_t)at_vib);
+  }
 }
 
 FLASHMEM void updateat_lpf(bool announce) {
-  sendExtraOffset(0x03, 0xB9);
   lastStepParam = 0xFF;
   at_lpf_str = map(at_lpf_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2701,11 +2851,14 @@ FLASHMEM void updateat_lpf(bool announce) {
     showCurrentParameterPage("AT VCF", String(at_lpf_str));
     startParameterDisplay();
   }
-  sendParamValue(0xB9, (uint8_t)at_lpf);
+  if (upperSW) {
+    sendVoiceParam(kBoardUpperPrefix, 0x03, 0xB9, (uint8_t)at_lpf);
+  } else {
+    sendVoiceParam(kBoardLowerPrefix, 0x03, 0xB9, (uint8_t)at_lpf);
+  }
 }
 
 FLASHMEM void updateat_vol(bool announce) {
-  sendExtraOffset(0x05, 0xBA);
   lastStepParam = 0xFF;
   at_vol_str = map(at_vol_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2713,10 +2866,12 @@ FLASHMEM void updateat_vol(bool announce) {
     showCurrentParameterPage("AT VOL", String(at_vol_str));
     startParameterDisplay();
   }
-  sendParamValue(0xBA, (uint8_t)at_vol);
+  if (upperSW) {
+    sendVoiceParam(kBoardUpperPrefix, 0x05, 0xBA, (uint8_t)at_vol);
+  } else {
+    sendVoiceParam(kBoardLowerPrefix, 0x05, 0xBA, (uint8_t)at_vol);
+  }
 }
-
-// File: balance.cpp (or wherever your parameter handlers live)
 
 static inline uint8_t clamp_u8(uint16_t v, uint8_t lo, uint8_t hi) {
   if (v < lo) return lo;
@@ -2732,86 +2887,43 @@ static inline uint8_t map_u8(uint8_t x, uint8_t in_min, uint8_t in_max, uint8_t 
   return clamp_u8(y, out_min, out_max);
 }
 
-static void sendParamRaw(uint8_t param, uint8_t value) {
-  Serial3.write(param);
-  Serial3.write(static_cast<uint8_t>(value & 0x7F));
-  Serial3.flush();
-}
+// Single function that always computes both boards correctly
+void sendVCABalance() {
+  const uint8_t km = (uint8_t)keyMode;
+  const uint8_t bal = (uint8_t)balance;
+  const uint8_t lowerLevel = (uint8_t)lowerData[P_vca_mod];
+  const uint8_t upperLevel = (uint8_t)upperData[P_vca_mod];
 
-// For 0xF4 only: once sent, it can be omitted while updating the same parameter.
-// For other prefixes, always send the prefix (safer / matches your requirement for F1/F9).
-static void sendParamValueWithPrefixLatched(uint8_t prefix, uint8_t param, uint8_t value) {
-  static uint8_t lastLatchedPrefix = 0x00;
-  static uint8_t lastLatchedParam = 0x00;
+  uint8_t lowerSend, upperSend;
 
-  const bool isLatchable = (prefix == kBoardBothPrefix);
-  const bool needPrefix =
-    (!isLatchable) || (lastLatchedPrefix != prefix) || (lastLatchedParam != param);
-
-  if (needPrefix) {
-    Serial3.write(prefix);
-    if (isLatchable) {
-      lastLatchedPrefix = prefix;
-      lastLatchedParam = param;
-    } else {
-      // Don't latch non-F4 prefixes.
-      lastLatchedPrefix = 0x00;
-      lastLatchedParam = 0x00;
-    }
+  if (km == 1 || km == 2) {
+    // Whole mode - balance ignored, each board gets its full scaled level
+    lowerSend = map_u8(lowerLevel, 0, 127, 0, kMaxLevel);
+    upperSend = map_u8(upperLevel, 0, 127, 0, kMaxLevel);
+    sendVoiceParam(kBoardBothPrefix, NO_OFFSET, kBalanceParam, lowerSend);
+  } else {
+    // Dual/split/special - balance crossfades within each board's VCA ceiling
+    uint8_t balancedLower = map_u8(bal, 0, 127, 0, lowerLevel);
+    uint8_t balancedUpper = map_u8(127 - bal, 0, 127, 0, upperLevel);
+    lowerSend = map_u8(balancedLower, 0, 127, 0, kMaxLevel);
+    upperSend = map_u8(balancedUpper, 0, 127, 0, kMaxLevel);
+    sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, kBalanceParam, lowerSend);
+    sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, kBalanceParam, upperSend);
   }
-
-  sendParamRaw(param, value);
-}
-
-static void computeBalanceBoardValues(uint8_t balance, uint8_t keymode, uint8_t &lowerOut, uint8_t &upperOut) {
-  balance = clamp_u8(balance, 0, 127);
-
-  if (keymode == 1 || keymode == 2) {
-    // 0..63 => 0..0x60, then hold 0x60 for 64..127
-    const uint8_t b = (balance > 63) ? 63 : balance;
-    const uint8_t level = map_u8(b, 0, 63, 0x00, kMaxLevel);
-    lowerOut = level;
-    upperOut = level;
-    return;
-  }
-
-  // keymode == 0: crossfade across full range 0..127 => 0..0x60
-  const uint8_t level = map_u8(balance, 0, 127, 0x00, kMaxLevel);
-  upperOut = level;
-  lowerOut = static_cast<uint8_t>(kMaxLevel - level);
 }
 
 FLASHMEM void updatebalance(bool announce) {
   lastStepParam = 0xFF;
-  sendNoOffset(kBalanceParam);
-
-  balance_str = map(balance_str, 0, 127, 0, 99);
+  balance_str = map(balance, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 1;
     showCurrentParameterPage("BALANCE", String(balance_str));
     startParameterDisplay();
   }
-
-  const uint8_t km = static_cast<uint8_t>(keyMode);
-  const uint8_t bal = static_cast<uint8_t>(balance);
-
-  uint8_t lowerVal = 0, upperVal = 0;
-  computeBalanceBoardValues(bal, km, lowerVal, upperVal);
-
-  if (km == 1 || km == 2) {
-    // Broadcast (both boards), with "latched" 0xF4 prefix for this param.
-    sendParamValueWithPrefixLatched(kBoardBothPrefix, kBalanceParam, lowerVal);
-    return;
-  }
-
-  // Leaving broadcast mode: ensure we don't accidentally keep relying on old latch.
-  // (Next call will send F1/F9 prefixes anyway, and our helper doesn't latch them.)
-  sendParamValueWithPrefixLatched(kBoardLowerPrefix, kBalanceParam, lowerVal);
-  sendParamValueWithPrefixLatched(kBoardUpperPrefix, kBalanceParam, upperVal);
+  sendVCABalance();
 }
 
 FLASHMEM void updateportamento(bool announce) {
-  sendNoOffset(0xB0);
   lastStepParam = 0xFF;
   portamento_str = map(portamento_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2819,11 +2931,11 @@ FLASHMEM void updateportamento(bool announce) {
     showCurrentParameterPage("PORTAMENTO TIME", String(portamento_str));
     startParameterDisplay();
   }
-  sendParamValueWithPrefixLatched(0xF4, 0xB0, portamento);
+  sendVoiceParam(kBoardBothPrefix, NO_OFFSET, 0xB0, portamento);
 }
 
 FLASHMEM void updatevolume(bool announce) {
-  sendNoOffset(0xB1);
+
   lastStepParam = 0xFF;
   volume_str = map(volume_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2831,11 +2943,10 @@ FLASHMEM void updatevolume(bool announce) {
     showCurrentParameterPage("MIDI VOLUME", String(volume_str));
     startParameterDisplay();
   }
-  sendParamValueWithPrefixLatched(0xF4, 0xB1, volume);
+  sendVoiceParam(kBoardBothPrefix, NO_OFFSET, 0xB1, volume);
 }
 
 FLASHMEM void updatetime1(bool announce) {
-  sendOffset(0x0C, 0xA6);
   lastStepParam = 0xFF;
   time1_str = map(time1_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2844,14 +2955,13 @@ FLASHMEM void updatetime1(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xA6, (uint8_t)upperData[P_time1]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0xA6, (uint8_t)upperData[P_time1]);
   } else {
-    sendParamValue(0xA6, (uint8_t)lowerData[P_time1]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0xA6, (uint8_t)lowerData[P_time1]);
   }
 }
 
 FLASHMEM void updatelevel1(bool announce) {
-  sendOffset(0x0C, 0xA7);
   lastStepParam = 0xFF;
   level1_str = map(level1_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2860,14 +2970,13 @@ FLASHMEM void updatelevel1(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xA7, (uint8_t)upperData[P_level1]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0xA7, (uint8_t)upperData[P_level1]);
   } else {
-    sendParamValue(0xA7, (uint8_t)lowerData[P_level1]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0xA7, (uint8_t)lowerData[P_level1]);
   }
 }
 
 FLASHMEM void updatetime2(bool announce) {
-  sendOffset(0x0C, 0xA8);
   lastStepParam = 0xFF;
   time2_str = map(time2_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2876,14 +2985,13 @@ FLASHMEM void updatetime2(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xA8, (uint8_t)upperData[P_time2]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0xA8, (uint8_t)upperData[P_time2]);
   } else {
-    sendParamValue(0xA8, (uint8_t)lowerData[P_time2]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0xA8, (uint8_t)lowerData[P_time2]);
   }
 }
 
 FLASHMEM void updatelevel2(bool announce) {
-  sendOffset(0x0C, 0xA9);
   lastStepParam = 0xFF;
   level2_str = map(level2_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2892,14 +3000,13 @@ FLASHMEM void updatelevel2(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xA9, (uint8_t)upperData[P_level2]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0xA9, (uint8_t)upperData[P_level2]);
   } else {
-    sendParamValue(0xA9, (uint8_t)lowerData[P_level2]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0xA9, (uint8_t)lowerData[P_level2]);
   }
 }
 
 FLASHMEM void updatetime3(bool announce) {
-  sendOffset(0x0C, 0xAA);
   lastStepParam = 0xFF;
   time3_str = map(time3_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2908,14 +3015,13 @@ FLASHMEM void updatetime3(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xAA, (uint8_t)upperData[P_time3]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0xAA, (uint8_t)upperData[P_time3]);
   } else {
-    sendParamValue(0xAA, (uint8_t)lowerData[P_time3]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0xAA, (uint8_t)lowerData[P_time3]);
   }
 }
 
 FLASHMEM void updatelevel3(bool announce) {
-  sendOffset(0x0C, 0xAB);
   lastStepParam = 0xFF;
   level3_str = map(level3_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2924,14 +3030,13 @@ FLASHMEM void updatelevel3(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xAB, (uint8_t)upperData[P_level3]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0xAB, (uint8_t)upperData[P_level3]);
   } else {
-    sendParamValue(0xAB, (uint8_t)lowerData[P_level3]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0xAB, (uint8_t)lowerData[P_level3]);
   }
 }
 
 FLASHMEM void updatetime4(bool announce) {
-  sendOffset(0x0C, 0xAC);
   lastStepParam = 0xFF;
   time4_str = map(time4_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2940,14 +3045,13 @@ FLASHMEM void updatetime4(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xAC, (uint8_t)upperData[P_time4]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0xAC, (uint8_t)upperData[P_time4]);
   } else {
-    sendParamValue(0xAC, (uint8_t)lowerData[P_time4]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0xAC, (uint8_t)lowerData[P_time4]);
   }
 }
 
 FLASHMEM void updateenv5stage_mode(bool announce) {
-  sendOffset(0x0C, 0xAD);
   const uint8_t newStep = upperSW ? upperData[P_env5stage_mode] : lowerData[P_env5stage_mode];
 
   static uint8_t lastStep = 0xFF;
@@ -2966,13 +3070,16 @@ FLASHMEM void updateenv5stage_mode(bool announce) {
   }
 
   if (changed || recallPatchFlag) {
-    sendParamValue(0xAD, env5stageModeStepToValue(newStep));
+    if (upperSW) {
+      sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0xAD, env5stageModeStepToValue(newStep));
+    } else {
+      sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0xAD, env5stageModeStepToValue(newStep));
+    }
     lastStep = newStep;
   }
 }
 
 FLASHMEM void updateenv2_time1(bool announce) {
-  sendOffset(0x0D, 0xA6);
   lastStepParam = 0xFF;
   env2_time1_str = map(env2_time1_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2981,14 +3088,13 @@ FLASHMEM void updateenv2_time1(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xA6, (uint8_t)upperData[P_env2_time1]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0xA6, (uint8_t)upperData[P_env2_time1]);
   } else {
-    sendParamValue(0xA6, (uint8_t)lowerData[P_env2_time1]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0xA6, (uint8_t)lowerData[P_env2_time1]);
   }
 }
 
 FLASHMEM void updateenv2_level1(bool announce) {
-  sendOffset(0x0D, 0xA7);
   lastStepParam = 0xFF;
   env2_level1_str = map(env2_level1_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -2997,14 +3103,13 @@ FLASHMEM void updateenv2_level1(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xA7, (uint8_t)upperData[P_env2_level1]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0xA7, (uint8_t)upperData[P_env2_level1]);
   } else {
-    sendParamValue(0xA7, (uint8_t)lowerData[P_env2_level1]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0xA7, (uint8_t)lowerData[P_env2_level1]);
   }
 }
 
 FLASHMEM void updateenv2_time2(bool announce) {
-  sendOffset(0x0D, 0xA8);
   lastStepParam = 0xFF;
   env2_time2_str = map(env2_time2_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -3013,14 +3118,13 @@ FLASHMEM void updateenv2_time2(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xA8, (uint8_t)upperData[P_env2_time2]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0xA8, (uint8_t)upperData[P_env2_time2]);
   } else {
-    sendParamValue(0xA8, (uint8_t)lowerData[P_env2_time2]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0xA8, (uint8_t)lowerData[P_env2_time2]);
   }
 }
 
 FLASHMEM void updateenv2_level2(bool announce) {
-  sendOffset(0x0D, 0xA9);
   lastStepParam = 0xFF;
   env2_level2_str = map(env2_level2_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -3029,14 +3133,13 @@ FLASHMEM void updateenv2_level2(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xA9, (uint8_t)upperData[P_env2_level2]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0xA9, (uint8_t)upperData[P_env2_level2]);
   } else {
-    sendParamValue(0xA9, (uint8_t)lowerData[P_env2_level2]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0xA9, (uint8_t)lowerData[P_env2_level2]);
   }
 }
 
 FLASHMEM void updateenv2_time3(bool announce) {
-  sendOffset(0x0D, 0xAA);
   lastStepParam = 0xFF;
   env2_time3_str = map(env2_time3_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -3045,14 +3148,13 @@ FLASHMEM void updateenv2_time3(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xAA, (uint8_t)upperData[P_env2_time3]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0xAA, (uint8_t)upperData[P_env2_time3]);
   } else {
-    sendParamValue(0xAA, (uint8_t)lowerData[P_env2_time3]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0xAA, (uint8_t)lowerData[P_env2_time3]);
   }
 }
 
 FLASHMEM void updateenv2_level3(bool announce) {
-  sendOffset(0x0D, 0xAB);
   lastStepParam = 0xFF;
   env2_level3_str = map(env2_level3_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -3061,14 +3163,13 @@ FLASHMEM void updateenv2_level3(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xAB, (uint8_t)upperData[P_env2_level3]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0xAB, (uint8_t)upperData[P_env2_level3]);
   } else {
-    sendParamValue(0xAB, (uint8_t)lowerData[P_env2_level3]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0xAB, (uint8_t)lowerData[P_env2_level3]);
   }
 }
 
 FLASHMEM void updateenv2_time4(bool announce) {
-  sendOffset(0x0D, 0xAC);
   lastStepParam = 0xFF;
   env2_time4_str = map(env2_time4_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -3077,14 +3178,13 @@ FLASHMEM void updateenv2_time4(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xAC, (uint8_t)upperData[P_env2_time4]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0xAC, (uint8_t)upperData[P_env2_time4]);
   } else {
-    sendParamValue(0xAC, (uint8_t)lowerData[P_env2_time4]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0xAC, (uint8_t)lowerData[P_env2_time4]);
   }
 }
 
 FLASHMEM void updateenv2_env5stage_mode(bool announce) {
-  sendOffset(0x0D, 0xAD);
   const uint8_t newStep = upperSW ? upperData[P_env2_5stage_mode] : lowerData[P_env2_5stage_mode];
 
   static uint8_t lastStep = 0xFF;
@@ -3103,13 +3203,16 @@ FLASHMEM void updateenv2_env5stage_mode(bool announce) {
   }
 
   if (changed || recallPatchFlag) {
-    sendParamValue(0xAD, env5stageModeStepToValue(newStep));
+    if (upperSW) {
+      sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0xAD, env5stageModeStepToValue(newStep));
+    } else {
+      sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0xAD, env5stageModeStepToValue(newStep));
+    }
     lastStep = newStep;
   }
 }
 
 FLASHMEM void updateattack(bool announce) {
-  sendOffset(0x0E, 0xA6);
   lastStepParam = 0xFF;
   attack_str = map(attack_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -3118,14 +3221,13 @@ FLASHMEM void updateattack(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xA6, (uint8_t)upperData[P_attack]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset2Prefix, 0xA6, (uint8_t)upperData[P_attack]);
   } else {
-    sendParamValue(0xA6, (uint8_t)lowerData[P_attack]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset2Prefix, 0xA6, (uint8_t)lowerData[P_attack]);
   }
 }
 
 FLASHMEM void updatedecay(bool announce) {
-  sendOffset(0x0E, 0xAA);
   lastStepParam = 0xFF;
   decay_str = map(decay_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -3134,14 +3236,13 @@ FLASHMEM void updatedecay(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xAA, (uint8_t)upperData[P_decay]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset2Prefix, 0xAA, (uint8_t)upperData[P_decay]);
   } else {
-    sendParamValue(0xAA, (uint8_t)lowerData[P_decay]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset2Prefix, 0xAA, (uint8_t)lowerData[P_decay]);
   }
 }
 
 FLASHMEM void updatesustain(bool announce) {
-  sendOffset(0x0E, 0xAB);
   lastStepParam = 0xFF;
   sustain_str = map(sustain_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -3150,14 +3251,13 @@ FLASHMEM void updatesustain(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xAB, (uint8_t)upperData[P_sustain]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset2Prefix, 0xAB, (uint8_t)upperData[P_sustain]);
   } else {
-    sendParamValue(0xAB, (uint8_t)lowerData[P_sustain]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset2Prefix, 0xAB, (uint8_t)lowerData[P_sustain]);
   }
 }
 
 FLASHMEM void updaterelease(bool announce) {
-  sendOffset(0x0E, 0xAC);
   lastStepParam = 0xFF;
   release_str = map(release_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -3166,14 +3266,13 @@ FLASHMEM void updaterelease(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xAC, (uint8_t)upperData[P_release]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset2Prefix, 0xAC, (uint8_t)upperData[P_release]);
   } else {
-    sendParamValue(0xAC, (uint8_t)lowerData[P_release]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset2Prefix, 0xAC, (uint8_t)lowerData[P_release]);
   }
 }
 
 FLASHMEM void updateadsr_mode(bool announce) {
-  sendOffset(0x0E, 0xAD);
   const uint8_t newStep = upperSW ? upperData[P_adsr_mode] : lowerData[P_adsr_mode];
 
   static uint8_t lastStep = 0xFF;
@@ -3192,13 +3291,16 @@ FLASHMEM void updateadsr_mode(bool announce) {
   }
 
   if (changed || recallPatchFlag) {
-    sendParamValue(0xAD, env5stageModeStepToValue(newStep));
+    if (upperSW) {
+      sendVoiceParam(kBoardUpperPrefix, kBoardOffset2Prefix, 0xAD, env5stageModeStepToValue(newStep));
+    } else {
+      sendVoiceParam(kBoardLowerPrefix, kBoardOffset2Prefix, 0xAD, env5stageModeStepToValue(newStep));
+    }
     lastStep = newStep;
   }
 }
 
 FLASHMEM void updateenv4_attack(bool announce) {
-  sendOffset(0x0F, 0xA6);
   lastStepParam = 0xFF;
   env4_attack_str = map(env4_attack_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -3207,14 +3309,13 @@ FLASHMEM void updateenv4_attack(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xA6, (uint8_t)upperData[P_env4_attack]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset3Prefix, 0xA6, (uint8_t)upperData[P_env4_attack]);
   } else {
-    sendParamValue(0xA6, (uint8_t)lowerData[P_env4_attack]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset3Prefix, 0xA6, (uint8_t)lowerData[P_env4_attack]);
   }
 }
 
 FLASHMEM void updateenv4_decay(bool announce) {
-  sendOffset(0x0F, 0xAA);
   lastStepParam = 0xFF;
   env4_decay_str = map(env4_decay_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -3223,14 +3324,13 @@ FLASHMEM void updateenv4_decay(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xAA, (uint8_t)upperData[P_env4_decay]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset3Prefix, 0xAA, (uint8_t)upperData[P_env4_decay]);
   } else {
-    sendParamValue(0xAA, (uint8_t)lowerData[P_env4_decay]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset3Prefix, 0xAA, (uint8_t)lowerData[P_env4_decay]);
   }
 }
 
 FLASHMEM void updateenv4_sustain(bool announce) {
-  sendOffset(0x0F, 0xAB);
   lastStepParam = 0xFF;
   env4_sustain_str = map(env4_sustain_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -3239,14 +3339,13 @@ FLASHMEM void updateenv4_sustain(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xAB, (uint8_t)upperData[P_env4_sustain]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset3Prefix, 0xAB, (uint8_t)upperData[P_env4_sustain]);
   } else {
-    sendParamValue(0xAB, (uint8_t)lowerData[P_env4_sustain]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset3Prefix, 0xAB, (uint8_t)lowerData[P_env4_sustain]);
   }
 }
 
 FLASHMEM void updateenv4_release(bool announce) {
-  sendOffset(0x0F, 0xAC);
   lastStepParam = 0xFF;
   env4_release_str = map(env4_release_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
@@ -3255,14 +3354,13 @@ FLASHMEM void updateenv4_release(bool announce) {
     startParameterDisplay();
   }
   if (upperSW) {
-    sendParamValue(0xAC, (uint8_t)upperData[P_env4_release]);
+    sendVoiceParam(kBoardUpperPrefix, kBoardOffset3Prefix, 0xAC, (uint8_t)upperData[P_env4_release]);
   } else {
-    sendParamValue(0xAC, (uint8_t)lowerData[P_env4_release]);
+    sendVoiceParam(kBoardLowerPrefix, kBoardOffset3Prefix, 0xAC, (uint8_t)lowerData[P_env4_release]);
   }
 }
 
 FLASHMEM void updateenv4_adsr_mode(bool announce) {
-  sendOffset(0x0F, 0xAD);
   const uint8_t newStep = upperSW ? upperData[P_env4_adsr_mode] : lowerData[P_env4_adsr_mode];
 
   static uint8_t lastStep = 0xFF;
@@ -3281,7 +3379,11 @@ FLASHMEM void updateenv4_adsr_mode(bool announce) {
   }
 
   if (changed || recallPatchFlag) {
-    sendParamValue(0xAD, env5stageModeStepToValue(newStep));
+    if (upperSW) {
+      sendVoiceParam(kBoardUpperPrefix, kBoardOffset3Prefix, 0xAD, env5stageModeStepToValue(newStep));
+    } else {
+      sendVoiceParam(kBoardLowerPrefix, kBoardOffset3Prefix, 0xAD, env5stageModeStepToValue(newStep));
+    }
     lastStep = newStep;
   }
 }
@@ -3362,18 +3464,19 @@ FLASHMEM void updatedualdetune(bool announce) {
     // Calculate detune send values without touching lowerMT1/MT2
     uint8_t lowerSend = calcLowerDetune(masterTune, dualdetune);
 
-    sendParamValueWithPrefixLatched(0xF1, kDualDetuneParam, lowerSend);
-    sendParamValue(kDualDetuneParam2, lowerSend);
+    sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, kDualDetuneParam, lowerSend);
+    sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, kDualDetuneParam2, lowerSend);
 
-    sendParamValueWithPrefixLatched(0xF9, kDualDetuneParam, upperMT1);
-    sendParamValue(kDualDetuneParam2, upperMT2);
+    sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, kDualDetuneParam, upperMT1);
+    sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, kDualDetuneParam2, upperMT2);
+
   } else {
     // Single or Split — all boards get master tune, detune ignored
-    sendParamValueWithPrefixLatched(0xF1, kDualDetuneParam, lowerMT1);
-    sendParamValue(kDualDetuneParam2, lowerMT2);
+    sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, kDualDetuneParam, lowerMT1);
+    sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, kDualDetuneParam2, lowerMT2);
 
-    sendParamValueWithPrefixLatched(0xF9, kDualDetuneParam, upperMT1);
-    sendParamValue(kDualDetuneParam2, upperMT2);
+    sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, kDualDetuneParam, upperMT1);
+    sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, kDualDetuneParam2, upperMT2);
   }
 }
 
@@ -3587,6 +3690,18 @@ FLASHMEM void updatedual_button(bool announce) {
     mcp10.digitalWrite(UPPER_SELECT, LOW);
   }
   keyMode = 0;
+  if (upperSW) {
+    upperData[P_assign] = assignMode;
+    if (keyMode == 0 || keyMode == 1 || keyMode == 2 || keyMode == 4 || keyMode == 5) {
+      lowerData[P_assign] = upperData[P_assign];
+    }
+  } else {
+    lowerData[P_assign] = assignMode;
+    if (keyMode == 0 || keyMode == 1 || keyMode == 2 || keyMode == 4 || keyMode == 5) {
+      upperData[P_assign] = lowerData[P_assign];
+    }
+  }
+  allNotesOff();
   updatedualdetune(0);
 }
 
@@ -3610,6 +3725,7 @@ FLASHMEM void updatesplit_button(bool announce) {
     mcp10.digitalWrite(UPPER_SELECT, LOW);
   }
   keyMode = 3;
+  allNotesOff();
   updatedualdetune(0);
 }
 
@@ -3646,6 +3762,7 @@ FLASHMEM void updatesingle_button(bool announce) {
   mcp8.digitalWrite(KEY_SPECIAL_GREEN, LOW);
   mcp10.digitalWrite(LOWER_SELECT, HIGH);
   mcp10.digitalWrite(UPPER_SELECT, HIGH);
+  allNotesOff();
   updatedualdetune(0);
 }
 
@@ -3679,6 +3796,18 @@ FLASHMEM void updatespecial_button(bool announce) {
     mcp10.digitalWrite(LOWER_SELECT, HIGH);
     mcp10.digitalWrite(UPPER_SELECT, LOW);
   }
+  if (upperSW) {
+    upperData[P_assign] = assignMode;
+    if (keyMode == 0 || keyMode == 1 || keyMode == 2 || keyMode == 4 || keyMode == 5) {
+      lowerData[P_assign] = upperData[P_assign];
+    }
+  } else {
+    lowerData[P_assign] = assignMode;
+    if (keyMode == 0 || keyMode == 1 || keyMode == 2 || keyMode == 4 || keyMode == 5) {
+      upperData[P_assign] = lowerData[P_assign];
+    }
+  }
+  allNotesOff();
   updatedualdetune(0);
 }
 
@@ -3695,11 +3824,11 @@ FLASHMEM void updatepoly_button(bool announce) {
     startParameterDisplay();
   }
   if (!poly_button) {
-    assignMode = 0;
+    assignMode = 1;
     mcp8.digitalWrite(ASSIGN_POLY_RED, HIGH);
     mcp8.digitalWrite(ASSIGN_POLY_GREEN, LOW);
   } else {
-    assignMode = 1;
+    assignMode = 0;
     mcp8.digitalWrite(ASSIGN_POLY_RED, LOW);
     mcp8.digitalWrite(ASSIGN_POLY_GREEN, HIGH);
   }
@@ -3707,6 +3836,17 @@ FLASHMEM void updatepoly_button(bool announce) {
   mcp8.digitalWrite(ASSIGN_MONO_GREEN, LOW);
   mcp8.digitalWrite(ASSIGN_UNI_RED, LOW);
   mcp8.digitalWrite(ASSIGN_UNI_GREEN, LOW);
+  if (upperSW) {
+    upperData[P_assign] = assignMode;
+    if (keyMode == 0 || keyMode == 1 || keyMode == 2 || keyMode == 4 || keyMode == 5) {
+      lowerData[P_assign] = upperData[P_assign];
+    }
+  } else {
+    lowerData[P_assign] = assignMode;
+    if (keyMode == 0 || keyMode == 1 || keyMode == 2 || keyMode == 4 || keyMode == 5) {
+      upperData[P_assign] = lowerData[P_assign];
+    }
+  }
 }
 
 FLASHMEM void updatemono_button(bool announce) {
@@ -3732,6 +3872,17 @@ FLASHMEM void updatemono_button(bool announce) {
   mcp8.digitalWrite(ASSIGN_POLY_GREEN, LOW);
   mcp8.digitalWrite(ASSIGN_UNI_RED, LOW);
   mcp8.digitalWrite(ASSIGN_UNI_GREEN, LOW);
+  if (upperSW) {
+    upperData[P_assign] = assignMode;
+    if (keyMode == 0 || keyMode == 1 || keyMode == 2 || keyMode == 4 || keyMode == 5) {
+      lowerData[P_assign] = upperData[P_assign];
+    }
+  } else {
+    lowerData[P_assign] = assignMode;
+    if (keyMode == 0 || keyMode == 1 || keyMode == 2 || keyMode == 4 || keyMode == 5) {
+      upperData[P_assign] = lowerData[P_assign];
+    }
+  }
 }
 
 FLASHMEM void updateunison_button(bool announce) {
@@ -3757,6 +3908,17 @@ FLASHMEM void updateunison_button(bool announce) {
   mcp8.digitalWrite(ASSIGN_POLY_GREEN, LOW);
   mcp8.digitalWrite(ASSIGN_MONO_RED, LOW);
   mcp8.digitalWrite(ASSIGN_MONO_GREEN, LOW);
+  if (upperSW) {
+    upperData[P_assign] = assignMode;
+    if (keyMode == 0 || keyMode == 1 || keyMode == 2 || keyMode == 4 || keyMode == 5) {
+      lowerData[P_assign] = upperData[P_assign];
+    }
+  } else {
+    lowerData[P_assign] = assignMode;
+    if (keyMode == 0 || keyMode == 1 || keyMode == 2 || keyMode == 4 || keyMode == 5) {
+      upperData[P_assign] = lowerData[P_assign];
+    }
+  }
 }
 
 FLASHMEM void updatebend_enable_button(bool announce) {
@@ -3821,18 +3983,17 @@ FLASHMEM void updateafter_enable_button(bool announce) {
     case 0:
       mcp12.digitalWrite(AFTER_ENABLE_RED, LOW);
       mcp12.digitalWrite(AFTER_ENABLE_GREEN, LOW);
-      send3(kBoardUpperPrefix, 0xB3, 0x00);
-      send3(kBoardLowerPrefix, 0xB3, 0x00);
+
       break;
     case 1:
       mcp12.digitalWrite(AFTER_ENABLE_RED, HIGH);
       mcp12.digitalWrite(AFTER_ENABLE_GREEN, LOW);
-      send3(kBoardUpperPrefix, 0xB3, 0x00);
+
       break;
     case 2:
       mcp12.digitalWrite(AFTER_ENABLE_RED, LOW);
       mcp12.digitalWrite(AFTER_ENABLE_GREEN, HIGH);
-      send3(kBoardLowerPrefix, 0xB3, 0x00);
+
       break;
     case 3:
       mcp12.digitalWrite(AFTER_ENABLE_RED, HIGH);
@@ -3842,7 +4003,6 @@ FLASHMEM void updateafter_enable_button(bool announce) {
 }
 
 FLASHMEM void updatelfo1_sync(bool announce) {
-  sendOffset(0x0C, 0xA5);
   lastStepParam = 0xFF;
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -3850,10 +4010,10 @@ FLASHMEM void updatelfo1_sync(bool announce) {
       case 0:
         showCurrentParameterPage("LFO1 SYNC", "OFF");
         break;
-      case 1:
+      case 32:
         showCurrentParameterPage("LFO1 SYNC", "ON");
         break;
-      case 2:
+      case 64:
         showCurrentParameterPage("LFO1 SYNC", "KEY");
         break;
     }
@@ -3862,19 +4022,19 @@ FLASHMEM void updatelfo1_sync(bool announce) {
   if (upperSW) {
     switch (upperData[P_lfo1_sync]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0xA5, 0x00);
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0xA5, 0x00);
         mcp1.digitalWrite(LFO1_SYNC_RED, LOW);
         mcp1.digitalWrite(LFO1_SYNC_GREEN, LOW);
         break;
 
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0xA5, 0x20);
+      case 32:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0xA5, 0x20);
         mcp1.digitalWrite(LFO1_SYNC_RED, HIGH);
         mcp1.digitalWrite(LFO1_SYNC_GREEN, LOW);
         break;
 
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0xA5, 0x40);
+      case 64:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0xA5, 0x40);
         mcp1.digitalWrite(LFO1_SYNC_RED, LOW);
         mcp1.digitalWrite(LFO1_SYNC_GREEN, HIGH);
         break;
@@ -3882,19 +4042,19 @@ FLASHMEM void updatelfo1_sync(bool announce) {
   } else {
     switch (lowerData[P_lfo1_sync]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0xA5, 0x00);
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0xA5, 0x00);
         mcp1.digitalWrite(LFO1_SYNC_RED, LOW);
         mcp1.digitalWrite(LFO1_SYNC_GREEN, LOW);
         break;
 
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0xA5, 0x20);
+      case 32:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0xA5, 0x20);
         mcp1.digitalWrite(LFO1_SYNC_RED, HIGH);
         mcp1.digitalWrite(LFO1_SYNC_GREEN, LOW);
         break;
 
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0xA5, 0x40);
+      case 64:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0xA5, 0x40);
         mcp1.digitalWrite(LFO1_SYNC_RED, LOW);
         mcp1.digitalWrite(LFO1_SYNC_GREEN, HIGH);
         break;
@@ -3903,7 +4063,6 @@ FLASHMEM void updatelfo1_sync(bool announce) {
 }
 
 FLASHMEM void updatelfo2_sync(bool announce) {
-  sendOffset(0x0D, 0xA5);
   lastStepParam = 0xFF;
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -3911,10 +4070,10 @@ FLASHMEM void updatelfo2_sync(bool announce) {
       case 0:
         showCurrentParameterPage("LFO2 SYNC", "OFF");
         break;
-      case 1:
+      case 32:
         showCurrentParameterPage("LFO2 SYNC", "ON");
         break;
-      case 2:
+      case 64:
         showCurrentParameterPage("LFO2 SYNC", "KEY");
         break;
     }
@@ -3923,19 +4082,19 @@ FLASHMEM void updatelfo2_sync(bool announce) {
   if (upperSW) {
     switch (upperData[P_lfo2_sync]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0xA5, 0x00);
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0xA5, 0x00);
         mcp2.digitalWrite(LFO2_SYNC_RED, LOW);
         mcp2.digitalWrite(LFO2_SYNC_GREEN, LOW);
         break;
 
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0xA5, 0x20);
+      case 32:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0xA5, 0x20);
         mcp2.digitalWrite(LFO2_SYNC_RED, HIGH);
         mcp2.digitalWrite(LFO2_SYNC_GREEN, LOW);
         break;
 
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0xA5, 0x40);
+      case 64:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0xA5, 0x40);
         mcp2.digitalWrite(LFO2_SYNC_RED, LOW);
         mcp2.digitalWrite(LFO2_SYNC_GREEN, HIGH);
         break;
@@ -3943,19 +4102,19 @@ FLASHMEM void updatelfo2_sync(bool announce) {
   } else {
     switch (lowerData[P_lfo2_sync]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0xA5, 0x00);
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0xA5, 0x00);
         mcp2.digitalWrite(LFO2_SYNC_RED, LOW);
         mcp2.digitalWrite(LFO2_SYNC_GREEN, LOW);
         break;
 
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0xA5, 0x20);
+      case 32:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0xA5, 0x20);
         mcp2.digitalWrite(LFO2_SYNC_RED, HIGH);
         mcp2.digitalWrite(LFO2_SYNC_GREEN, LOW);
         break;
 
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0xA5, 0x40);
+      case 64:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0xA5, 0x40);
         mcp2.digitalWrite(LFO2_SYNC_RED, LOW);
         mcp2.digitalWrite(LFO2_SYNC_GREEN, HIGH);
         break;
@@ -3964,7 +4123,6 @@ FLASHMEM void updatelfo2_sync(bool announce) {
 }
 
 FLASHMEM void updatedco1_PWM_dyn(bool announce) {
-  sendOffset(0x0C, 0x8E);
   lastStepParam = 0xFF;
 
   if (announce && !suppressParamAnnounce) {
@@ -3973,13 +4131,13 @@ FLASHMEM void updatedco1_PWM_dyn(bool announce) {
       case 0:
         showCurrentParameterPage("DCO1 PWM", "OFF");
         break;
-      case 1:
+      case 32:
         showCurrentParameterPage("DCO1 PWM", "DYN1");
         break;
-      case 2:
+      case 64:
         showCurrentParameterPage("DCO1 PWM", "DYN2");
         break;
-      case 3:
+      case 96:
         showCurrentParameterPage("DCO1 PWM", "DYN3");
         break;
     }
@@ -3988,22 +4146,22 @@ FLASHMEM void updatedco1_PWM_dyn(bool announce) {
   if (upperSW) {
     switch (upperData[P_dco1_PWM_dyn]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8E, 0x00);
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x8E, 0x00);
         mcp1.digitalWrite(DCO1_PWM_DYN_RED, LOW);
         mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8E, 0x20);
+      case 32:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x8E, 0x20);
         mcp1.digitalWrite(DCO1_PWM_DYN_RED, HIGH);
         mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, LOW);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8E, 0x40);
+      case 64:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x8E, 0x40);
         mcp1.digitalWrite(DCO1_PWM_DYN_RED, LOW);
         mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, HIGH);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8E, 0x60);
+      case 96:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x8E, 0x60);
         mcp1.digitalWrite(DCO1_PWM_DYN_RED, HIGH);
         mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, HIGH);
         break;
@@ -4011,22 +4169,22 @@ FLASHMEM void updatedco1_PWM_dyn(bool announce) {
   } else {
     switch (lowerData[P_dco1_PWM_dyn]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8E, 0x00);
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x8E, 0x00);
         mcp1.digitalWrite(DCO1_PWM_DYN_RED, LOW);
         mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8E, 0x20);
+      case 32:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x8E, 0x20);
         mcp1.digitalWrite(DCO1_PWM_DYN_RED, HIGH);
         mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, LOW);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8E, 0x40);
+      case 64:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x8E, 0x40);
         mcp1.digitalWrite(DCO1_PWM_DYN_RED, LOW);
         mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, HIGH);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8E, 0x60);
+      case 96:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x8E, 0x60);
         mcp1.digitalWrite(DCO1_PWM_DYN_RED, HIGH);
         mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, HIGH);
         break;
@@ -4035,7 +4193,6 @@ FLASHMEM void updatedco1_PWM_dyn(bool announce) {
 }
 
 FLASHMEM void updatedco2_PWM_dyn(bool announce) {
-  sendOffset(0x0D, 0x8E);
   lastStepParam = 0xFF;
 
   if (announce && !suppressParamAnnounce) {
@@ -4044,13 +4201,13 @@ FLASHMEM void updatedco2_PWM_dyn(bool announce) {
       case 0:
         showCurrentParameterPage("DCO2 PWM", "OFF");
         break;
-      case 1:
+      case 32:
         showCurrentParameterPage("DCO2 PWM", "DYN1");
         break;
-      case 2:
+      case 64:
         showCurrentParameterPage("DCO2 PWM", "DYN2");
         break;
-      case 3:
+      case 96:
         showCurrentParameterPage("DCO2 PWM", "DYN3");
         break;
     }
@@ -4059,22 +4216,22 @@ FLASHMEM void updatedco2_PWM_dyn(bool announce) {
   if (upperSW) {
     switch (upperData[P_dco2_PWM_dyn]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8E, 0x00);
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x8E, 0x00);
         mcp2.digitalWrite(DCO2_PWM_DYN_RED, LOW);
         mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8E, 0x20);
+      case 32:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x8E, 0x20);
         mcp2.digitalWrite(DCO2_PWM_DYN_RED, HIGH);
         mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, LOW);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8E, 0x40);
+      case 64:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x8E, 0x40);
         mcp2.digitalWrite(DCO2_PWM_DYN_RED, LOW);
         mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, HIGH);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8E, 0x60);
+      case 96:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x8E, 0x60);
         mcp2.digitalWrite(DCO2_PWM_DYN_RED, HIGH);
         mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, HIGH);
         break;
@@ -4082,22 +4239,22 @@ FLASHMEM void updatedco2_PWM_dyn(bool announce) {
   } else {
     switch (lowerData[P_dco2_PWM_dyn]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8E, 0x00);
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x8E, 0x00);
         mcp2.digitalWrite(DCO2_PWM_DYN_RED, LOW);
         mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8E, 0x20);
+      case 32:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x8E, 0x20);
         mcp2.digitalWrite(DCO2_PWM_DYN_RED, HIGH);
         mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, LOW);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8E, 0x40);
+      case 64:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x8E, 0x40);
         mcp2.digitalWrite(DCO2_PWM_DYN_RED, LOW);
         mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, HIGH);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8E, 0x60);
+      case 96:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x8E, 0x60);
         mcp2.digitalWrite(DCO2_PWM_DYN_RED, HIGH);
         mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, HIGH);
         break;
@@ -4106,7 +4263,6 @@ FLASHMEM void updatedco2_PWM_dyn(bool announce) {
 }
 
 FLASHMEM void updatedco1_PWM_env_source(bool announce) {
-  sendOffset(0x0C, 0x8F);
   lastStepParam = 0xFF;
 
   if (announce && !suppressParamAnnounce) {
@@ -4115,25 +4271,25 @@ FLASHMEM void updatedco1_PWM_env_source(bool announce) {
       case 0:
         showCurrentParameterPage("DCO1 PWM", "ENV1-");
         break;
-      case 1:
+      case 16:
         showCurrentParameterPage("DCO1 PWM", "ENV1+");
         break;
-      case 2:
+      case 32:
         showCurrentParameterPage("DCO1 PWM", "ENV2-");
         break;
-      case 3:
+      case 48:
         showCurrentParameterPage("DCO1 PWM", "ENV2+");
         break;
-      case 4:
+      case 64:
         showCurrentParameterPage("DCO1 PWM", "ENV3-");
         break;
-      case 5:
+      case 80:
         showCurrentParameterPage("DCO1 PWM", "ENV3+");
         break;
-      case 6:
+      case 96:
         showCurrentParameterPage("DCO1 PWM", "ENV4-");
         break;
-      case 7:
+      case 112:
         showCurrentParameterPage("DCO1 PWM", "ENV4+");
         break;
     }
@@ -4142,56 +4298,56 @@ FLASHMEM void updatedco1_PWM_env_source(bool announce) {
   if (upperSW) {
     switch (upperData[P_dco1_PWM_env_source]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x00);
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x8F, 0x00);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
         mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
         mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x10);
+      case 16:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x8F, 0x10);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
         mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
         mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x20);
+      case 32:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x8F, 0x20);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
         mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
         mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x30);
+      case 48:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x8F, 0x30);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
         mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
         mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
         break;
-      case 4:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x40);
+      case 64:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x8F, 0x40);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
         mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
         mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
         break;
-      case 5:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x50);
+      case 80:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x8F, 0x50);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
         mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
         mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
         break;
-      case 6:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x60);
+      case 96:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x8F, 0x60);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
         mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
         mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
         break;
-      case 7:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x70);
+      case 112:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x8F, 0x70);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
         mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
@@ -4201,56 +4357,56 @@ FLASHMEM void updatedco1_PWM_env_source(bool announce) {
   } else {
     switch (lowerData[P_dco1_PWM_env_source]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x00);
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x8F, 0x00);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
         mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
         mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x10);
+      case 16:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x8F, 0x10);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
         mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
         mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x20);
+      case 32:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x8F, 0x20);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
         mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
         mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x30);
+      case 48:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x8F, 0x30);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
         mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
         mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
         break;
-      case 4:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x40);
+      case 64:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x8F, 0x40);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
         mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
         mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
         break;
-      case 5:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x50);
+      case 80:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x8F, 0x50);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
         mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
         mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
         break;
-      case 6:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x60);
+      case 96:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x8F, 0x60);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
         mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
         mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
         break;
-      case 7:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x70);
+      case 112:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x8F, 0x70);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
         mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
         mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
@@ -4261,7 +4417,6 @@ FLASHMEM void updatedco1_PWM_env_source(bool announce) {
 }
 
 FLASHMEM void updatedco2_PWM_env_source(bool announce) {
-  sendOffset(0x0D, 0x8F);
   lastStepParam = 0xFF;
 
   if (announce && !suppressParamAnnounce) {
@@ -4270,25 +4425,25 @@ FLASHMEM void updatedco2_PWM_env_source(bool announce) {
       case 0:
         showCurrentParameterPage("DCO2 PWM", "ENV1-");
         break;
-      case 1:
+      case 16:
         showCurrentParameterPage("DCO2 PWM", "ENV1+");
         break;
-      case 2:
+      case 32:
         showCurrentParameterPage("DCO2 PWM", "ENV2-");
         break;
-      case 3:
+      case 48:
         showCurrentParameterPage("DCO2 PWM", "ENV2+");
         break;
-      case 4:
+      case 64:
         showCurrentParameterPage("DCO2 PWM", "ENV3-");
         break;
-      case 5:
+      case 80:
         showCurrentParameterPage("DCO2 PWM", "ENV3+");
         break;
-      case 6:
+      case 96:
         showCurrentParameterPage("DCO2 PWM", "ENV4-");
         break;
-      case 7:
+      case 112:
         showCurrentParameterPage("DCO2 PWM", "ENV4+");
         break;
     }
@@ -4297,56 +4452,56 @@ FLASHMEM void updatedco2_PWM_env_source(bool announce) {
   if (upperSW) {
     switch (upperData[P_dco2_PWM_env_source]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x00);
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x8F, 0x00);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
         mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
         mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x10);
+      case 16:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x8F, 0x10);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
         mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
         mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x20);
+      case 32:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x8F, 0x20);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
         mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
         mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x30);
+      case 48:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x8F, 0x30);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
         mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
         mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
         break;
-      case 4:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x40);
+      case 64:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x8F, 0x40);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
         mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
         mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
         break;
-      case 5:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x50);
+      case 80:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x8F, 0x50);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
         mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
         mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
         break;
-      case 6:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x60);
+      case 96:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x8F, 0x60);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
         mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
         mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
         break;
-      case 7:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8F, 0x70);
+      case 112:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x8F, 0x70);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
         mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
@@ -4356,56 +4511,56 @@ FLASHMEM void updatedco2_PWM_env_source(bool announce) {
   } else {
     switch (lowerData[P_dco2_PWM_env_source]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x00);
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x8F, 0x00);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
         mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
         mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x10);
+      case 16:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x8F, 0x10);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
         mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
         mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x20);
+      case 32:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x8F, 0x20);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
         mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
         mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x30);
+      case 48:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x8F, 0x30);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
         mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
         mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
         break;
-      case 4:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x40);
+      case 64:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x8F, 0x40);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
         mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
         mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
         break;
-      case 5:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x50);
+      case 80:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x8F, 0x50);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
         mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
         mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
         break;
-      case 6:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x60);
+      case 96:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x8F, 0x60);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
         mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
         mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
         break;
-      case 7:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8F, 0x70);
+      case 112:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x8F, 0x70);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
         mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
         mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
@@ -4416,7 +4571,6 @@ FLASHMEM void updatedco2_PWM_env_source(bool announce) {
 }
 
 FLASHMEM void updatedco1_PWM_lfo_source(bool announce) {
-  sendOffset(0x0C, 0x8D);
   lastStepParam = 0xFF;
 
   if (announce && !suppressParamAnnounce) {
@@ -4425,13 +4579,13 @@ FLASHMEM void updatedco1_PWM_lfo_source(bool announce) {
       case 0:
         showCurrentParameterPage("DCO1 PWM", "LFO1-");
         break;
-      case 1:
+      case 32:
         showCurrentParameterPage("DCO1 PWM", "LFO1+");
         break;
-      case 2:
+      case 64:
         showCurrentParameterPage("DCO1 PWM", "LFO2-");
         break;
-      case 3:
+      case 96:
         showCurrentParameterPage("DCO1 PWM", "LFO2+");
         break;
     }
@@ -4440,22 +4594,22 @@ FLASHMEM void updatedco1_PWM_lfo_source(bool announce) {
   if (upperSW) {
     switch (upperData[P_dco1_PWM_lfo_source]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8D, 0x00);
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x8D, 0x00);
         mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, LOW);
         mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8D, 0x20);
+      case 32:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x8D, 0x20);
         mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, HIGH);
         mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, LOW);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8D, 0x40);
+      case 64:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x8D, 0x40);
         mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, LOW);
         mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, HIGH);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8D, 0x60);
+      case 96:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x8D, 0x60);
         mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, HIGH);
         mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, HIGH);
         break;
@@ -4463,22 +4617,22 @@ FLASHMEM void updatedco1_PWM_lfo_source(bool announce) {
   } else {
     switch (lowerData[P_dco1_PWM_lfo_source]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8D, 0x00);
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x8D, 0x00);
         mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, LOW);
         mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8D, 0x20);
+      case 32:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x8D, 0x20);
         mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, HIGH);
         mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, LOW);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8D, 0x40);
+      case 64:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x8D, 0x40);
         mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, LOW);
         mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, HIGH);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8D, 0x60);
+      case 96:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x8D, 0x60);
         mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, HIGH);
         mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, HIGH);
         break;
@@ -4487,7 +4641,6 @@ FLASHMEM void updatedco1_PWM_lfo_source(bool announce) {
 }
 
 FLASHMEM void updatedco2_PWM_lfo_source(bool announce) {
-  sendOffset(0x0D, 0x8D);
   lastStepParam = 0xFF;
 
   if (announce && !suppressParamAnnounce) {
@@ -4496,13 +4649,13 @@ FLASHMEM void updatedco2_PWM_lfo_source(bool announce) {
       case 0:
         showCurrentParameterPage("DCO2 PWM", "LFO1-");
         break;
-      case 1:
+      case 32:
         showCurrentParameterPage("DCO2 PWM", "LFO1+");
         break;
-      case 2:
+      case 64:
         showCurrentParameterPage("DCO2 PWM", "LFO2-");
         break;
-      case 3:
+      case 96:
         showCurrentParameterPage("DCO2 PWM", "LFO2+");
         break;
     }
@@ -4511,22 +4664,22 @@ FLASHMEM void updatedco2_PWM_lfo_source(bool announce) {
   if (upperSW) {
     switch (upperData[P_dco2_PWM_lfo_source]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8D, 0x00);
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x8D, 0x00);
         mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, LOW);
         mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8D, 0x20);
+      case 32:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x8D, 0x20);
         mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, HIGH);
         mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, LOW);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8D, 0x40);
+      case 64:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x8D, 0x40);
         mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, LOW);
         mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, HIGH);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x8D, 0x60);
+      case 96:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x8D, 0x60);
         mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, HIGH);
         mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, HIGH);
         break;
@@ -4534,22 +4687,22 @@ FLASHMEM void updatedco2_PWM_lfo_source(bool announce) {
   } else {
     switch (lowerData[P_dco2_PWM_lfo_source]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8D, 0x00);
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x8D, 0x00);
         mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, LOW);
         mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8D, 0x20);
+      case 32:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x8D, 0x20);
         mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, HIGH);
         mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, LOW);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8D, 0x40);
+      case 64:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x8D, 0x40);
         mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, LOW);
         mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, HIGH);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x8D, 0x60);
+      case 96:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x8D, 0x60);
         mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, HIGH);
         mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, HIGH);
         break;
@@ -4558,7 +4711,6 @@ FLASHMEM void updatedco2_PWM_lfo_source(bool announce) {
 }
 
 FLASHMEM void updatedco1_pitch_dyn(bool announce) {
-  sendOffset(0x0C, 0x86);
   lastStepParam = 0xFF;
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -4566,13 +4718,13 @@ FLASHMEM void updatedco1_pitch_dyn(bool announce) {
       case 0:
         showCurrentParameterPage("DCO1 PITCH", "OFF");
         break;
-      case 1:
+      case 32:
         showCurrentParameterPage("DCO1 PITCH", "DYN1");
         break;
-      case 2:
+      case 64:
         showCurrentParameterPage("DCO1 PITCH", "DYN2");
         break;
-      case 3:
+      case 96:
         showCurrentParameterPage("DCO1 PITCH", "DYN3");
         break;
     }
@@ -4581,22 +4733,22 @@ FLASHMEM void updatedco1_pitch_dyn(bool announce) {
   if (upperSW) {
     switch (upperData[P_dco1_pitch_dyn]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x86, 0x00);
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x86, 0x00);
         mcp4.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
         mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x86, 0x20);
+      case 32:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x86, 0x20);
         mcp4.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x86, 0x40);
+      case 64:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x86, 0x40);
         mcp4.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
         mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x86, 0x60);
+      case 96:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x86, 0x60);
         mcp4.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
         break;
@@ -4604,22 +4756,22 @@ FLASHMEM void updatedco1_pitch_dyn(bool announce) {
   } else {
     switch (lowerData[P_dco1_pitch_dyn]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x86, 0x00);
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x86, 0x00);
         mcp4.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
         mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x86, 0x20);
+      case 32:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x86, 0x20);
         mcp4.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x86, 0x40);
+      case 64:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x86, 0x40);
         mcp4.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
         mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x86, 0x60);
+      case 96:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x86, 0x60);
         mcp4.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
         break;
@@ -4628,7 +4780,6 @@ FLASHMEM void updatedco1_pitch_dyn(bool announce) {
 }
 
 FLASHMEM void updatedco2_pitch_dyn(bool announce) {
-  sendOffset(0x0D, 0x86);
   lastStepParam = 0xFF;
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -4636,13 +4787,13 @@ FLASHMEM void updatedco2_pitch_dyn(bool announce) {
       case 0:
         showCurrentParameterPage("DCO2 PITCH", "OFF");
         break;
-      case 1:
+      case 32:
         showCurrentParameterPage("DCO2 PITCH", "DYN1");
         break;
-      case 2:
+      case 64:
         showCurrentParameterPage("DCO2 PITCH", "DYN2");
         break;
-      case 3:
+      case 96:
         showCurrentParameterPage("DCO2 PITCH", "DYN3");
         break;
     }
@@ -4651,22 +4802,22 @@ FLASHMEM void updatedco2_pitch_dyn(bool announce) {
   if (upperSW) {
     switch (upperData[P_dco2_pitch_dyn]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x86, 0x00);
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x86, 0x00);
         mcp3.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
         mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x86, 0x20);
+      case 32:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x86, 0x20);
         mcp3.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
         mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x86, 0x40);
+      case 64:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x86, 0x40);
         mcp3.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
         mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x86, 0x60);
+      case 96:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x86, 0x60);
         mcp3.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
         mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
         break;
@@ -4674,22 +4825,22 @@ FLASHMEM void updatedco2_pitch_dyn(bool announce) {
   } else {
     switch (lowerData[P_dco2_pitch_dyn]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x86, 0x00);
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x86, 0x00);
         mcp3.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
         mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x86, 0x20);
+      case 32:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x86, 0x20);
         mcp3.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
         mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x86, 0x40);
+      case 64:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x86, 0x40);
         mcp3.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
         mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x86, 0x60);
+      case 96:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x86, 0x60);
         mcp3.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
         mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
         break;
@@ -4698,7 +4849,6 @@ FLASHMEM void updatedco2_pitch_dyn(bool announce) {
 }
 
 FLASHMEM void updatedco1_pitch_lfo_source(bool announce) {
-  sendOffset(0x0C, 0x84);
   lastStepParam = 0xFF;
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -4706,13 +4856,13 @@ FLASHMEM void updatedco1_pitch_lfo_source(bool announce) {
       case 0:
         showCurrentParameterPage("DCO1 PITCH", "LFO1-");
         break;
-      case 1:
+      case 32:
         showCurrentParameterPage("DCO1 PITCH", "LFO1+");
         break;
-      case 2:
+      case 64:
         showCurrentParameterPage("DCO1 PITCH", "LFO2-");
         break;
-      case 3:
+      case 96:
         showCurrentParameterPage("DCO1 PITCH", "LFO2+");
         break;
     }
@@ -4722,22 +4872,22 @@ FLASHMEM void updatedco1_pitch_lfo_source(bool announce) {
   if (upperSW) {
     switch (upperData[P_dco1_pitch_lfo_source]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x84, 0x00);
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x84, 0x00);
         mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, LOW);
         mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x84, 0x20);
+      case 32:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x84, 0x20);
         mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, LOW);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x84, 0x40);
+      case 64:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x84, 0x40);
         mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, LOW);
         mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, HIGH);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x84, 0x60);
+      case 96:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x84, 0x60);
         mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, HIGH);
         break;
@@ -4745,22 +4895,22 @@ FLASHMEM void updatedco1_pitch_lfo_source(bool announce) {
   } else {
     switch (lowerData[P_dco1_pitch_lfo_source]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x84, 0x00);
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x84, 0x00);
         mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, LOW);
         mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x84, 0x20);
+      case 32:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x84, 0x20);
         mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, LOW);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x84, 0x40);
+      case 64:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x84, 0x40);
         mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, LOW);
         mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, HIGH);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x84, 0x60);
+      case 96:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x84, 0x60);
         mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, HIGH);
         break;
@@ -4769,7 +4919,6 @@ FLASHMEM void updatedco1_pitch_lfo_source(bool announce) {
 }
 
 FLASHMEM void updatedco2_pitch_lfo_source(bool announce) {
-  sendOffset(0x0D, 0x84);
   lastStepParam = 0xFF;
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -4777,13 +4926,13 @@ FLASHMEM void updatedco2_pitch_lfo_source(bool announce) {
       case 0:
         showCurrentParameterPage("DCO2 PITCH", "LFO1-");
         break;
-      case 1:
+      case 32:
         showCurrentParameterPage("DCO2 PITCH", "LFO1+");
         break;
-      case 2:
+      case 64:
         showCurrentParameterPage("DCO2 PITCH", "LFO2-");
         break;
-      case 3:
+      case 96:
         showCurrentParameterPage("DCO2 PITCH", "LFO2+");
         break;
     }
@@ -4793,22 +4942,22 @@ FLASHMEM void updatedco2_pitch_lfo_source(bool announce) {
   if (upperSW) {
     switch (upperData[P_dco2_pitch_lfo_source]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x84, 0x00);
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x84, 0x00);
         mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, LOW);
         mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x84, 0x20);
+      case 32:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x84, 0x20);
         mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, LOW);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x84, 0x40);
+      case 64:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x84, 0x40);
         mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, LOW);
         mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, HIGH);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x84, 0x60);
+      case 96:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x84, 0x60);
         mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, HIGH);
         break;
@@ -4816,22 +4965,22 @@ FLASHMEM void updatedco2_pitch_lfo_source(bool announce) {
   } else {
     switch (lowerData[P_dco2_pitch_lfo_source]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x84, 0x00);
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x84, 0x00);
         mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, LOW);
         mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x84, 0x20);
+      case 32:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x84, 0x20);
         mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, LOW);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x84, 0x40);
+      case 64:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x84, 0x40);
         mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, LOW);
         mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, HIGH);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x84, 0x60);
+      case 96:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x84, 0x60);
         mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, HIGH);
         break;
@@ -4840,7 +4989,6 @@ FLASHMEM void updatedco2_pitch_lfo_source(bool announce) {
 }
 
 FLASHMEM void updatedco1_pitch_env_source(bool announce) {
-  sendOffset(0x0C, 0x87);
   lastStepParam = 0xFF;
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -4848,25 +4996,25 @@ FLASHMEM void updatedco1_pitch_env_source(bool announce) {
       case 0:
         showCurrentParameterPage("DCO1 PITCH", "ENV1-");
         break;
-      case 1:
+      case 16:
         showCurrentParameterPage("DCO1 PITCH", "ENV1+");
         break;
-      case 2:
+      case 32:
         showCurrentParameterPage("DCO1 PITCH", "ENV2-");
         break;
-      case 3:
+      case 48:
         showCurrentParameterPage("DCO1 PITCH", "ENV2+");
         break;
-      case 4:
+      case 64:
         showCurrentParameterPage("DCO1 PITCH", "ENV3-");
         break;
-      case 5:
+      case 80:
         showCurrentParameterPage("DCO1 PITCH", "ENV3+");
         break;
-      case 6:
+      case 96:
         showCurrentParameterPage("DCO1 PITCH", "ENV4-");
         break;
-      case 7:
+      case 112:
         showCurrentParameterPage("DCO1 PITCH", "ENV4+");
         break;
     }
@@ -4875,56 +5023,56 @@ FLASHMEM void updatedco1_pitch_env_source(bool announce) {
   if (upperSW) {
     switch (upperData[P_dco1_pitch_env_source]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x00);
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x87, 0x00);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x10);
+      case 16:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x87, 0x10);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x20);
+      case 32:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x87, 0x20);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x30);
+      case 48:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x87, 0x30);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
         break;
-      case 4:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x40);
+      case 64:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x87, 0x40);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
         break;
-      case 5:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x50);
+      case 80:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x87, 0x50);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
         break;
-      case 6:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x60);
+      case 96:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x87, 0x60);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
         break;
-      case 7:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x70);
+      case 112:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset0Prefix, 0x87, 0x70);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
@@ -4934,56 +5082,56 @@ FLASHMEM void updatedco1_pitch_env_source(bool announce) {
   } else {
     switch (lowerData[P_dco1_pitch_env_source]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x00);
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x87, 0x00);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x10);
+      case 16:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x87, 0x10);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x20);
+      case 32:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x87, 0x20);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x30);
+      case 48:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x87, 0x30);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
         break;
-      case 4:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x40);
+      case 64:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x87, 0x40);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
         break;
-      case 5:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x50);
+      case 80:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x87, 0x50);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
         break;
-      case 6:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x60);
+      case 96:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x87, 0x60);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
         break;
-      case 7:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x70);
+      case 112:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset0Prefix, 0x87, 0x70);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
         mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
@@ -4994,7 +5142,6 @@ FLASHMEM void updatedco1_pitch_env_source(bool announce) {
 }
 
 FLASHMEM void updatedco2_pitch_env_source(bool announce) {
-  sendOffset(0x0D, 0x87);
   lastStepParam = 0xFF;
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
@@ -5002,25 +5149,25 @@ FLASHMEM void updatedco2_pitch_env_source(bool announce) {
       case 0:
         showCurrentParameterPage("DCO2 PITCH", "ENV1-");
         break;
-      case 1:
+      case 16:
         showCurrentParameterPage("DCO2 PITCH", "ENV1+");
         break;
-      case 2:
+      case 32:
         showCurrentParameterPage("DCO2 PITCH", "ENV2-");
         break;
-      case 3:
+      case 48:
         showCurrentParameterPage("DCO2 PITCH", "ENV2+");
         break;
-      case 4:
+      case 64:
         showCurrentParameterPage("DCO2 PITCH", "ENV3-");
         break;
-      case 5:
+      case 80:
         showCurrentParameterPage("DCO2 PITCH", "ENV3+");
         break;
-      case 6:
+      case 96:
         showCurrentParameterPage("DCO2 PITCH", "ENV4-");
         break;
-      case 7:
+      case 112:
         showCurrentParameterPage("DCO2 PITCH", "ENV4+");
         break;
     }
@@ -5029,56 +5176,56 @@ FLASHMEM void updatedco2_pitch_env_source(bool announce) {
   if (upperSW) {
     switch (upperData[P_dco2_pitch_env_source]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x00);
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x87, 0x00);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x10);
+      case 16:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x87, 0x10);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x20);
+      case 32:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x87, 0x20);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x30);
+      case 48:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x87, 0x30);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
         break;
-      case 4:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x40);
+      case 64:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x87, 0x40);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
         break;
-      case 5:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x50);
+      case 80:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x87, 0x50);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
         break;
-      case 6:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x60);
+      case 96:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x87, 0x60);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
         break;
-      case 7:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x87, 0x70);
+      case 112:
+        sendVoiceParam(kBoardUpperPrefix, kBoardOffset1Prefix, 0x87, 0x70);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
@@ -5088,56 +5235,56 @@ FLASHMEM void updatedco2_pitch_env_source(bool announce) {
   } else {
     switch (lowerData[P_dco2_pitch_env_source]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x00);
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x87, 0x00);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x10);
+      case 16:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x87, 0x10);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x20);
+      case 32:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x87, 0x20);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x30);
+      case 48:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x87, 0x30);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
         break;
-      case 4:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x40);
+      case 64:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x87, 0x40);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
         break;
-      case 5:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x50);
+      case 80:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x87, 0x50);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
         break;
-      case 6:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x60);
+      case 96:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x87, 0x60);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
         break;
-      case 7:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x87, 0x70);
+      case 112:
+        sendVoiceParam(kBoardLowerPrefix, kBoardOffset1Prefix, 0x87, 0x70);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
         mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
@@ -5189,25 +5336,25 @@ FLASHMEM void updatedco_mix_env_source(bool announce) {
       case 0:
         showCurrentParameterPage("DCO MIX", "ENV1-");
         break;
-      case 1:
+      case 16:
         showCurrentParameterPage("DCO MIX", "ENV1+");
         break;
-      case 2:
+      case 32:
         showCurrentParameterPage("DCO MIX", "ENV2-");
         break;
-      case 3:
+      case 48:
         showCurrentParameterPage("DCO MIX", "ENV2+");
         break;
-      case 4:
+      case 64:
         showCurrentParameterPage("DCO MIX", "ENV3-");
         break;
-      case 5:
+      case 80:
         showCurrentParameterPage("DCO MIX", "ENV3+");
         break;
-      case 6:
+      case 96:
         showCurrentParameterPage("DCO MIX", "ENV4-");
         break;
-      case 7:
+      case 112:
         showCurrentParameterPage("DCO MIX", "ENV4+");
         break;
     }
@@ -5217,56 +5364,56 @@ FLASHMEM void updatedco_mix_env_source(bool announce) {
   if (upperSW) {
     switch (upperData[P_dco_mix_env_source]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x94, 0x00);
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x94, 0x00);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x94, 0x10);
+      case 16:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x94, 0x10);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x94, 0x20);
+      case 32:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x94, 0x20);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x94, 0x30);
+      case 48:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x94, 0x30);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
         break;
-      case 4:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x94, 0x40);
+      case 64:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x94, 0x40);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
         break;
-      case 5:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x94, 0x50);
+      case 80:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x94, 0x50);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
         break;
-      case 6:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x94, 0x60);
+      case 96:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x94, 0x60);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
         break;
-      case 7:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x94, 0x70);
+      case 112:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x94, 0x70);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
@@ -5276,56 +5423,56 @@ FLASHMEM void updatedco_mix_env_source(bool announce) {
   } else {
     switch (lowerData[P_dco_mix_env_source]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x94, 0x00);
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x94, 0x00);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x94, 0x10);
+      case 16:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x94, 0x10);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x94, 0x20);
+      case 32:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x94, 0x20);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x94, 0x30);
+      case 40:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x94, 0x30);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
         break;
-      case 4:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x94, 0x40);
+      case 64:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x94, 0x40);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
         break;
-      case 5:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x94, 0x50);
+      case 80:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x94, 0x50);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
         break;
-      case 6:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x94, 0x60);
+      case 96:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x94, 0x60);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
         break;
-      case 7:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x94, 0x70);
+      case 112:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x94, 0x70);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
         mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
         mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
@@ -5344,13 +5491,13 @@ FLASHMEM void updatedco_mix_dyn(bool announce) {
       case 0:
         showCurrentParameterPage("DCO MIX", "OFF");
         break;
-      case 1:
+      case 32:
         showCurrentParameterPage("DCO MIX", "DYN1");
         break;
-      case 2:
+      case 64:
         showCurrentParameterPage("DCO MIX", "DYN2");
         break;
-      case 3:
+      case 96:
         showCurrentParameterPage("DCO MIX", "DYN3");
         break;
     }
@@ -5359,22 +5506,22 @@ FLASHMEM void updatedco_mix_dyn(bool announce) {
   if (upperSW) {
     switch (upperData[P_dco_mix_dyn]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x93, 0x00);
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x93, 0x00);
         mcp5.digitalWrite(DCO_MIX_DYN_RED, LOW);
         mcp5.digitalWrite(DCO_MIX_DYN_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x93, 0x20);
+      case 32:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x93, 0x20);
         mcp5.digitalWrite(DCO_MIX_DYN_RED, HIGH);
         mcp5.digitalWrite(DCO_MIX_DYN_GREEN, LOW);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x93, 0x40);
+      case 64:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x93, 0x40);
         mcp5.digitalWrite(DCO_MIX_DYN_RED, LOW);
         mcp5.digitalWrite(DCO_MIX_DYN_GREEN, HIGH);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x93, 0x60);
+      case 96:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x93, 0x60);
         mcp5.digitalWrite(DCO_MIX_DYN_RED, HIGH);
         mcp5.digitalWrite(DCO_MIX_DYN_GREEN, HIGH);
         break;
@@ -5382,22 +5529,22 @@ FLASHMEM void updatedco_mix_dyn(bool announce) {
   } else {
     switch (lowerData[P_dco_mix_dyn]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x93, 0x00);
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x93, 0x00);
         mcp5.digitalWrite(DCO_MIX_DYN_RED, LOW);
         mcp5.digitalWrite(DCO_MIX_DYN_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x93, 0x20);
+      case 32:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x93, 0x20);
         mcp5.digitalWrite(DCO_MIX_DYN_RED, HIGH);
         mcp5.digitalWrite(DCO_MIX_DYN_GREEN, LOW);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x93, 0x40);
+      case 64:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x93, 0x40);
         mcp5.digitalWrite(DCO_MIX_DYN_RED, LOW);
         mcp5.digitalWrite(DCO_MIX_DYN_GREEN, HIGH);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x93, 0x60);
+      case 96:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x93, 0x60);
         mcp5.digitalWrite(DCO_MIX_DYN_RED, HIGH);
         mcp5.digitalWrite(DCO_MIX_DYN_GREEN, HIGH);
         break;
@@ -5413,25 +5560,25 @@ FLASHMEM void updatevcf_env_source(bool announce) {
       case 0:
         showCurrentParameterPage("VCF EG", "ENV1-");
         break;
-      case 1:
+      case 16:
         showCurrentParameterPage("VCF EG", "ENV1+");
         break;
-      case 2:
+      case 32:
         showCurrentParameterPage("VCF EG", "ENV2-");
         break;
-      case 3:
+      case 48:
         showCurrentParameterPage("VCF EG", "ENV2+");
         break;
-      case 4:
+      case 64:
         showCurrentParameterPage("VCF EG", "ENV3-");
         break;
-      case 5:
+      case 80:
         showCurrentParameterPage("VCF EG", "ENV3+");
         break;
-      case 6:
+      case 96:
         showCurrentParameterPage("VCF EG", "ENV4-");
         break;
-      case 7:
+      case 112:
         showCurrentParameterPage("VCF EG", "ENV4+");
         break;
     }
@@ -5440,56 +5587,56 @@ FLASHMEM void updatevcf_env_source(bool announce) {
   if (upperSW) {
     switch (upperData[P_vcf_env_source]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9D, 0x00);
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x9D, 0x00);
         mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
         mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
         mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
         mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9D, 0x10);
+      case 16:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x9D, 0x10);
         mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
         mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
         mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
         mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9D, 0x20);
+      case 32:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x9D, 0x20);
         mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
         mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
         mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
         mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9D, 0x30);
+      case 48:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x9D, 0x30);
         mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
         mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
         mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
         mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
         break;
-      case 4:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9D, 0x40);
+      case 64:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x9D, 0x40);
         mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
         mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
         mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
         mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
         break;
-      case 5:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9D, 0x50);
+      case 80:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x9D, 0x50);
         mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
         mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
         mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
         mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
         break;
-      case 6:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9D, 0x60);
+      case 96:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x9D, 0x60);
         mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
         mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
         mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
         mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
         break;
-      case 7:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9D, 0x70);
+      case 112:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x9D, 0x70);
         mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
         mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
         mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
@@ -5499,56 +5646,56 @@ FLASHMEM void updatevcf_env_source(bool announce) {
   } else {
     switch (lowerData[P_vcf_env_source]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9D, 0x00);
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x9D, 0x00);
         mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
         mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
         mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
         mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9D, 0x10);
+      case 16:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x9D, 0x10);
         mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
         mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
         mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
         mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9D, 0x20);
+      case 32:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x9D, 0x20);
         mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
         mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
         mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
         mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9D, 0x30);
+      case 48:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x9D, 0x30);
         mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
         mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
         mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
         mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
         break;
-      case 4:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9D, 0x40);
+      case 64:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x9D, 0x40);
         mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
         mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
         mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
         mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
         break;
-      case 5:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9D, 0x50);
+      case 80:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x9D, 0x50);
         mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
         mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
         mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
         mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
         break;
-      case 6:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9D, 0x60);
+      case 96:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x9D, 0x60);
         mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
         mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
         mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
         mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
         break;
-      case 7:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9D, 0x70);
+      case 112:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x9D, 0x70);
         mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
         mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
         mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
@@ -5566,13 +5713,13 @@ FLASHMEM void updatevcf_dyn(bool announce) {
       case 0:
         showCurrentParameterPage("VCF ENV", "OFF");
         break;
-      case 1:
+      case 32:
         showCurrentParameterPage("VCF ENV", "DYN1");
         break;
-      case 2:
+      case 64:
         showCurrentParameterPage("VCF ENV", "DYN2");
         break;
-      case 3:
+      case 96:
         showCurrentParameterPage("VCF ENV", "DYN3");
         break;
     }
@@ -5581,22 +5728,22 @@ FLASHMEM void updatevcf_dyn(bool announce) {
   if (upperSW) {
     switch (upperData[P_vcf_dyn]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9C, 0x00);
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x9C, 0x00);
         mcp6.digitalWrite(VCF_DYN_RED, LOW);
         mcp6.digitalWrite(VCF_DYN_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9C, 0x20);
+      case 32:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x9C, 0x20);
         mcp6.digitalWrite(VCF_DYN_RED, HIGH);
         mcp6.digitalWrite(VCF_DYN_GREEN, LOW);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9C, 0x40);
+      case 64:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x9C, 0x40);
         mcp6.digitalWrite(VCF_DYN_RED, LOW);
         mcp6.digitalWrite(VCF_DYN_GREEN, HIGH);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9C, 0x60);
+      case 96:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x9C, 0x60);
         mcp6.digitalWrite(VCF_DYN_RED, HIGH);
         mcp6.digitalWrite(VCF_DYN_GREEN, HIGH);
         break;
@@ -5604,22 +5751,22 @@ FLASHMEM void updatevcf_dyn(bool announce) {
   } else {
     switch (lowerData[P_vcf_dyn]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9C, 0x00);
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x9C, 0x00);
         mcp6.digitalWrite(VCF_DYN_RED, LOW);
         mcp6.digitalWrite(VCF_DYN_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9C, 0x20);
+      case 32:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x9C, 0x20);
         mcp6.digitalWrite(VCF_DYN_RED, HIGH);
         mcp6.digitalWrite(VCF_DYN_GREEN, LOW);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9C, 0x40);
+      case 64:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x9C, 0x40);
         mcp6.digitalWrite(VCF_DYN_RED, LOW);
         mcp6.digitalWrite(VCF_DYN_GREEN, HIGH);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9C, 0x60);
+      case 96:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x9C, 0x60);
         mcp6.digitalWrite(VCF_DYN_RED, HIGH);
         mcp6.digitalWrite(VCF_DYN_GREEN, HIGH);
         break;
@@ -5635,13 +5782,13 @@ FLASHMEM void updatevca_env_source(bool announce) {
       case 0:
         showCurrentParameterPage("VCA EG", "ENV1");
         break;
-      case 1:
+      case 32:
         showCurrentParameterPage("VCA EG", "ENV2");
         break;
-      case 2:
+      case 64:
         showCurrentParameterPage("VCA EG", "ENV3");
         break;
-      case 3:
+      case 96:
         showCurrentParameterPage("VCA EG", "ENV4");
         break;
     }
@@ -5650,22 +5797,22 @@ FLASHMEM void updatevca_env_source(bool announce) {
   if (upperSW) {
     switch (upperData[P_vca_env_source]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0xAE, 0x00);
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0xAE, 0x00);
         mcp6.digitalWrite(VCA_ENV_SOURCE_RED, LOW);
         mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0xAE, 0x20);
+      case 32:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0xAE, 0x20);
         mcp6.digitalWrite(VCA_ENV_SOURCE_RED, HIGH);
         mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, LOW);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0xAE, 0x40);
+      case 64:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0xAE, 0x40);
         mcp6.digitalWrite(VCA_ENV_SOURCE_RED, LOW);
         mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, HIGH);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0xAE, 0x60);
+      case 96:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0xAE, 0x60);
         mcp6.digitalWrite(VCA_ENV_SOURCE_RED, HIGH);
         mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, HIGH);
         break;
@@ -5673,22 +5820,22 @@ FLASHMEM void updatevca_env_source(bool announce) {
   } else {
     switch (lowerData[P_vca_env_source]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0xAE, 0x00);
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0xAE, 0x00);
         mcp6.digitalWrite(VCA_ENV_SOURCE_RED, LOW);
         mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0xAE, 0x20);
+      case 32:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0xAE, 0x20);
         mcp6.digitalWrite(VCA_ENV_SOURCE_RED, HIGH);
         mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, LOW);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0xAE, 0x40);
+      case 64:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0xAE, 0x40);
         mcp6.digitalWrite(VCA_ENV_SOURCE_RED, LOW);
         mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, HIGH);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0xAE, 0x60);
+      case 96:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0xAE, 0x60);
         mcp6.digitalWrite(VCA_ENV_SOURCE_RED, HIGH);
         mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, HIGH);
         break;
@@ -5703,13 +5850,13 @@ FLASHMEM void updatevca_dyn(bool announce) {
       case 0:
         showCurrentParameterPage("VCA ENV", "OFF");
         break;
-      case 1:
+      case 32:
         showCurrentParameterPage("VCA ENV", "DYN1");
         break;
-      case 2:
+      case 64:
         showCurrentParameterPage("VCA ENV", "DYN2");
         break;
-      case 3:
+      case 96:
         showCurrentParameterPage("VCA ENV", "DYN3");
         break;
     }
@@ -5718,22 +5865,22 @@ FLASHMEM void updatevca_dyn(bool announce) {
   if (upperSW) {
     switch (upperData[P_vca_dyn]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9F, 0x00);
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x9F, 0x00);
         mcp6.digitalWrite(VCA_DYN_RED, LOW);
         mcp6.digitalWrite(VCA_DYN_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9F, 0x20);
+      case 32:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x9F, 0x20);
         mcp6.digitalWrite(VCA_DYN_RED, HIGH);
         mcp6.digitalWrite(VCA_DYN_GREEN, LOW);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9F, 0x40);
+      case 64:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x9F, 0x40);
         mcp6.digitalWrite(VCA_DYN_RED, LOW);
         mcp6.digitalWrite(VCA_DYN_GREEN, HIGH);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0x9F, 0x60);
+      case 96:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0x9F, 0x60);
         mcp6.digitalWrite(VCA_DYN_RED, HIGH);
         mcp6.digitalWrite(VCA_DYN_GREEN, HIGH);
         break;
@@ -5741,22 +5888,22 @@ FLASHMEM void updatevca_dyn(bool announce) {
   } else {
     switch (lowerData[P_vca_dyn]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9F, 0x00);
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x9F, 0x00);
         mcp6.digitalWrite(VCA_DYN_RED, LOW);
         mcp6.digitalWrite(VCA_DYN_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9F, 0x20);
+      case 32:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x9F, 0x20);
         mcp6.digitalWrite(VCA_DYN_RED, HIGH);
         mcp6.digitalWrite(VCA_DYN_GREEN, LOW);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9F, 0x40);
+      case 64:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x9F, 0x40);
         mcp6.digitalWrite(VCA_DYN_RED, LOW);
         mcp6.digitalWrite(VCA_DYN_GREEN, HIGH);
         break;
-      case 3:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0x9F, 0x60);
+      case 96:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0x9F, 0x60);
         mcp6.digitalWrite(VCA_DYN_RED, HIGH);
         mcp6.digitalWrite(VCA_DYN_GREEN, HIGH);
         break;
@@ -5773,10 +5920,10 @@ FLASHMEM void updatechorus(bool announce) {
       case 0:
         showCurrentParameterPage("CHORUS", "OFF");
         break;
-      case 1:
+      case 32:
         showCurrentParameterPage("CHORUS", "1");
         break;
-      case 2:
+      case 64:
         showCurrentParameterPage("CHORUS", "2");
         break;
     }
@@ -5785,17 +5932,17 @@ FLASHMEM void updatechorus(bool announce) {
   if (upperSW) {
     switch (upperData[P_chorus]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0xA0, 0x00);
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0xA0, 0x00);
         mcp6.digitalWrite(CHORUS_SELECT_RED, LOW);
         mcp6.digitalWrite(CHORUS_SELECT_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0xA0, 0x20);
+      case 32:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0xA0, 0x20);
         mcp6.digitalWrite(CHORUS_SELECT_RED, HIGH);
         mcp6.digitalWrite(CHORUS_SELECT_GREEN, LOW);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardUpperPrefix, 0xA0, 0x40);
+      case 64:
+        sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0xA0, 0x40);
         mcp6.digitalWrite(CHORUS_SELECT_RED, LOW);
         mcp6.digitalWrite(CHORUS_SELECT_GREEN, HIGH);
         break;
@@ -5803,17 +5950,17 @@ FLASHMEM void updatechorus(bool announce) {
   } else {
     switch (lowerData[P_chorus]) {
       case 0:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0xA0, 0x00);
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0xA0, 0x00);
         mcp6.digitalWrite(CHORUS_SELECT_RED, LOW);
         mcp6.digitalWrite(CHORUS_SELECT_GREEN, LOW);
         break;
-      case 1:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0xA0, 0x20);
+      case 32:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0xA0, 0x20);
         mcp6.digitalWrite(CHORUS_SELECT_RED, HIGH);
         mcp6.digitalWrite(CHORUS_SELECT_GREEN, LOW);
         break;
-      case 2:
-        sendParamValueWithPrefixLatched(kBoardLowerPrefix, 0xA0, 0x40);
+      case 64:
+        sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0xA0, 0x40);
         mcp6.digitalWrite(CHORUS_SELECT_RED, LOW);
         mcp6.digitalWrite(CHORUS_SELECT_GREEN, HIGH);
         break;
@@ -5842,26 +5989,26 @@ FLASHMEM void updateportamento_sw(bool announce) {
   }
   switch (portamento_sw) {
     case 0:
-      send3(kBoardLowerPrefix, 0xB5, 0x00);
-      send3(kBoardUpperPrefix, 0xB5, 0x00);
+      sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0xB5, 0x00);
+      sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0xB5, 0x00);
       mcp2.digitalWrite(PORTAMENTO_LOWER_RED, LOW);
       mcp2.digitalWrite(PORTAMENTO_UPPER_GREEN, LOW);
       break;
     case 1:
-      send3(kBoardLowerPrefix, 0xB5, 0x7F);
-      send3(kBoardUpperPrefix, 0xB5, 0x00);
+      sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0xB5, 0x7F);
+      sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0xB5, 0x00);
       mcp2.digitalWrite(PORTAMENTO_LOWER_RED, HIGH);
       mcp2.digitalWrite(PORTAMENTO_UPPER_GREEN, LOW);
       break;
     case 2:
-      send3(kBoardLowerPrefix, 0xB5, 0x00);
-      send3(kBoardUpperPrefix, 0xB5, 0x7F);
+      sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0xB5, 0x00);
+      sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0xB5, 0x7F);
       mcp2.digitalWrite(PORTAMENTO_LOWER_RED, LOW);
       mcp2.digitalWrite(PORTAMENTO_UPPER_GREEN, HIGH);
       break;
     case 3:
-      send3(kBoardLowerPrefix, 0xB5, 0x7F);
-      send3(kBoardUpperPrefix, 0xB5, 0x7F);
+      sendVoiceParam(kBoardLowerPrefix, NO_OFFSET, 0xB5, 0x7F);
+      sendVoiceParam(kBoardUpperPrefix, NO_OFFSET, 0xB5, 0x7F);
       mcp2.digitalWrite(PORTAMENTO_LOWER_RED, HIGH);
       mcp2.digitalWrite(PORTAMENTO_UPPER_GREEN, HIGH);
       break;
@@ -5997,13 +6144,35 @@ int getUpperSplitVoicePoly2(byte note) {
 
 
 inline void sendVoiceNoteOn(int voiceIdx, byte note, byte vel) {
-  if (voiceIdx < 6) MIDI.sendNoteOn(note, vel, 1);
-  else MIDI.sendNoteOn(note, vel, 1);
+  if (voiceIdx < 6) {
+    // Lower board: board select F1, note slot C0-C5
+    Serial3.write(0xF1);
+    Serial3.write(0xC0 | voiceIdx);  // C0–C5
+    Serial3.write(note & 0x7F);
+    Serial3.write(vel & 0x7F);
+  } else {
+    // Upper board: board select F9, note slot C0-C5
+    Serial3.write(0xF9);
+    Serial3.write(0xC0 | (voiceIdx - 6));  // C0–C5
+    Serial3.write(note & 0x7F);
+    Serial3.write(vel & 0x7F);
+  }
 }
 
 inline void sendVoiceNoteOff(int voiceIdx, byte note) {
-  if (voiceIdx < 6) MIDI.sendNoteOn(note, 0, 1);
-  else MIDI.sendNoteOn(note, 0, 1);
+  if (voiceIdx < 6) {
+    // Lower board: board select F1, note slot D0-D5
+    Serial3.write(0xF1);
+    Serial3.write(0xD0 | voiceIdx);  // D0–D5
+    Serial3.write(note & 0x7F);
+    Serial3.write(0x00);  // zero velocity on note off
+  } else {
+    // Upper board: board select F9, note slot D0-D5
+    Serial3.write(0xF9);
+    Serial3.write(0xD0 | (voiceIdx - 6));  // D0–D5
+    Serial3.write(note & 0x7F);
+    Serial3.write(0x00);
+  }
 }
 
 void assignVoice(byte note, byte velocity, int voiceIdx) {
@@ -6128,724 +6297,6 @@ int mod(int a, int b) {
   return r < 0 ? r + b : r;
 }
 
-// Arpeggiator
-
-void serviceArpClockLoss() {
-
-  if (arpMode == ARP_OFF) return;
-
-  // Only relevant for external clock source
-  if (arpClockSrc != ARPCLK_EXTERNAL) return;
-
-  // If no arp note is currently sounding, nothing to do
-  if (!arpNoteActive) return;
-
-  // If we've never seen a pulse, don't force-off
-  if (lastExtPulseUs == 0) return;
-
-  uint32_t nowMs = millis();
-  uint32_t lastPulseMs = lastExtPulseUs / 1000u;
-
-  if ((uint32_t)(nowMs - lastPulseMs) > ARP_EXT_CLOCK_LOSS_MS) {
-    // Clock stopped: kill the held arp note
-    arpStopCurrent();
-    arpNoteActive = false;
-
-    // Prevent queued ticks from retriggering later
-    arpExtTickCount = 0;
-
-    // Optional: mark not running
-    arpRunning = false;
-  }
-}
-
-inline bool arpNotePresentLower(uint8_t n) {
-  return keyDownLower[n] || holdLatchedLower[n];
-}
-
-inline bool arpNotePresentUpper(uint8_t n) {
-  return keyDownUpper[n] || holdLatchedUpper[n];
-}
-
-inline bool arpPatternContains(uint8_t n) {
-  for (uint8_t i = 0; i < arpLen; i++)
-    if (arpPattern[i] == n) return true;
-  return false;
-}
-
-void arpClearPattern() {
-  arpLen = 0;
-  arpPos = -1;
-  arpDir = +1;
-  arpRunning = false;
-}
-
-void arpAddNote(uint8_t n) {
-  if (arpLen >= 8) return;
-  if (arpPatternContains(n)) return;
-  arpPattern[arpLen++] = n;
-  // If we were empty and now have notes, start transport cleanly
-  if (arpLen == 1) {
-    arpPos = -1;
-    arpDir = +1;
-  }
-}
-
-void arpRemoveNote(uint8_t n) {
-  for (uint8_t i = 0; i < arpLen; i++) {
-    if (arpPattern[i] == n) {
-      for (uint8_t j = i; j + 1 < arpLen; j++) arpPattern[j] = arpPattern[j + 1];
-      arpLen--;
-      if (arpLen == 0) {
-        arpPos = -1;
-        arpDir = +1;
-      } else {
-        // keep position in bounds
-        int16_t L = (int16_t)arpLen * (int16_t)arpRange;
-        if (arpPos >= L) arpPos = -1;
-      }
-      return;
-    }
-  }
-}
-
-inline int16_t arpUnfoldedLength() {
-  return (int16_t)arpLen * (int16_t)arpRange;
-}
-
-inline uint8_t arpUnfoldedNoteAt(int16_t p) {
-  uint8_t idx = (uint8_t)(p % arpLen);
-  uint8_t oct = (uint8_t)(p / arpLen);
-  int16_t n = (int16_t)arpPattern[idx] + (int16_t)(12 * oct);
-  if (n < 0) n = 0;
-  if (n > 127) n = 127;
-  return (uint8_t)n;
-}
-
-int16_t arpNextPos(int16_t L) {
-  if (L <= 1) return 0;
-
-  switch (arpMode) {
-    case ARP_UP:
-      return (int16_t)((arpPos + 1) % L);
-
-    case ARP_DOWN:
-      return (arpPos <= 0) ? (L - 1) : (arpPos - 1);
-
-    case ARP_UPDOWN:
-      {
-        int16_t np = arpPos + arpDir;
-        if (np >= L) {
-          arpDir = -1;
-          np = L - 2;
-        }
-        if (np < 0) {
-          arpDir = +1;
-          np = 1;
-        }
-        return np;
-      }
-
-    case ARP_RANDOM:
-      return (int16_t)(random(L));
-
-    default:
-      return arpPos;
-  }
-}
-
-// Release currently sounding arp note (if any)
-void arpStopCurrent() {
-  if (!arpNoteActive) return;
-
-  // In Split mode, arp assigned to lower only
-  if (keyMode == 3 && arpLowerOnlyWhenSplit) {
-    int v = voiceAssignmentLower[arpCurrentNote];
-    if (v >= 0 && v <= 5) releaseVoice(arpCurrentNote, v);
-  } else if (keyMode == 0) {
-    // DUAL: release in both engines if present
-    int vl = voiceAssignmentLower[arpCurrentNote];
-    if (vl >= 0 && vl <= 5) releaseVoice(arpCurrentNote, vl);
-
-    int vu = voiceAssignmentUpper[arpCurrentNote];
-    if (vu >= 6 && vu <= 11) releaseVoice(arpCurrentNote, vu);
-  } else {
-    // WHOLE: release across whatever voice currently has that note
-    for (int v = 0; v < 12; v++) {
-      if (voices[v].noteOn && voices[v].note == arpCurrentNote) {
-        releaseVoice(arpCurrentNote, v);
-      }
-    }
-  }
-
-  arpNoteActive = false;
-}
-
-// Play next arp note using your existing allocation rules
-void arpPlayNote(uint8_t note, uint8_t vel) {
-
-  // Split: lower only
-  if (keyMode == 3 && arpLowerOnlyWhenSplit) {
-
-    switch (lowerData[P_assign]) {
-      case 0:
-        {
-          int v = getLowerSplitVoice(note);
-          assignVoice(note, vel, v);
-          voiceAssignmentLower[note] = v;
-          voiceToNoteLower[v] = note;
-        }
-        break;
-
-      case 1:
-        {
-          int v = getLowerSplitVoicePoly2(note);
-          // Poly2 behavior: if voice already has a note, release it first
-          int old = voiceToNoteLower[v];
-          if (old >= 0) {
-            releaseVoice(old, v);
-            voiceAssignmentLower[old] = -1;
-          }
-          assignVoice(note, vel, v);
-          voiceAssignmentLower[note] = v;
-          voiceToNoteLower[v] = note;
-        }
-        break;
-
-      case 2:
-        commandMonoNoteOnLower(note, vel);
-        break;
-
-      case 3:
-        commandUnisonNoteOnLower(note, vel);
-        break;
-    }
-
-    return;
-  }
-
-  // DUAL: drive both lower and upper simultaneously, per your existing logic
-  if (keyMode == 0) {
-
-    // Lower
-    if (lowerData[P_assign] == 1) {
-      int v = getLowerSplitVoicePoly2(note);
-      int old = voiceToNoteLower[v];
-      if (old >= 0) {
-        releaseVoice(old, v);
-        voiceAssignmentLower[old] = -1;
-      }
-      assignVoice(note, vel, v);
-      voiceAssignmentLower[note] = v;
-      voiceToNoteLower[v] = note;
-
-    } else if (lowerData[P_assign] == 0) {
-      int v = getLowerSplitVoice(note);
-      assignVoice(note, vel, v);
-      voiceAssignmentLower[note] = v;
-      voiceToNoteLower[v] = note;
-
-    } else if (lowerData[P_assign] == 2) {
-      commandMonoNoteOnLower(note, vel);
-    } else if (lowerData[P_assign] == 3) {
-      commandUnisonNoteOnLower(note, vel);
-    }
-
-    // Upper
-    if (upperData[P_assign] == 1) {
-      int v = getUpperSplitVoicePoly2(note);
-      int old = voiceToNoteUpper[v - 6];
-      if (old >= 0) {
-        releaseVoice(old, v);
-        voiceAssignmentUpper[old] = -1;
-      }
-      assignVoice(note, vel, v);
-      voiceAssignmentUpper[note] = v;
-      voiceToNoteUpper[v - 6] = note;
-
-    } else if (upperData[P_assign] == 0) {
-      int v = getUpperSplitVoice(note);
-      assignVoice(note, vel, v);
-      voiceAssignmentUpper[note] = v;
-      voiceToNoteUpper[v - 6] = note;
-
-    } else if (upperData[P_assign] == 2) {
-      commandMonoNoteOnUpper(note, vel);
-    } else if (upperData[P_assign] == 3) {
-      commandUnisonNoteOnUpper(note, vel);
-    }
-
-    return;
-  }
-
-  // WHOLE: use your whole-mode allocation rules
-  if (keyMode == 1) {
-    int voiceNum = -1;
-    switch (lowerData[P_assign]) {
-      case 0:
-        voiceNum = getVoiceNo(-1) - 1;
-        assignVoice(note, vel, voiceNum);
-        break;
-      case 1:
-        voiceNum = getVoiceNoPoly2(-1) - 1;
-        assignVoice(note, vel, voiceNum);
-        break;
-      case 2:
-        commandMonoNoteOn(note, vel);
-        break;
-      case 3:
-        commandUnisonNoteOn(note, vel);
-        break;
-    }
-    return;
-  }
-}
-
-void arpEngine() {
-
-  if (arpMode == ARP_OFF || arpLen == 0) {
-    if (arpNoteActive) arpStopCurrent();
-    arpRunning = false;
-    return;
-  }
-
-  if (!arpShouldStepNow()) return;
-
-  // Tight JP-8 feel: off at step boundary
-  if (arpNoteActive) arpStopCurrent();
-
-  int16_t L = arpUnfoldedLength();
-  if (L <= 0) return;
-
-  arpPos = arpNextPos(L);
-  uint8_t nextNote = arpUnfoldedNoteAt(arpPos);
-
-  arpPlayNote(nextNote, arpCurrentVel);
-  arpCurrentNote = nextNote;
-  arpNoteActive = true;
-  arpRunning = true;
-}
-
-bool arpShouldStepNow() {
-
-  if (arpClockSrc == ARPCLK_INTERNAL) {
-    return arpShouldStepNow_InternalSmooth();
-  }
-
-  if (arpClockSrc == ARPCLK_MIDI) {
-    if (!midiClockRunning) return false;
-    if (arpTicksPerStep == 0) arpTicksPerStep = 1;
-    if (arpClkTickCount >= arpTicksPerStep) {
-      arpClkTickCount = 0;
-      return true;
-    }
-    return false;
-  }
-
-  // EXTERNAL: 1 pulse = 1 step
-  if (arpExtTickCount > 0) {
-    arpExtTickCount = 0;
-    return true;
-  }
-
-  return false;
-}
-
-void serviceExternalClockLed() {
-
-  static bool ledOn = false;
-  static uint32_t ledOffAtMs = 0;
-
-  // Only show the red LED for external clock mode
-  if (arpClockSrc != ARPCLK_EXTERNAL) {
-    if (ledOn) {
-      //mcp2.digitalWrite(ARP_CLK_LED_RED, LOW);
-      ledOn = false;
-    }
-    return;
-  }
-
-  // If ISR requested a pulse, turn LED on and set an off time
-  if (extClkLedPulseReq) {
-    noInterrupts();
-    extClkLedPulseReq = false;
-    uint32_t t = extClkLedPulseAtMs;
-    interrupts();
-
-    //mcp2.digitalWrite(ARP_CLK_LED_RED, HIGH);
-    ledOn = true;
-    ledOffAtMs = t + EXT_LED_PULSE_MS;
-  }
-
-  // Turn off after pulse width
-  if (ledOn && (int32_t)(millis() - ledOffAtMs) >= 0) {
-    //mcp2.digitalWrite(ARP_CLK_LED_RED, LOW);
-    ledOn = false;
-  }
-}
-
-inline void setArpMode(ArpMode m) {
-  ArpMode prev = arpMode;
-  bool wasOff = (prev == ARP_OFF);
-  bool nowOff = (m == ARP_OFF);
-
-  // If we are turning arp OFF, stop notes and restore modes
-  if (!wasOff && nowOff) {
-    arpMode = ARP_OFF;
-    arpNextStepUs = 0;
-    arpLastSmoothUs = 0;
-    if (arpNoteActive) arpStopCurrent();
-    arpRestorePoly2Off();
-
-    // Transport reset
-    arpPos = -1;
-    arpDir = +1;
-    arpClkTickCount = 0;
-    arpLastStepMs = millis();
-
-    updateArpLEDs();
-    return;
-  }
-
-  // If we are turning arp ON (OFF -> something)
-  if (wasOff && !nowOff) {
-
-    arpRange = lastArpRange;         // already preloaded by patch recall
-    arpEverEnabledSinceBoot = true;  // mark as used
-
-    arpForcePoly2On();
-  }
-
-  // Switching between arp modes while already on:
-  arpMode = m;
-
-  // Reset transport and stop any current arp note for clean switching
-  if (arpNoteActive) arpStopCurrent();
-  arpPos = -1;
-  arpDir = +1;
-  arpClkTickCount = 0;
-  arpLastStepMs = millis();
-
-  updateArpLEDs();
-}
-
-inline void updateArpTicksPerStepFromDiv() {
-  switch (arpMidiDivSW) {
-    case 0: arpTicksPerStep = 12; break;  // 8th
-    case 1: arpTicksPerStep = 8; break;   // 8th triplet
-    default: arpTicksPerStep = 6; break;  // 16th
-  }
-}
-
-void onMidiClockTick() {
-  if (arpClockSrc != ARPCLK_MIDI) return;
-  if (!midiClockRunning) return;  // only step after Start/Continue
-
-  arpClkTickCount++;
-}
-
-void onMidiStart() {
-  midiClockRunning = true;
-  arpClkTickCount = 0;
-
-  // Reset arp transport phase (JP-8-ish)
-  arpPos = -1;
-  arpDir = +1;
-
-  // If a note is currently sounding, stop it so first step is clean
-  if (arpNoteActive) arpStopCurrent();
-}
-
-void onMidiStop() {
-  midiClockRunning = false;
-  arpClkTickCount = 0;
-
-  // Stop current arp note and suspend stepping
-  if (arpNoteActive) arpStopCurrent();
-}
-
-void onMidiContinue() {
-  midiClockRunning = true;
-  // Do NOT clear pattern; do NOT reset arpPos unless you want "restart"
-  // Keep tick count as-is or zero it; JP-8 behavior is less defined here.
-  // I recommend leaving it as-is for continuity.
-}
-
-inline void toggleArpMode(ArpMode m) {
-  if (arpMode == m) setArpMode(ARP_OFF);
-  else setArpMode(m);
-}
-
-inline void setArpRange(uint8_t r) {
-  if (r < 1) r = 1;
-  if (r > 4) r = 4;
-
-  lastArpRange = r;  // remember for next time
-  arpRange = r;
-
-  // Reset transport so unfolding restarts cleanly
-  arpPos = -1;
-  arpDir = +1;
-  arpClkTickCount = 0;
-  arpLastStepMs = millis();
-
-  updateArpLEDs();
-}
-
-inline void updateArpLEDs() {
-
-  bool arpOn = (arpMode != ARP_OFF);
-
-  // --- Range LEDs ---
-  // User request: when arp OFF, range LEDs should be OFF
-  //mcp1.digitalWrite(ARP_RANGE1_LED, (arpOn && arpRange == 1) ? HIGH : LOW);
-  //mcp1.digitalWrite(ARP_RANGE2_LED, (arpOn && arpRange == 2) ? HIGH : LOW);
-  //mcp2.digitalWrite(ARP_RANGE3_LED, (arpOn && arpRange == 3) ? HIGH : LOW);
-  //mcp2.digitalWrite(ARP_RANGE4_LED, (arpOn && arpRange == 4) ? HIGH : LOW);
-
-  // --- Mode LEDs (already correct: off when arp OFF) ---
-  //mcp2.digitalWrite(ARP_MODE_UP_LED, (arpMode == ARP_UP) ? HIGH : LOW);
-  //mcp2.digitalWrite(ARP_MODE_DOWN_LED, (arpMode == ARP_DOWN) ? HIGH : LOW);
-  //mcp2.digitalWrite(ARP_MODE_UP_DOWN_LED, (arpMode == ARP_UPDOWN) ? HIGH : LOW);
-  //mcp2.digitalWrite(ARP_MODE_RAND_LED, (arpMode == ARP_RANDOM) ? HIGH : LOW);
-}
-
-inline void updateArpClockLEDs() {
-  switch (arpClockSrc) {
-    case ARPCLK_INTERNAL:
-      midiClockRunning = false;  // optional; avoids stale running state
-      arpClkTickCount = 0;
-      showCurrentParameterPage("Arp Clock", "Internal");
-      startParameterDisplay();
-      //mcp2.digitalWrite(ARP_CLK_LED_RED, LOW);
-      //mcp2.digitalWrite(ARP_CLK_LED_GRN, LOW);
-      break;
-
-    case ARPCLK_EXTERNAL:
-      midiClockRunning = false;  // optional; avoids stale running state
-      arpClkTickCount = 0;
-      showCurrentParameterPage("Arp Clock", "External");
-      startParameterDisplay();
-      //mcp2.digitalWrite(ARP_CLK_LED_RED, HIGH);
-      //mcp2.digitalWrite(ARP_CLK_LED_GRN, LOW);
-      break;
-
-    case ARPCLK_MIDI:
-      arpClkTickCount = 0;
-      updateArpTicksPerStepFromDiv();
-      showCurrentParameterPage("Arp Clock", "MIDI Clock");
-      startParameterDisplay();
-      //mcp2.digitalWrite(ARP_CLK_LED_RED, LOW);
-      //mcp2.digitalWrite(ARP_CLK_LED_GRN, HIGH);
-      break;
-  }
-}
-
-inline float arpHzFromValue(uint8_t v) {
-  const float minHz = 1.0f;
-  const float maxHz = 20.0f;
-  float t = v / 255.0f;
-  return minHz * powf(maxHz / minHz, t);
-}
-
-inline uint16_t arpStepMsFromRate(uint8_t v) {
-  float hz = arpHzFromValue(v);
-  return (uint16_t)(1000.0f / hz + 0.5f);  // rounded ms per step
-}
-
-inline void setArpClockSrc(ArpClockSrc src) {
-  arpClockSrc = src;
-
-  // Reset clock accumulators and transport
-  arpClkTickCount = 0;
-  arpLastStepMs = millis();
-  arpPos = -1;
-  arpDir = +1;
-  arpExtTickCount = 0;
-  lastExtPulseUs = 0;
-  extClkLedPulseReq = false;
-
-  // Stop any sounding arp note on clock change
-  if (arpNoteActive) arpStopCurrent();
-
-  updateArpClockLEDs();
-}
-
-inline void cycleArpClockSrc() {
-  switch (arpClockSrc) {
-    case ARPCLK_INTERNAL:
-      setArpClockSrc(ARPCLK_EXTERNAL);
-      break;
-    case ARPCLK_EXTERNAL:
-      setArpClockSrc(ARPCLK_MIDI);
-      break;
-    default:
-      setArpClockSrc(ARPCLK_INTERNAL);
-      break;
-  }
-}
-
-inline void updateArpTicksPerStep() {
-  switch (arpMidiDiv) {
-    case ARP_DIV_8TH: arpTicksPerStep = 12; break;
-    case ARP_DIV_8TH_TRIP: arpTicksPerStep = 8; break;
-    default: arpTicksPerStep = 6; break;
-  }
-}
-
-inline bool arpKeyPresentLower(uint8_t n) {
-  return keyDownLower[n] || holdLatchedLower[n];
-}
-
-inline bool arpKeyPresentUpper(uint8_t n) {
-  return keyDownUpper[n] || holdLatchedUpper[n];
-}
-
-inline bool arpConsumesKey(byte note) {
-  if (arpMode == ARP_OFF) return false;
-  if (arpInjecting) return false;  // arp-generated notes must still sound
-
-  // JP-8: in Split, arp is assigned to LOWER only
-  if (keyMode == 3 && arpLowerOnlyWhenSplit) {
-    return (note < splitPoint);
-  }
-
-  // Whole and Dual: arp accepts notes over entire keyboard
-  // (and you generally don't want the chord to sound directly)
-  return true;
-}
-
-inline void arpUpdateSmoothHz() {
-  uint32_t now = micros();
-  if (arpLastSmoothUs == 0) {
-    arpLastSmoothUs = now;
-    arpHzSmooth = arpHzTarget;
-    return;
-  }
-
-  float dt = (now - arpLastSmoothUs) * 1e-6f;  // seconds
-  arpLastSmoothUs = now;
-
-  // Time constant (seconds). Larger = smoother/slower response.
-  const float tau = 0.20f;  // 200ms is a good starting point
-
-  // One-pole coefficient based on dt
-  float a = dt / (tau + dt);  // stable even if dt varies
-  arpHzSmooth += (arpHzTarget - arpHzSmooth) * a;
-
-  // Safety clamp
-  if (arpHzSmooth < 1.0f) arpHzSmooth = 1.0f;
-  if (arpHzSmooth > 20.0f) arpHzSmooth = 20.0f;
-}
-
-inline bool arpShouldStepNow_InternalSmooth() {
-  arpUpdateSmoothHz();
-
-  uint32_t now = micros();
-
-  if (arpNextStepUs == 0) {
-    // initialize on first run
-    arpNextStepUs = now;
-    return true;  // step immediately on start (optional; remove if you don't want immediate)
-  }
-
-  // time until next step elapsed?
-  if ((int32_t)(now - arpNextStepUs) < 0) return false;
-
-  // schedule next step using current smoothed interval
-  float intervalUsF = 1000000.0f / arpHzSmooth;
-  uint32_t intervalUs = (uint32_t)(intervalUsF + 0.5f);
-
-  // Advance by one interval (not "now + interval") to reduce jitter
-  arpNextStepUs += intervalUs;
-
-  // If we fell behind (e.g. debugger, heavy load), resync gracefully
-  if ((int32_t)(now - arpNextStepUs) > (int32_t)intervalUs) {
-    arpNextStepUs = now + intervalUs;
-  }
-
-  return true;
-}
-
-inline ArpMode patchToArpMode(uint8_t v) {
-  switch (v) {
-    case 1: return ARP_UP;
-    case 2: return ARP_DOWN;
-    case 3: return ARP_UPDOWN;
-    case 4: return ARP_RANDOM;
-    default: return ARP_OFF;
-  }
-}
-
-inline uint8_t arpModeToPatch(ArpMode m) {
-  switch (m) {
-    case ARP_UP: return 1;
-    case ARP_DOWN: return 2;
-    case ARP_UPDOWN: return 3;
-    case ARP_RANDOM: return 4;
-    default: return 0;
-  }
-}
-
-inline uint8_t patchToArpRange(uint8_t v) {
-  // Accept either 0..3 or 1..4
-  if (v <= 3) return v + 1;        // 0..3 -> 1..4
-  if (v >= 1 && v <= 4) return v;  // 1..4 -> 1..4
-  return 4;
-}
-
-inline uint8_t arpRangeToPatch(uint8_t r) {
-  if (r < 1) r = 1;
-  if (r > 4) r = 4;
-  return (uint8_t)(r - 1);  // store 0..3
-}
-
-
-void updateArpRange(boolean announce) {
-
-  uint8_t r = patchToArpRange(arpRangeL);
-
-  arpRange = r;
-  lastArpRange = r;  // so next ARP enable recalls the stored range
-
-  // Optional: restart unfolding when range changes
-  arpPos = -1;
-  arpDir = +1;
-
-  if (announce && !suppressParamAnnounce) {
-    showCurrentParameterPage("Arp Range", String(r));
-    startParameterDisplay();
-  }
-
-  updateArpLEDs();
-}
-
-void updateArpMode(boolean announce) {
-
-  ArpMode m = patchToArpMode(arpModeL);
-
-  // If patch wants ARP ON, preload lastArpRange from patch so setArpMode() uses it.
-  if (m != ARP_OFF) {
-    lastArpRange = patchToArpRange(arpRangeL);
-  }
-
-  setArpMode(m);
-
-  if (announce && !suppressParamAnnounce) {
-    const char *name =
-      (m == ARP_UP) ? "Up" : (m == ARP_DOWN)   ? "Down"
-                           : (m == ARP_UPDOWN) ? "UpDown"
-                           : (m == ARP_RANDOM) ? "Random"
-                                               : "Off";
-
-    showCurrentParameterPage("Arp Mode", String(name));
-    startParameterDisplay();
-  }
-
-  // Ensure LEDs reflect range for ON patches (and range LEDs remain off when OFF)
-  updateArpLEDs();
-}
-
 // Hold functions
 
 inline bool pedalAffectsLower() {
@@ -6895,7 +6346,7 @@ void reconcileHoldReleases() {
         if (phys) continue;
 
         // Release ALL voices currently playing this note
-        for (int v = 0; v < 8; v++) {
+        for (int v = 0; v < 12; v++) {
           if (voices[v].noteOn && voices[v].note == n) {
             releaseVoice((byte)n, v);
           }
@@ -6904,17 +6355,6 @@ void reconcileHoldReleases() {
         // Clear latch
         holdLatchedLower[n] = false;
         holdLatchedUpper[n] = false;
-
-        // ARP: if note no longer present anywhere, remove from pattern
-        if (!arpInjecting && arpMode != ARP_OFF) {
-          bool present = arpKeyPresentLower(n) || arpKeyPresentUpper(n);
-          if (!present) arpRemoveNote((byte)n);
-        }
-      }
-
-      // If pattern emptied, stop arp immediately
-      if (arpMode != ARP_OFF && arpLen == 0 && arpNoteActive) {
-        arpStopCurrent();
       }
     }
 
@@ -6938,11 +6378,6 @@ void reconcileHoldReleases() {
         }
 
         holdLatchedLower[n] = false;
-
-        // ARP: JP-8 uses LOWER only in split (if configured that way)
-        if (!arpInjecting && arpMode != ARP_OFF && arpLowerOnlyWhenSplit) {
-          if (!arpKeyPresentLower(n)) arpRemoveNote((byte)n);
-        }
       }
     }
   }
@@ -6959,47 +6394,9 @@ void reconcileHoldReleases() {
         }
 
         holdLatchedUpper[n] = false;
-
-        // Only prune upper if you ever allow arp to consume upper in split
-        if (!arpInjecting && arpMode != ARP_OFF && !arpLowerOnlyWhenSplit) {
-          if (!arpKeyPresentUpper(n)) arpRemoveNote((byte)n);
-        }
       }
     }
   }
-
-  if (arpMode != ARP_OFF && arpLen == 0 && arpNoteActive) {
-    arpStopCurrent();
-  }
-}
-
-inline void arpForcePoly2On() {
-  if (arpForcedPoly2) return;
-
-  savedLowerKBMode = lowerData[P_assign];
-  savedUpperKBMode = upperData[P_assign];
-
-  // JP-8: when split, arp is assigned to LOWER only
-  if (keyMode == 3 && arpLowerOnlyWhenSplit) {
-    lowerData[P_assign] = 1;  // Poly2 lower only
-  } else {
-    // Whole / Dual: force both
-    lowerData[P_assign] = 1;
-    upperData[P_assign] = 1;
-  }
-  updateassignMode(0);
-  arpForcedPoly2 = true;
-}
-
-inline void arpRestorePoly2Off() {
-  if (!arpForcedPoly2) return;
-
-  // restore whatever was previously selected
-  lowerData[P_assign] = savedLowerKBMode;
-  upperData[P_assign] = savedUpperKBMode;
-
-  updateassignMode(0);
-  arpForcedPoly2 = false;
 }
 
 inline bool isKeyPhysicallyDownForVoice(int voiceIdx) {
@@ -7039,7 +6436,7 @@ int oldestVoicePreferNotPhysHeld(int vStart, int vEndInclusive) {
   return best;
 }
 
-// Mono lower & uppper
+// Mono lower & upper
 
 void commandTopNoteLower() {
   int topNote = -1;
@@ -7080,7 +6477,7 @@ void commandTopNoteUpper() {
     if (notesUpper[i]) topNote = i;
 
   if (topNote >= 0)
-    assignVoice(topNote, noteVel, 4);
+    assignVoice(topNote, noteVel, 6);
   else
     releaseVoice(noteMsg, 4);
 }
@@ -7091,7 +6488,7 @@ void commandBottomNoteUpper() {
     if (notesUpper[i]) bottomNote = i;
 
   if (bottomNote >= 0)
-    assignVoice(bottomNote, noteVel, 4);
+    assignVoice(bottomNote, noteVel, 6);
   else
     releaseVoice(noteMsg, 4);
 }
@@ -7115,9 +6512,9 @@ void commandTopNoteUniLower() {
     if (notesLower[i]) topNote = i;
 
   if (topNote >= 0)
-    for (int v = 0; v < 4; v++) assignVoice(topNote, noteVel, v);
+    for (int v = 0; v < 6; v++) assignVoice(topNote, noteVel, v);
   else
-    for (int v = 0; v < 4; v++) releaseVoice(noteMsg, v);
+    for (int v = 0; v < 6; v++) releaseVoice(noteMsg, v);
 }
 
 void commandBottomNoteUniLower() {
@@ -7235,12 +6632,185 @@ void commandUnisonNoteOffLower(byte note) {
   commandLastNoteUniLower();
 }
 
+int getLowerUnisonVoice() {
+  // Find free pair starting from pointer
+  for (int i = 0; i < 3; i++) {
+    int idx = (lowerUnisonVoicePointer + i) % 3;
+    if (!voiceOn[idx] && !voiceOn[idx + 3]) {
+      lowerUnisonVoicePointer = (idx + 1) % 3;
+      return idx;
+    }
+  }
+  // No free pair: steal oldest pair
+  int oldest = 0;
+  unsigned long oldestTime = voices[0].timeOn;
+  for (int i = 1; i < 3; i++) {
+    if (voices[i].timeOn < oldestTime) {
+      oldestTime = voices[i].timeOn;
+      oldest = i;
+    }
+  }
+  lowerUnisonVoicePointer = (oldest + 1) % 3;
+  return oldest;
+}
+
+int getUpperUnisonVoice() {
+  // Find free pair starting from pointer
+  for (int i = 0; i < 3; i++) {
+    int idx = (upperUnisonVoicePointer + i) % 3;
+    if (!voiceOn[idx + 6] && !voiceOn[idx + 9]) {
+      upperUnisonVoicePointer = (idx + 1) % 3;
+      return idx + 6;
+    }
+  }
+  // No free pair: steal oldest pair
+  int oldest = 0;
+  unsigned long oldestTime = voices[6].timeOn;
+  for (int i = 1; i < 3; i++) {
+    if (voices[i + 6].timeOn < oldestTime) {
+      oldestTime = voices[i + 6].timeOn;
+      oldest = i;
+    }
+  }
+  upperUnisonVoicePointer = (oldest + 1) % 3;
+  return oldest + 6;
+}
+
+void assignUnisonPairLower(byte note, byte velocity, bool octave) {
+  int v = getLowerUnisonVoice();  // returns 0, 1, or 2
+  int vPartner = v + 3;
+  byte notePartner = octave ? (byte)max(0, (int)note - 12) : note;
+
+  // Release both slots if they are sounding something different
+  releaseVoice(voices[v].note, v);
+  releaseVoice(voices[vPartner].note, vPartner);
+
+  assignVoice(note, velocity, v);
+  assignVoice(notePartner, velocity, vPartner);
+
+  voiceAssignmentLower[note] = v;
+  voiceToNoteLower[v] = note;
+  voiceToNoteLower[vPartner] = note;  // track partner by same note for release
+}
+
+void releaseUnisonPairLower(byte note) {
+  int v = voiceAssignmentLower[note];
+  if (v >= 0 && v <= 2) {
+    releaseVoice(note, v);
+    releaseVoice(voices[v + 3].note, v + 3);
+    voiceAssignmentLower[note] = -1;
+    voiceToNoteLower[v] = -1;
+    voiceToNoteLower[v + 3] = -1;
+  }
+}
+
+void assignUnisonPairUpper(byte note, byte velocity, bool octave) {
+  int v = getUpperUnisonVoice();  // returns 6, 7, or 8
+  int vPartner = v + 3;
+  byte notePartner = octave ? (byte)max(0, (int)note - 12) : note;
+
+  releaseVoice(voices[v].note, v);
+  releaseVoice(voices[vPartner].note, vPartner);
+
+  assignVoice(note, velocity, v);
+  assignVoice(notePartner, velocity, vPartner);
+
+  voiceAssignmentUpper[note] = v;
+  voiceToNoteUpper[v - 6] = note;
+  voiceToNoteUpper[vPartner - 6] = note;  // track partner by same note for release
+}
+
+void releaseUnisonPairUpper(byte note) {
+  int v = voiceAssignmentUpper[note];
+  if (v >= 6 && v <= 8) {
+    releaseVoice(note, v);
+    releaseVoice(voices[v + 3].note, v + 3);
+    voiceAssignmentUpper[note] = -1;
+    voiceToNoteUpper[v - 6] = -1;
+    voiceToNoteUpper[v + 3 - 6] = -1;
+  }
+}
+
+int getWholeUnisonVoice() {
+  // Pairs are: (0,3), (1,4), (2,5), (6,9), (7,10), (8,11)
+  static const int pairA[6] = { 0, 1, 2, 6, 7, 8 };
+  static const int pairB[6] = { 3, 4, 5, 9, 10, 11 };
+
+  // Find free pair starting from pointer
+  for (int i = 0; i < 6; i++) {
+    int idx = (wholeUnisonVoicePointer + i) % 6;
+    if (!voiceOn[pairA[idx]] && !voiceOn[pairB[idx]]) {
+      wholeUnisonVoicePointer = (idx + 1) % 6;
+      return idx;
+    }
+  }
+
+  // No free pair: steal oldest
+  int oldest = 0;
+  unsigned long oldestTime = voices[pairA[0]].timeOn;
+  for (int i = 1; i < 6; i++) {
+    if (voices[pairA[i]].timeOn < oldestTime) {
+      oldestTime = voices[pairA[i]].timeOn;
+      oldest = i;
+    }
+  }
+  wholeUnisonVoicePointer = (oldest + 1) % 6;
+  return oldest;
+}
+
+void assignWholeUnisonPair(byte note, byte velocity, bool octave) {
+  static const int pairA[6] = { 0, 1, 2, 6, 7, 8 };
+  static const int pairB[6] = { 3, 4, 5, 9, 10, 11 };
+
+  int idx = getWholeUnisonVoice();
+  int vA = pairA[idx];
+  int vB = pairB[idx];
+  byte noteB = octave ? (byte)max(0, (int)note - 12) : note;
+
+  releaseVoice(voices[vA].note, vA);
+  releaseVoice(voices[vB].note, vB);
+
+  assignVoice(note, velocity, vA);
+  assignVoice(noteB, velocity, vB);
+
+  voiceAssignmentLower[note] = idx;  // store pair index for release lookup
+  voiceToNoteLower[vA] = note;
+  voiceToNoteLower[vB] = note;
+}
+
+void releaseWholeUnisonPair(byte note) {
+  static const int pairA[6] = { 0, 1, 2, 6, 7, 8 };
+  static const int pairB[6] = { 3, 4, 5, 9, 10, 11 };
+
+  int idx = voiceAssignmentLower[note];
+  if (idx >= 0 && idx <= 5) {
+    releaseVoice(note, pairA[idx]);
+    releaseVoice(voices[pairB[idx]].note, pairB[idx]);
+    voiceAssignmentLower[note] = -1;
+    voiceToNoteLower[pairA[idx]] = -1;
+    voiceToNoteLower[pairB[idx]] = -1;
+  }
+}
+
+byte xfadeLowerVel(byte velocity) {
+  if (velocity <= 80) return 0x60;
+  if (velocity >= 112) return 0;
+  // Ramp down from 96 to 3 over velocity range 81-111
+  return (byte)map(velocity, 81, 111, 96, 3);
+}
+
+byte xfadeUpperVel(byte velocity) {
+  if (velocity <= 48) return 0;
+  // Ramp up from 2 to 127 over velocity range 49-127
+  return (byte)map(velocity, 49, 127, 2, 127);
+}
+
 void myNoteOn(byte channel, byte note, byte velocity) {
 
   prevNote = note;
 
-  // --- JP-8 HOLD: physical key down tracking ---
-  if (keyMode == 3) {  // SPLIT
+  // --- Key down tracking ---
+  if (keyMode == 3) {
     if (note < splitPoint) {
       keyDownLower[note] = true;
       holdLatchedLower[note] = false;
@@ -7248,12 +6818,12 @@ void myNoteOn(byte channel, byte note, byte velocity) {
       keyDownUpper[note] = true;
       holdLatchedUpper[note] = false;
     }
-  } else if (keyMode == 0) {  // DUAL: note goes to BOTH engines
+  } else if (keyMode == 0) {
     keyDownLower[note] = true;
     keyDownUpper[note] = true;
     holdLatchedLower[note] = false;
     holdLatchedUpper[note] = false;
-  } else {  // WHOLE
+  } else {
     keyDownWhole[note] = true;
     keyDownLower[note] = true;
     keyDownUpper[note] = true;
@@ -7261,230 +6831,377 @@ void myNoteOn(byte channel, byte note, byte velocity) {
     holdLatchedUpper[note] = false;
   }
 
-  // -------------------- ARP: capture entry order (ignore injected notes) --------------------
-  if (!arpInjecting && arpMode != ARP_OFF) {
-    if (keyMode == 3 && arpLowerOnlyWhenSplit) {
-      if (note < splitPoint) arpAddNote(note);
+  // --- ARP: capture note ---
+  bool arpConsumed = false;
+  if (arpEnabled || arpLatch) {
+    bool captureNote = false;
+    if (keyMode == 3) {
+      if (note < splitPoint) captureNote = true;
     } else {
-      arpAddNote(note);
+      captureNote = true;
     }
-    arpCurrentVel = velocity;
+    if (captureNote) {
+      arpAddNote(note);
+      arpCurrentVel = velocity;
+      arpBuildStepList();
+      if (!arpRunning && arpLen > 0) {
+        arpRunning = true;
+        arpPos = -1;
+        arpNextStepUs = micros();
+        mcp9.digitalWrite(SEQ_START_STOP_LED_RED, HIGH);
+      }
+      arpConsumed = true;
+    }
   }
 
-  // -------------------- ARP ACTIVE: keys are pattern entry only (no chord sound) --------------------
-  if (arpConsumesKey(note)) {
-    return;
-  }
+  if (!arpConsumed) {
+    int voiceNum = -1;
 
-  int voiceNum = -1;
+    switch (keyMode) {
 
-  switch (keyMode) {
-
-    // WHOLE MODE (No changes needed if currently working)
-    case 0:
-      switch (lowerData[P_assign]) {
-        case 0:
-          voiceNum = getVoiceNo(-1) - 1;
-          assignVoice(note, velocity, voiceNum);
-          break;  // Poly1
-        case 1:
-          voiceNum = getVoiceNoPoly2(-1) - 1;
-          assignVoice(note, velocity, voiceNum);
-          break;                                             // Poly2
-        case 2: commandMonoNoteOn(note, velocity); break;    // Mono
-        case 3: commandUnisonNoteOn(note, velocity); break;  // Unison
-      }
-      voiceAssignment[note] = voiceNum;
-      break;
-
-    // DUAL MODE (Explicitly corrected, place this clearly here):
-    case 1:
-      {
-        // Lower Split
-        if (lowerData[P_assign] == 1) {  // Poly2 Lower
-          int lowerVoice = getLowerSplitVoicePoly2(note);
-          int oldNote = voiceToNoteLower[lowerVoice];
-          if (oldNote >= 0) {
-            releaseVoice(oldNote, lowerVoice);
-            voiceAssignmentLower[oldNote] = -1;
+      case 0:
+        {
+          if (lowerData[P_assign] == 1) {
+            int lowerVoice = getLowerSplitVoicePoly2(note);
+            int oldNote = voiceToNoteLower[lowerVoice];
+            if (oldNote >= 0) {
+              releaseVoice(oldNote, lowerVoice);
+              voiceAssignmentLower[oldNote] = -1;
+            }
+            assignVoice(note, velocity, lowerVoice);
+            voiceAssignmentLower[note] = lowerVoice;
+            voiceToNoteLower[lowerVoice] = note;
+          } else if (lowerData[P_assign] == 0) {
+            int lowerVoice = getLowerSplitVoice(note);
+            assignVoice(note, velocity, lowerVoice);
+            voiceAssignmentLower[note] = lowerVoice;
+            voiceToNoteLower[lowerVoice] = note;
+          } else if (lowerData[P_assign] == 2) {
+            commandMonoNoteOnLower(note, velocity);
+          } else if (lowerData[P_assign] == 3) {
+            commandUnisonNoteOnLower(note, velocity);
+          } else if (lowerData[P_assign] == 4) {
+            assignUnisonPairLower(note, velocity, false);
+          } else if (lowerData[P_assign] == 5) {
+            assignUnisonPairLower(note, velocity, true);
           }
-          assignVoice(note, velocity, lowerVoice);
-          voiceAssignmentLower[note] = lowerVoice;
-          voiceToNoteLower[lowerVoice] = note;
-        } else if (lowerData[P_assign] == 0) {  // Poly1 Lower
-          int lowerVoice = getLowerSplitVoice(note);
-          assignVoice(note, velocity, lowerVoice);
-          voiceAssignmentLower[note] = lowerVoice;
-          voiceToNoteLower[lowerVoice] = note;
-        } else if (lowerData[P_assign] == 2) {
-          commandMonoNoteOnLower(note, velocity);
-        } else if (lowerData[P_assign] == 3) {
-          commandUnisonNoteOnLower(note, velocity);
-        }
 
-        // Upper Split
-        if (upperData[P_assign] == 1) {  // Poly2 Upper
-          int upperVoice = getUpperSplitVoicePoly2(note);
-          int oldNote = voiceToNoteUpper[upperVoice - 4];
-          if (oldNote >= 0) {
-            releaseVoice(oldNote, upperVoice);
-            voiceAssignmentUpper[oldNote] = -1;
+          if (upperData[P_assign] == 1) {
+            int upperVoice = getUpperSplitVoicePoly2(note);
+            int oldNote = voiceToNoteUpper[upperVoice - 6];
+            if (oldNote >= 0) {
+              releaseVoice(oldNote, upperVoice);
+              voiceAssignmentUpper[oldNote] = -1;
+            }
+            assignVoice(note, velocity, upperVoice);
+            voiceAssignmentUpper[note] = upperVoice;
+            voiceToNoteUpper[upperVoice - 6] = note;
+          } else if (upperData[P_assign] == 0) {
+            int upperVoice = getUpperSplitVoice(note);
+            assignVoice(note, velocity, upperVoice);
+            voiceAssignmentUpper[note] = upperVoice;
+            voiceToNoteUpper[upperVoice - 6] = note;
+          } else if (upperData[P_assign] == 2) {
+            commandMonoNoteOnUpper(note, velocity);
+          } else if (upperData[P_assign] == 3) {
+            commandUnisonNoteOnUpper(note, velocity);
+          } else if (upperData[P_assign] == 4) {
+            assignUnisonPairUpper(note, velocity, false);
+          } else if (upperData[P_assign] == 5) {
+            assignUnisonPairUpper(note, velocity, true);
           }
-          assignVoice(note, velocity, upperVoice);
-          voiceAssignmentUpper[note] = upperVoice;
-          voiceToNoteUpper[upperVoice - 4] = note;
-        } else if (upperData[P_assign] == 0) {  // Poly1 Upper
-          int upperVoice = getUpperSplitVoice(note);
-          assignVoice(note, velocity, upperVoice);
-          voiceAssignmentUpper[note] = upperVoice;
-          voiceToNoteUpper[upperVoice - 4] = note;
-        } else if (upperData[P_assign] == 2) {
-          commandMonoNoteOnUpper(note, velocity);
-        } else if (upperData[P_assign] == 3) {
-          commandUnisonNoteOnUpper(note, velocity);
         }
-      }
-      break;
+        break;
 
-      // SPLIT MODE (Also explicitly corrected, place here clearly):
-    case 2:  // SPLIT MODE explicitly confirmed (note-on):
-      if (note < splitPoint) {
+      case 1:
         switch (lowerData[P_assign]) {
           case 0:
-            voiceNum = getLowerSplitVoice(note);
+            voiceNum = getVoiceNo(-1) - 1;
             assignVoice(note, velocity, voiceNum);
-            voiceAssignmentLower[note] = voiceNum;
-            voiceToNoteLower[voiceNum] = note;
             break;
           case 1:
-            voiceNum = getLowerSplitVoicePoly2(note);
+            voiceNum = getVoiceNoPoly2(-1) - 1;
             assignVoice(note, velocity, voiceNum);
-            voiceAssignmentLower[note] = voiceNum;
-            voiceToNoteLower[voiceNum] = note;
             break;
-          case 2:
-            commandMonoNoteOnLower(note, velocity);
-            break;
-          case 3:
-            commandUnisonNoteOnLower(note, velocity);
-            break;
+          case 2: commandMonoNoteOn(note, velocity); break;
+          case 3: commandUnisonNoteOn(note, velocity); break;
+          case 4: assignWholeUnisonPair(note, velocity, false); break;
+          case 5: assignWholeUnisonPair(note, velocity, true); break;
         }
-      } else {
+        voiceAssignment[note] = voiceNum;
+        break;
+
+      case 2:
         switch (upperData[P_assign]) {
           case 0:
-            voiceNum = getUpperSplitVoice(note);
+            voiceNum = getVoiceNo(-1) - 1;
             assignVoice(note, velocity, voiceNum);
-            voiceAssignmentUpper[note] = voiceNum;
-            voiceToNoteUpper[voiceNum - 4] = note;
             break;
           case 1:
-            voiceNum = getUpperSplitVoicePoly2(note);
+            voiceNum = getVoiceNoPoly2(-1) - 1;
             assignVoice(note, velocity, voiceNum);
-            voiceAssignmentUpper[note] = voiceNum;
-            voiceToNoteUpper[voiceNum - 4] = note;
             break;
-          case 2:
-            commandMonoNoteOnUpper(note, velocity);
-            break;
-          case 3:
-            commandUnisonNoteOnUpper(note, velocity);
-            break;
+          case 2: commandMonoNoteOn(note, velocity); break;
+          case 3: commandUnisonNoteOn(note, velocity); break;
+          case 4: assignWholeUnisonPair(note, velocity, false); break;
+          case 5: assignWholeUnisonPair(note, velocity, true); break;
         }
-      }
-      break;
+        voiceAssignment[note] = voiceNum;
+        break;
+
+      case 3:
+        if (note < splitPoint) {
+          switch (lowerData[P_assign]) {
+            case 0:
+              voiceNum = getLowerSplitVoice(note);
+              assignVoice(note, velocity, voiceNum);
+              voiceAssignmentLower[note] = voiceNum;
+              voiceToNoteLower[voiceNum] = note;
+              break;
+            case 1:
+              voiceNum = getLowerSplitVoicePoly2(note);
+              assignVoice(note, velocity, voiceNum);
+              voiceAssignmentLower[note] = voiceNum;
+              voiceToNoteLower[voiceNum] = note;
+              break;
+            case 2: commandMonoNoteOnLower(note, velocity); break;
+            case 3: commandUnisonNoteOnLower(note, velocity); break;
+            case 4: assignUnisonPairLower(note, velocity, false); break;
+            case 5: assignUnisonPairLower(note, velocity, true); break;
+          }
+        } else {
+          switch (upperData[P_assign]) {
+            case 0:
+              voiceNum = getUpperSplitVoice(note);
+              assignVoice(note, velocity, voiceNum);
+              voiceAssignmentUpper[note] = voiceNum;
+              voiceToNoteUpper[voiceNum - 6] = note;
+              break;
+            case 1:
+              voiceNum = getUpperSplitVoicePoly2(note);
+              assignVoice(note, velocity, voiceNum);
+              voiceAssignmentUpper[note] = voiceNum;
+              voiceToNoteUpper[voiceNum - 6] = note;
+              break;
+            case 2: commandMonoNoteOnUpper(note, velocity); break;
+            case 3: commandUnisonNoteOnUpper(note, velocity); break;
+            case 4: assignUnisonPairUpper(note, velocity, false); break;
+            case 5: assignUnisonPairUpper(note, velocity, true); break;
+          }
+        }
+        break;
+
+      case 4:
+        if (velocity < splitPoint) {
+          switch (upperData[P_assign]) {
+            case 0:
+              voiceNum = getLowerSplitVoice(note);
+              assignVoice(note, velocity, voiceNum);
+              voiceAssignmentLower[note] = voiceNum;
+              voiceToNoteLower[voiceNum] = note;
+              break;
+            case 1:
+              voiceNum = getLowerSplitVoicePoly2(note);
+              assignVoice(note, velocity, voiceNum);
+              voiceAssignmentLower[note] = voiceNum;
+              voiceToNoteLower[voiceNum] = note;
+              break;
+            case 2: commandMonoNoteOnLower(note, velocity); break;
+            case 3: commandUnisonNoteOnLower(note, velocity); break;
+            case 4: assignUnisonPairLower(note, velocity, false); break;
+            case 5: assignUnisonPairLower(note, velocity, true); break;
+          }
+        } else {
+          switch (upperData[P_assign]) {
+            case 0:
+              voiceNum = getUpperSplitVoice(note);
+              assignVoice(note, velocity, voiceNum);
+              voiceAssignmentUpper[note] = voiceNum;
+              voiceToNoteUpper[voiceNum - 6] = note;
+              break;
+            case 1:
+              voiceNum = getUpperSplitVoicePoly2(note);
+              assignVoice(note, velocity, voiceNum);
+              voiceAssignmentUpper[note] = voiceNum;
+              voiceToNoteUpper[voiceNum - 6] = note;
+              break;
+            case 2: commandMonoNoteOnUpper(note, velocity); break;
+            case 3: commandUnisonNoteOnUpper(note, velocity); break;
+            case 4: assignUnisonPairUpper(note, velocity, false); break;
+            case 5: assignUnisonPairUpper(note, velocity, true); break;
+          }
+        }
+        voiceAssignment[note] = voiceNum;
+        break;
+
+      case 5:
+        {
+          byte lowerVel = xfadeLowerVel(velocity);
+          byte upperVel = xfadeUpperVel(velocity);
+          if (lowerVel > 0) {
+            switch (upperData[P_assign]) {
+              case 0:
+                {
+                  int v = getLowerSplitVoice(note);
+                  assignVoice(note, lowerVel, v);
+                  voiceAssignmentLower[note] = v;
+                  voiceToNoteLower[v] = note;
+                }
+                break;
+              case 1:
+                {
+                  int v = getLowerSplitVoicePoly2(note);
+                  int old = voiceToNoteLower[v];
+                  if (old >= 0) {
+                    releaseVoice(old, v);
+                    voiceAssignmentLower[old] = -1;
+                  }
+                  assignVoice(note, lowerVel, v);
+                  voiceAssignmentLower[note] = v;
+                  voiceToNoteLower[v] = note;
+                }
+                break;
+              case 2: commandMonoNoteOnLower(note, lowerVel); break;
+              case 3: commandUnisonNoteOnLower(note, lowerVel); break;
+              case 4: assignUnisonPairLower(note, lowerVel, false); break;
+              case 5: assignUnisonPairLower(note, lowerVel, true); break;
+            }
+          }
+          if (upperVel > 0) {
+            switch (upperData[P_assign]) {
+              case 0:
+                {
+                  int v = getUpperSplitVoice(note);
+                  assignVoice(note, upperVel, v);
+                  voiceAssignmentUpper[note] = v;
+                  voiceToNoteUpper[v - 6] = note;
+                }
+                break;
+              case 1:
+                {
+                  int v = getUpperSplitVoicePoly2(note);
+                  int old = voiceToNoteUpper[v - 6];
+                  if (old >= 0) {
+                    releaseVoice(old, v);
+                    voiceAssignmentUpper[old] = -1;
+                  }
+                  assignVoice(note, upperVel, v);
+                  voiceAssignmentUpper[note] = v;
+                  voiceToNoteUpper[v - 6] = note;
+                }
+                break;
+              case 2: commandMonoNoteOnUpper(note, upperVel); break;
+              case 3: commandUnisonNoteOnUpper(note, upperVel); break;
+              case 4: assignUnisonPairUpper(note, upperVel, false); break;
+              case 5: assignUnisonPairUpper(note, upperVel, true); break;
+            }
+          }
+        }
+        voiceAssignment[note] = voiceNum;
+        break;
+    }
   }
 }
 
 void myNoteOff(byte channel, byte note, byte velocity) {
 
   auto holdEffectiveLower = [&]() -> bool {
-    if (keyMode == 2) return (holdManualLower || holdPedal);   // SPLIT: pedal affects LOWER
-    return (holdManualLower || holdManualUpper || holdPedal);  // WHOLE/DUAL global
+    if (keyMode == 3) return (holdManualLower || holdPedal);
+    return (holdManualLower || holdManualUpper || holdPedal);
   };
   auto holdEffectiveUpper = [&]() -> bool {
-    if (keyMode == 2) return (holdManualUpper);                // SPLIT: pedal does NOT affect UPPER
-    return (holdManualLower || holdManualUpper || holdPedal);  // WHOLE/DUAL global
+    if (keyMode == 3) return (holdManualUpper);
+    return (holdManualLower || holdManualUpper || holdPedal);
   };
 
-  // "present" for arp removal rules = physically down OR held-by-hold
-  auto arpPresentLower = [&](uint8_t n) -> bool {
-    return keyDownLower[n] || holdLatchedLower[n];
-  };
-  auto arpPresentUpper = [&](uint8_t n) -> bool {
-    return keyDownUpper[n] || holdLatchedUpper[n];
-  };
-
-  if (keyMode == 2) {
-    // SPLIT
+  // Key down tracking
+  if (keyMode == 3) {
     if (note < splitPoint) keyDownLower[note] = false;
     else keyDownUpper[note] = false;
-
-  } else if (keyMode == 1) {
-    // DUAL: same key affects both engines
+  } else if (keyMode == 0) {
     keyDownLower[note] = false;
     keyDownUpper[note] = false;
-
   } else {
-    // WHOLE
     keyDownWhole[note] = false;
-    // Recommended mirroring so "physically held" tests work consistently everywhere
     keyDownLower[note] = false;
     keyDownUpper[note] = false;
   }
 
-  if (keyMode == 2) {
-    // SPLIT: latch only the side the note belongs to
+  // --- ARP: remove note ---
+  bool arpConsumed = false;
+  if (arpEnabled || arpLatch) {
+    bool captureNote = false;
+    if (keyMode == 3) {
+      if (note < splitPoint) captureNote = true;
+    } else {
+      captureNote = true;
+    }
+    if (captureNote) {
+      arpRemoveNote(note);
+      arpBuildStepList();
+      if (!arpLatch && arpLen == 0) {
+        arpStopCurrentNote();
+        arpRunning = false;
+        mcp9.digitalWrite(SEQ_START_STOP_LED_RED, LOW);
+      }
+      arpConsumed = true;
+    }
+  }
+
+  if (arpConsumed) return;
+
+  // Hold latching
+  if (keyMode == 3) {
     if (note < splitPoint) {
       if (holdEffectiveLower()) {
         holdLatchedLower[note] = true;
-
-        // ARP: do not remove; note remains present via holdLatchedLower
         return;
       }
     } else {
       if (holdEffectiveUpper()) {
         holdLatchedUpper[note] = true;
-
-        // ARP: do not remove; note remains present via holdLatchedUpper
         return;
       }
     }
-
   } else {
-    // WHOLE or DUAL: hold is global
-    if (holdEffectiveLower()) {  // same truth for upper in whole/dual
+    if (holdEffectiveLower()) {
       holdLatchedLower[note] = true;
       holdLatchedUpper[note] = true;
-
-      // ARP: do not remove; note remains present via holdLatched*
       return;
     }
-  }
-
-  if (!arpInjecting && arpMode != ARP_OFF) {
-
-    if (keyMode == 2 && arpLowerOnlyWhenSplit) {
-      // Split: JP-8 assigns arp to LOWER only
-      if (note < splitPoint) {
-        if (!arpPresentLower(note)) arpRemoveNote(note);
-      }
-    } else {
-      // Whole/Dual: treat present if in either engine
-      bool present = arpPresentLower(note) || arpPresentUpper(note);
-      if (!present) arpRemoveNote(note);
-    }
-  }
-
-  if (arpConsumesKey(note)) {
-    return;
   }
 
   int assignedVoice = voiceAssignment[note];
 
   switch (keyMode) {
-
-    // WHOLE MODE
     case 0:
+      {
+        if (lowerData[P_assign] == 2) commandMonoNoteOffLower(note);
+        else if (lowerData[P_assign] == 3) commandUnisonNoteOffLower(note);
+        else if (lowerData[P_assign] == 4 || lowerData[P_assign] == 5) releaseUnisonPairLower(note);
+        else {
+          int lowerVoice = voiceAssignmentLower[note];
+          if (lowerVoice >= 0 && lowerVoice <= 5 && voiceToNoteLower[lowerVoice] == note) {
+            releaseVoice(note, lowerVoice);
+            voiceAssignmentLower[note] = -1;
+            voiceToNoteLower[lowerVoice] = -1;
+          }
+        }
+        if (upperData[P_assign] == 2) commandMonoNoteOffUpper(note);
+        else if (upperData[P_assign] == 3) commandUnisonNoteOffUpper(note);
+        else if (upperData[P_assign] == 4 || upperData[P_assign] == 5) releaseUnisonPairUpper(note);
+        else {
+          int upperVoice = voiceAssignmentUpper[note];
+          if (upperVoice >= 6 && upperVoice <= 11 && voiceToNoteUpper[upperVoice - 6] == note) {
+            releaseVoice(note, upperVoice);
+            voiceAssignmentUpper[note] = -1;
+            voiceToNoteUpper[upperVoice - 6] = -1;
+          }
+        }
+      }
+      break;
+
+    case 1:
       switch (lowerData[P_assign]) {
         case 0:
           assignedVoice = getVoiceNo(note) - 1;
@@ -7496,67 +7213,125 @@ void myNoteOff(byte channel, byte note, byte velocity) {
           break;
         case 2: commandMonoNoteOff(note); break;
         case 3: commandUnisonNoteOff(note); break;
+        case 4:
+        case 5: releaseWholeUnisonPair(note); break;
       }
       break;
 
-    // DUAL MODE
-    case 1:
-      {
-        // Lower
-        if (lowerData[P_assign] == 2) commandMonoNoteOffLower(note);
-        else if (lowerData[P_assign] == 3) commandUnisonNoteOffLower(note);
-        else {
-          int lowerVoice = voiceAssignmentLower[note];
-          if (lowerVoice >= 0 && lowerVoice <= 3 && voiceToNoteLower[lowerVoice] == note) {
-            releaseVoice(note, lowerVoice);
-            voiceAssignmentLower[note] = -1;
-            voiceToNoteLower[lowerVoice] = -1;
-          }
-        }
-
-        // Upper
-        if (upperData[P_assign] == 2) commandMonoNoteOffUpper(note);
-        else if (upperData[P_assign] == 3) commandUnisonNoteOffUpper(note);
-        else {
-          int upperVoice = voiceAssignmentUpper[note];
-          if (upperVoice >= 4 && upperVoice <= 7 && voiceToNoteUpper[upperVoice - 4] == note) {
-            releaseVoice(note, upperVoice);
-            voiceAssignmentUpper[note] = -1;
-            voiceToNoteUpper[upperVoice - 4] = -1;
-          }
-        }
-      }
-      break;
-
-    // SPLIT MODE
     case 2:
+      switch (upperData[P_assign]) {
+        case 0:
+          assignedVoice = getVoiceNo(note) - 1;
+          releaseVoice(note, assignedVoice);
+          break;
+        case 1:
+          assignedVoice = getVoiceNoPoly2(note) - 1;
+          releaseVoice(note, assignedVoice);
+          break;
+        case 2: commandMonoNoteOff(note); break;
+        case 3: commandUnisonNoteOff(note); break;
+        case 4:
+        case 5: releaseWholeUnisonPair(note); break;
+      }
+      break;
+
+    case 3:
       {
         if (note < splitPoint) {
-          if (lowerData[P_assign] == 2) {
-            commandMonoNoteOffLower(note);
-          } else if (lowerData[P_assign] == 3) {
-            commandUnisonNoteOffLower(note);
-          } else {
+          if (lowerData[P_assign] == 2) commandMonoNoteOffLower(note);
+          else if (lowerData[P_assign] == 3) commandUnisonNoteOffLower(note);
+          else if (lowerData[P_assign] == 4 || lowerData[P_assign] == 5) releaseUnisonPairLower(note);
+          else {
             int lowerVoice = voiceAssignmentLower[note];
-            if (lowerVoice >= 0 && lowerVoice <= 3 && voiceToNoteLower[lowerVoice] == note) {
+            if (lowerVoice >= 0 && lowerVoice <= 5 && voiceToNoteLower[lowerVoice] == note) {
               releaseVoice(note, lowerVoice);
               voiceAssignmentLower[note] = -1;
               voiceToNoteLower[lowerVoice] = -1;
             }
           }
         } else {
-          if (upperData[P_assign] == 2) {
-            commandMonoNoteOffUpper(note);
-          } else if (upperData[P_assign] == 3) {
-            commandUnisonNoteOffUpper(note);
-          } else {
+          if (upperData[P_assign] == 2) commandMonoNoteOffUpper(note);
+          else if (upperData[P_assign] == 3) commandUnisonNoteOffUpper(note);
+          else if (upperData[P_assign] == 4 || upperData[P_assign] == 5) releaseUnisonPairUpper(note);
+          else {
             int upperVoice = voiceAssignmentUpper[note];
-            if (upperVoice >= 4 && upperVoice <= 7 && voiceToNoteUpper[upperVoice - 4] == note) {
+            if (upperVoice >= 6 && upperVoice <= 11 && voiceToNoteUpper[upperVoice - 6] == note) {
               releaseVoice(note, upperVoice);
               voiceAssignmentUpper[note] = -1;
-              voiceToNoteUpper[upperVoice - 4] = -1;
+              voiceToNoteUpper[upperVoice - 6] = -1;
             }
           }
+        }
+      }
+      break;
+
+    case 4:
+      switch (upperData[P_assign]) {
+        case 2:
+          commandMonoNoteOffLower(note);
+          commandMonoNoteOffUpper(note);
+          break;
+        case 3:
+          commandUnisonNoteOffLower(note);
+          commandUnisonNoteOffUpper(note);
+          break;
+        case 4:
+        case 5:
+          releaseUnisonPairLower(note);
+          releaseUnisonPairUpper(note);
+          break;
+        default:
+          {
+            int lowerVoice = voiceAssignmentLower[note];
+            if (lowerVoice >= 0 && lowerVoice <= 5 && voiceToNoteLower[lowerVoice] == note) {
+              releaseVoice(note, lowerVoice);
+              voiceAssignmentLower[note] = -1;
+              voiceToNoteLower[lowerVoice] = -1;
+            }
+            int upperVoice = voiceAssignmentUpper[note];
+            if (upperVoice >= 6 && upperVoice <= 11 && voiceToNoteUpper[upperVoice - 6] == note) {
+              releaseVoice(note, upperVoice);
+              voiceAssignmentUpper[note] = -1;
+              voiceToNoteUpper[upperVoice - 6] = -1;
+            }
+          }
+          break;
+      }
+      break;
+
+    case 5:
+      {
+        switch (upperData[P_assign]) {
+          case 2: commandMonoNoteOffLower(note); break;
+          case 3: commandUnisonNoteOffLower(note); break;
+          case 4:
+          case 5: releaseUnisonPairLower(note); break;
+          default:
+            {
+              int lowerVoice = voiceAssignmentLower[note];
+              if (lowerVoice >= 0 && lowerVoice <= 5 && voiceToNoteLower[lowerVoice] == note) {
+                releaseVoice(note, lowerVoice);
+                voiceAssignmentLower[note] = -1;
+                voiceToNoteLower[lowerVoice] = -1;
+              }
+            }
+            break;
+        }
+        switch (upperData[P_assign]) {
+          case 2: commandMonoNoteOffUpper(note); break;
+          case 3: commandUnisonNoteOffUpper(note); break;
+          case 4:
+          case 5: releaseUnisonPairUpper(note); break;
+          default:
+            {
+              int upperVoice = voiceAssignmentUpper[note];
+              if (upperVoice >= 6 && upperVoice <= 11 && voiceToNoteUpper[upperVoice - 6] == note) {
+                releaseVoice(note, upperVoice);
+                voiceAssignmentUpper[note] = -1;
+                voiceToNoteUpper[upperVoice - 6] = -1;
+              }
+            }
+            break;
         }
       }
       break;
@@ -7615,28 +7390,58 @@ void commandLastNoteUniWhole() {
   for (int v = 0; v < 12; v++) releaseVoice(noteMsg, v);
 }
 
-void recallPatch(int patchNo) {
+// ---------------------------------------------------------------------------
+// Recall a patch from SD
+// ---------------------------------------------------------------------------
+void recallPatch(int bank, int group, int slot) {
   allNotesOff();
-  if (!updateParams) {
-    MIDI.sendProgramChange(patchNo - 1, midiOutCh);
-  }
   delay(50);
-  announce = true;
-  recallPatchFlag = true;
-  File patchFile = SD.open(String(patchNo).c_str());
+  String path = getPatchPath(bank, group, slot);
+  File patchFile = SD.open(path.c_str());
   if (!patchFile) {
-    Serial.println("File not found");
-  } else {
-    String data[NO_OF_PARAMS];  //Array of data read in
-    recallPatchData(patchFile, data);
-    setCurrentPatchData(data);
-    patchFile.close();
+    Serial.print(F("Patch not found: "));
+    Serial.println(path);
+    showPatchPage(getPatchLabel(group, slot), "(empty)");
+    return;
   }
-  announce = false;
-  recallPatchFlag = false;
+  String data[NO_OF_PARAMS];
+  recallPatchData(patchFile, data);
+  setCurrentPatchData(data);
+  patchFile.close();
+
+  // Reload tone library if bank has changed
+  if (bank != currentBank) {
+    loadToneLibrary(bank);
+  }
+
+  currentBank = bank;
+  currentGroup = group;
+  currentSlot = slot;
+  showPatchPage(getPatchLabel(group, slot), patchName);
+  Serial.print(F("Recalled: "));
+  Serial.println(path);
+}
+
+// Recall using current position
+void recallCurrentPatch() {
+  recallPatch(currentBank, currentGroup, currentSlot);
+}
+
+// ---------------------------------------------------------------------------
+// Boot: load first patch (bank 0, group A=0, slot 1)
+// or restore from EEPROM if you add that later
+// ---------------------------------------------------------------------------
+void loadInitialPatch() {
+  loadToneLibrary(0);
+  recallPatch(0, 0, 1);
 }
 
 void allNotesOff() {
+
+  sendVoiceParam(kPrefixBroadcast, NO_OFFSET, 0xB6, 0x7F);
+  sendVoiceParam(kPrefixBroadcast, NO_OFFSET, 0xBB, 0x00);
+  sendVoiceParam(kPrefixBroadcast, NO_OFFSET, 0xB5, 0x00);
+
 
   voices[0].note = -1;
   voiceOn[0] = false;
@@ -7685,6 +7490,69 @@ void allNotesOff() {
   voiceOn[11] = false;
 }
 
+// -------------------------------------------------------------
+// Tone handling
+// -------------------------------------------------------------
+
+// Add to loop()
+void updateToneBlink() {
+  if (!toneEntryActive) return;
+  if (millis() - toneBlinkTimer > TONE_BLINK_INTERVAL) {
+    toneBlinkState = !toneBlinkState;
+    toneBlinkTimer = millis();
+
+    uint8_t display = (toneEntryBuffer == 0) ? 100 : toneEntryBuffer;
+
+    if (upperSW) {
+      lcd.setCursor(36, 0);
+    } else {
+      lcd.setCursor(36, 1);
+    }
+
+    if (toneBlinkState) {
+      if (display < 10) {
+        lcd.print("  ");
+        lcd.print(display);
+      } else if (display < 100) {
+        lcd.print(" ");
+        lcd.print(display);
+      } else {
+        lcd.print(display);
+      }
+    } else {
+      lcd.print("   ");  // blank - same width as "100"
+    }
+  }
+}
+
+void handleToneDigit(uint8_t digit) {
+  toneEntryBuffer = (toneEntryBuffer % 10) * 10 + digit;
+  toneEntryActive = true;
+  toneBlinkTimer = 0;     // force immediate visible update on next blink cycle
+  toneBlinkState = true;  // start on the visible phase
+
+  // Write the number immediately so it shows before first blink interval
+  uint8_t display = (toneEntryBuffer == 0) ? 100 : toneEntryBuffer;
+  if (upperSW) {
+    lcd.setCursor(36, 0);
+  } else {
+    lcd.setCursor(36, 1);
+  }
+  if (display < 10) {
+    lcd.print("  ");
+    lcd.print(display);
+  } else if (display < 100) {
+    lcd.print(" ");
+    lcd.print(display);
+  } else {
+    lcd.print(display);
+  }
+}
+
+// ----------------------------------------------------------------------
+// Patch Data
+// ----------------------------------------------------------------------
+
 String getCurrentPatchData() {
   return patchName + "," + String(upperData[P_lfo1_wave]) + "," + String(lowerData[P_lfo1_wave]) + "," + String(upperData[P_lfo1_rate]) + "," + String(lowerData[P_lfo1_rate]) + "," + String(upperData[P_lfo1_delay]) + "," + String(lowerData[P_lfo1_delay])
          + "," + String(upperData[P_lfo1_lfo2]) + "," + String(lowerData[P_lfo1_lfo2]) + "," + String(upperData[P_lfo1_sync]) + "," + String(lowerData[P_lfo1_sync]) + "," + String(upperData[P_lfo2_wave]) + "," + String(lowerData[P_lfo2_wave])
@@ -7721,7 +7589,7 @@ String getCurrentPatchData() {
          + "," + String(upperData[P_assign]) + "," + String(lowerData[P_assign]) + "," + String(toneNameU) + "," + String(toneNameL) + "," + String(keyMode) + "," + String(dualdetune)
          + "," + String(at_vib) + "," + String(at_lpf) + "," + String(at_vol) + "," + String(balance) + "," + String(portamento) + "," + String(volume)
          + "," + String(bend_range) + "," + String(chaseLevel) + "," + String(chaseMode) + "," + String(chaseTime) + "," + String(chasePlay) + "," + String(bend_enable)
-         + "," + String(after_enable) + "," + String(upperData[P_toneNumber]) + "," + String(lowerData[P_toneNumber]) + "," + String(portamento);
+         + "," + String(after_enable) + "," + String(upperData[P_toneNumber]) + "," + String(lowerData[P_toneNumber]);
 }
 
 void setCurrentPatchData(String data[]) {
@@ -7939,7 +7807,7 @@ void setCurrentPatchData(String data[]) {
   at_vib = data[199].toInt();
   at_lpf = data[200].toInt();
   at_vol = data[201].toInt();
-  balance = data[201].toInt();
+  balance = data[202].toInt();
   portamento = data[203].toInt();
   volume = data[204].toInt();
   bend_range = data[205].toInt();
@@ -7956,7 +7824,9 @@ void setCurrentPatchData(String data[]) {
   updatePatchname();
   updateButtons();
   updateUpperToneData();
-  updateLowerToneData();
+  if (keyMode == 0 || keyMode == 3 || keyMode == 4 || keyMode == 5) {
+    updateLowerToneData();
+  }
   updatePerformanceData();
 
   Serial.print("Set Patch: ");
@@ -7973,6 +7843,8 @@ void updateButtons() {
 void updateUpperToneData() {
   bool upperSWsafe = upperSW;
   upperSW = true;
+
+  // OFFSET 0
   updatelfo1_wave(0);
   updatelfo1_rate(0);
   updatelfo1_delay(0);
@@ -7991,9 +7863,17 @@ void updateUpperToneData() {
   updatedco1_wave(0);
   updatedco1_range(0);
   updatedco1_tune(0);
-  updatedco1_xmod(0);
-  updatedco1_level(0);
 
+  updatetime1(0);
+  updatelevel1(0);
+  updatetime2(0);
+  updatelevel2(0);
+  updatetime3(0);
+  updatelevel3(0);
+  updatetime4(0);
+  updateenv5stage_mode(0);
+
+  // OFFSET 1
   updatelfo2_wave(0);
   updatelfo2_rate(0);
   updatelfo2_delay(0);
@@ -8012,30 +7892,6 @@ void updateUpperToneData() {
   updatedco2_wave(0);
   updatedco2_range(0);
   updatedco2_tune(0);
-  updatedco2_fine(0);
-  updatedco2_level(0);
-  updatedco2_mod(0);
-  updatedco_mix_env_source(0);
-  updatedco_mix_dyn(0);
-
-  updatevcf_hpf(0);
-  updatevcf_cutoff(0);
-  updatevcf_res(0);
-  updatevcf_kb(0);
-  updatevcf_env(0);
-  updatevcf_lfo1(0);
-  updatevcf_lfo2(0);
-  updatevcf_env_source(0);
-  updatevcf_dyn(0);
-
-  updatetime1(0);
-  updatelevel1(0);
-  updatetime2(0);
-  updatelevel2(0);
-  updatetime3(0);
-  updatelevel3(0);
-  updatetime4(0);
-  updateenv5stage_mode(0);
 
   updateenv2_time1(0);
   updateenv2_level1(0);
@@ -8046,24 +7902,45 @@ void updateUpperToneData() {
   updateenv2_time4(0);
   updateenv2_env5stage_mode(0);
 
+  // OFFSET 2
   updateattack(0);
   updatedecay(0);
   updatesustain(0);
   updaterelease(0);
   updateadsr_mode(0);
 
+  //OFFSET 3
   updateenv4_attack(0);
   updateenv4_decay(0);
   updateenv4_sustain(0);
   updateenv4_release(0);
   updateenv4_adsr_mode(0);
 
+  // NO OFFSET
+  updatedco1_xmod(0);
+  updatedco2_fine(0);
+  updatedco1_level(0);
+  updatedco2_level(0);
+  updatedco_mix_env_source(0);
+  updatedco_mix_dyn(0);
+  updatedco2_mod(0);
+
+  updatevcf_hpf(0);
+  updatevcf_cutoff(0);
+  updatevcf_res(0);
+  updatevcf_kb(0);
+  updatevcf_env(0);
+  updatevcf_lfo1(0);
+  updatevcf_lfo2(0);
+  updatevcf_env_source(0);
+  updatevcf_dyn(0);
   updatevca_mod(0);
   updatevca_dyn(0);
   updatevca_env_source(0);
   updatechorus(0);
 
-
+  board = 0x00;
+  EXTRA_OFFSET = 0xFF;
   LAST_PARAM = 0x00;
   upperSW = upperSWsafe;
 }
@@ -8071,6 +7948,7 @@ void updateUpperToneData() {
 void updateLowerToneData() {
   bool upperSWsafe = upperSW;
   upperSW = false;
+  // OFFSET 0
   updatelfo1_wave(0);
   updatelfo1_rate(0);
   updatelfo1_delay(0);
@@ -8089,9 +7967,17 @@ void updateLowerToneData() {
   updatedco1_wave(0);
   updatedco1_range(0);
   updatedco1_tune(0);
-  updatedco1_xmod(0);
-  updatedco1_level(0);
 
+  updatetime1(0);
+  updatelevel1(0);
+  updatetime2(0);
+  updatelevel2(0);
+  updatetime3(0);
+  updatelevel3(0);
+  updatetime4(0);
+  updateenv5stage_mode(0);
+
+  // OFFSET 1
   updatelfo2_wave(0);
   updatelfo2_rate(0);
   updatelfo2_delay(0);
@@ -8110,30 +7996,6 @@ void updateLowerToneData() {
   updatedco2_wave(0);
   updatedco2_range(0);
   updatedco2_tune(0);
-  updatedco2_fine(0);
-  updatedco2_level(0);
-  updatedco2_mod(0);
-  updatedco_mix_env_source(0);
-  updatedco_mix_dyn(0);
-
-  updatevcf_hpf(0);
-  updatevcf_cutoff(0);
-  updatevcf_res(0);
-  updatevcf_kb(0);
-  updatevcf_env(0);
-  updatevcf_lfo1(0);
-  updatevcf_lfo2(0);
-  updatevcf_env_source(0);
-  updatevcf_dyn(0);
-
-  updatetime1(0);
-  updatelevel1(0);
-  updatetime2(0);
-  updatelevel2(0);
-  updatetime3(0);
-  updatelevel3(0);
-  updatetime4(0);
-  updateenv5stage_mode(0);
 
   updateenv2_time1(0);
   updateenv2_level1(0);
@@ -8144,23 +8006,45 @@ void updateLowerToneData() {
   updateenv2_time4(0);
   updateenv2_env5stage_mode(0);
 
+  // OFFSET 2
   updateattack(0);
   updatedecay(0);
   updatesustain(0);
   updaterelease(0);
   updateadsr_mode(0);
 
+  //OFFSET 3
   updateenv4_attack(0);
   updateenv4_decay(0);
   updateenv4_sustain(0);
   updateenv4_release(0);
   updateenv4_adsr_mode(0);
 
+  // NO OFFSET
+  updatedco1_xmod(0);
+  updatedco2_fine(0);
+  updatedco1_level(0);
+  updatedco2_level(0);
+  updatedco_mix_env_source(0);
+  updatedco_mix_dyn(0);
+  updatedco2_mod(0);
+
+  updatevcf_hpf(0);
+  updatevcf_cutoff(0);
+  updatevcf_res(0);
+  updatevcf_kb(0);
+  updatevcf_env(0);
+  updatevcf_lfo1(0);
+  updatevcf_lfo2(0);
+  updatevcf_env_source(0);
+  updatevcf_dyn(0);
   updatevca_mod(0);
   updatevca_dyn(0);
   updatevca_env_source(0);
   updatechorus(0);
 
+  board = 0x00;
+  EXTRA_OFFSET = 0xFF;
   LAST_PARAM = 0x00;
   upperSW = upperSWsafe;
 }
@@ -8191,59 +8075,60 @@ void updatePatchname() {
   showPatchPage(String(patchNo), patchName);
 }
 
+void updateBankBlink() {
+  if (!bankSelectMode) return;
+  if (millis() - bankBlinkTimer > BANK_BLINK_INTERVAL) {
+    bankBlinkState = !bankBlinkState;
+    bankBlinkTimer = millis();
+    // TODO: update your display/LED to show bank flashing here
+    // e.g. showBankBlink(bankBlinkState);
+    updateScreen();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// checkSwitches  — replaces original
+// ---------------------------------------------------------------------------
 void checkSwitches() {
 
+  // --- SAVE button ---
   saveButton.update();
   if (saveButton.held()) {
-    switch (state) {
-      case PARAMETER:
-      case PATCH:
-        state = DELETE;
-        updateScreen();
-        break;
+    // Held: enter patch rename mode
+    if (state == PARAMETER) {
+      showRenamingPage(patchName);
+      renamedPatch = "";
+      charIndex = 0;
+      currentCharacter = CHARACTERS[charIndex];
+      state = PATCHNAMING;
+      updateScreen();
     }
   } else if (saveButton.numClicks() == 1) {
     switch (state) {
       case PARAMETER:
-        if (patches.size() < PATCHES_LIMIT) {
-          resetPatchesOrdering();  //Reset order of patches from first patch
-          patches.push({ patches.size() + 1, INITPATCHNAME });
-          state = SAVE;
-        }
+        // Single press: save to current position immediately
+        saveCurrentPatch();
         updateScreen();
         break;
-      case SAVE:
-        //Save as new patch with INITIALPATCH name or overwrite existing keeping name - bypassing patch renaming
-        patchName = patches.last().patchName;
-        state = PATCH;
-        savePatch(String(patches.last().patchNo).c_str(), getCurrentPatchData());
-        showPatchPage(patches.last().patchNo, patches.last().patchName);
-        patchNo = patches.last().patchNo;
-        loadPatches();  //Get rid of pushed patch if it wasn't saved
-        setPatchesOrdering(patchNo);
-        renamedPatch = "";
-        state = PARAMETER;
-        updateScreen();
-        break;
+
       case PATCHNAMING:
-        if (renamedPatch.length() > 0) patchName = renamedPatch;  //Prevent empty strings
-        state = PATCH;
-        savePatch(String(patches.last().patchNo).c_str(), getCurrentPatchData());
-        showPatchPage(patches.last().patchNo, patchName);
-        patchNo = patches.last().patchNo;
-        loadPatches();  //Get rid of pushed patch if it wasn't saved
-        setPatchesOrdering(patchNo);
+        // Confirm rename then save
+        if (renamedPatch.length() > 0) patchName = renamedPatch;
+        saveCurrentPatch();
         renamedPatch = "";
         state = PARAMETER;
         updateScreen();
+        break;
+
+      case BANK_SELECT_SAVE:
+        // Waiting for A-H + 1-8 selection — SAVE alone is a no-op here
         break;
     }
   }
 
+  // --- SETTINGS button ---
   settingsButton.update();
   if (settingsButton.held()) {
-    //If recall held, set current patch to match current hardware state
-    //Reinitialise all hardware values to force them to be re-read if different
     state = REINITIALISE;
     reinitialiseToPanel();
     updateScreen();
@@ -8257,6 +8142,7 @@ void checkSwitches() {
       case SETTINGS:
         showSettingsPage();
         updateScreen();
+        // fall through
       case SETTINGSVALUE:
         settings::save_current_value();
         state = SETTINGS;
@@ -8266,33 +8152,23 @@ void checkSwitches() {
     }
   }
 
+  // --- BACK button ---
   backButton.update();
   if (backButton.held()) {
-    //If Back button held, Panic - all notes off
     allNotesOff();
     updateScreen();
   } else if (backButton.numClicks() == 1) {
     switch (state) {
-      case RECALL:
-        setPatchesOrdering(patchNo);
+      case BANK_SELECT:
+      case BANK_SELECT_SAVE:
+        bankSelectMode = false;
+        saveToBankMode = false;
         state = PARAMETER;
-        updateScreen();
-        break;
-      case SAVE:
-        renamedPatch = "";
-        state = PARAMETER;
-        loadPatches();  //Remove patch that was to be saved
-        setPatchesOrdering(patchNo);
         updateScreen();
         break;
       case PATCHNAMING:
         charIndex = 0;
         renamedPatch = "";
-        state = SAVE;
-        updateScreen();
-        break;
-      case DELETE:
-        setPatchesOrdering(patchNo);
         state = PARAMETER;
         updateScreen();
         break;
@@ -8308,38 +8184,36 @@ void checkSwitches() {
     }
   }
 
-  //Encoder switch
+  // --- ENCODER BUTTON (Recall) ---
   recallButton.update();
   if (recallButton.held()) {
-    //If Recall button held, return to current patch setting
-    //which clears any changes made
-    state = PATCH;
-    //Recall the current patch
-    patchNo = patches.first().patchNo;
-    recallPatch(patchNo);
+    // Held: revert patch to last saved state
+    recallCurrentPatch();
     state = PARAMETER;
     updateScreen();
   } else if (recallButton.numClicks() == 1) {
     switch (state) {
       case PARAMETER:
-        state = RECALL;  //show patch list
+        bankSelectMode = true;
+        bankBlinkTimer = millis();
+        state = BANK_SELECT;
+        // Position cursor on the bank letter and blink it
+        lcd.setCursor(2, 0);  // wherever your bank letter sits on line 0
+        lcd.blink();
         updateScreen();
         break;
-      case RECALL:
-        state = PATCH;
-        //Recall the current patch
-        patchNo = patches.first().patchNo;
-        recallPatch(patchNo);
+
+        // Back button cancel - restore the existing bank letter:
+        bankSelectMode = false;
+        lcd.noBlink();
+        lcd.noCursor();
+        lcd.setCursor(2, 0);
+        lcd.print((char)('A' + currentBank));
         state = PARAMETER;
         updateScreen();
-        break;
-      case SAVE:
-        showRenamingPage(patches.last().patchName);
-        patchName = patches.last().patchName;
-        state = PATCHNAMING;
-        updateScreen();
-        break;
+
       case PATCHNAMING:
+        // Encoder button confirms current character
         if (renamedPatch.length() < 13) {
           renamedPatch.concat(String(currentCharacter));
           charIndex = 0;
@@ -8348,34 +8222,78 @@ void checkSwitches() {
         }
         updateScreen();
         break;
-      case DELETE:
-        //Don't delete final patch
-        if (patches.size() > 1) {
-          state = DELETEMSG;
-          patchNo = patches.first().patchNo;     //PatchNo to delete from SD card
-          patches.shift();                       //Remove patch from circular buffer
-          deletePatch(String(patchNo).c_str());  //Delete from SD card
-          loadPatches();                         //Repopulate circular buffer to start from lowest Patch No
-          renumberPatchesOnSD();
-          loadPatches();                      //Repopulate circular buffer again after delete
-          patchNo = patches.first().patchNo;  //Go back to 1
-          recallPatch(patchNo);               //Load first patch
-        }
+    }
+  }
+}
+
+void handlePatchButton(int group, int slot) {
+
+  switch (state) {
+
+    // --- Normal play mode: load immediately ---
+    case PARAMETER:
+    case PATCH:
+      if (group >= 0) currentGroup = group;
+      if (slot >= 1) currentSlot = slot;
+      recallPatch(currentBank, currentGroup, currentSlot);
+      state = PARAMETER;
+      updateScreen();
+      break;
+
+    // --- Bank-select mode (Recall pressed): A-H picks bank, no load ---
+    case BANK_SELECT:
+      if (group >= 0) {
+        currentBank = group;  // group A-H maps directly to bank 0-7
+        bankSelectMode = false;
+        state = PARAMETER;
+        Serial.print(F("Bank selected: "));
+        Serial.println(currentBank);
+        updateScreen();
+      }
+      // 1-8 buttons ignored while in bank-select mode
+      break;
+
+    // --- Save-destination picking: Recall + SAVE entered this state ---
+    case BANK_SELECT_SAVE:
+      if (group >= 0) {
+        // A-H press picks destination bank, now wait for slot
+        saveTargetBank = group;
+        saveTargetGroup = currentGroup;  // will be overridden by slot press
+        // Stay in BANK_SELECT_SAVE waiting for a 1-8 press
+        showPatchPage("SAVE TO", String((char)('A' + group)) + "?");
+        updateScreen();
+      } else if (slot >= 1) {
+        // 1-8 press picks destination slot — save now
+        saveTargetSlot = slot;
+        if (renamedPatch.length() > 0) patchName = renamedPatch;
+        savePatchTo(saveTargetBank, currentGroup, saveTargetSlot);
+        renamedPatch = "";
+        bankSelectMode = false;
+        saveToBankMode = false;
         state = PARAMETER;
         updateScreen();
-        break;
-      case SETTINGS:
-        state = SETTINGSVALUE;
-        showSettingsPage();
+      }
+      break;
+
+    // --- Patch naming: 1-8 and A-H scroll through characters ---
+    case PATCHNAMING:
+      if (slot >= 1) {
+        // 1-8: step forward through characters
+        if (charIndex >= TOTALCHARS) charIndex = 0;
+        currentCharacter = CHARACTERS[charIndex++];
+        showRenamingPage(renamedPatch + currentCharacter);
         updateScreen();
-        break;
-      case SETTINGSVALUE:
-        settings::save_current_value();
-        state = SETTINGS;
-        showSettingsPage();
+      } else if (group >= 0) {
+        // A-H: step backward through characters
+        if (charIndex <= 0) charIndex = TOTALCHARS - 1;
+        currentCharacter = CHARACTERS[charIndex--];
+        showRenamingPage(renamedPatch + currentCharacter);
         updateScreen();
-        break;
-    }
+      }
+      break;
+
+    default:
+      break;
   }
 }
 
@@ -8390,37 +8308,18 @@ void reinitialiseToPanel() {
   // showPatchPage("Initial", "Panel Settings");
 }
 
+// ---------------------------------------------------------------------------
+// checkEncoder  — encoder now used only for patch renaming and settings
+// ---------------------------------------------------------------------------
 void checkEncoder() {
-  //Encoder works with relative inc and dec values
-  //Detent encoder goes up in 4 steps, hence +/-3
-
   long encRead = encoder.read();
+
   if ((encCW && encRead > encPrevious + 3) || (!encCW && encRead < encPrevious - 3)) {
     switch (state) {
-      case PARAMETER:
-        state = PATCH;
-        patches.push(patches.shift());
-        patchNo = patches.first().patchNo;
-        recallPatch(patchNo);
-        state = PARAMETER;
-        updateScreen();
-        break;
-      case RECALL:
-        patches.push(patches.shift());
-        updateScreen();
-        break;
-      case SAVE:
-        patches.push(patches.shift());
-        updateScreen();
-        break;
       case PATCHNAMING:
-        if (charIndex == TOTALCHARS) charIndex = 0;  //Wrap around
+        if (charIndex == TOTALCHARS) charIndex = 0;
         currentCharacter = CHARACTERS[charIndex++];
         showRenamingPage(renamedPatch + currentCharacter);
-        updateScreen();
-        break;
-      case DELETE:
-        patches.push(patches.shift());
         updateScreen();
         break;
       case SETTINGS:
@@ -8433,35 +8332,27 @@ void checkEncoder() {
         showSettingsPage();
         updateScreen();
         break;
+      case ARP_EDIT:
+        arpParamIndex = (arpParamIndex + 1) % 8;
+        showCurrentParameterPage(arpParamNames[arpParamIndex],
+                                 arpParamValueString(arpParamIndex));
+        updateScreen();
+        break;
+      case ARP_EDITVALUE:
+        arpIncrementParam(arpParamIndex);
+        showCurrentParameterPage(arpParamNames[arpParamIndex],
+                                 arpParamValueString(arpParamIndex));
+        updateScreen();
+        break;
     }
     encPrevious = encRead;
+
   } else if ((encCW && encRead < encPrevious - 3) || (!encCW && encRead > encPrevious + 3)) {
     switch (state) {
-      case PARAMETER:
-        state = PATCH;
-        patches.unshift(patches.pop());
-        patchNo = patches.first().patchNo;
-        recallPatch(patchNo);
-        state = PARAMETER;
-        updateScreen();
-        break;
-      case RECALL:
-        patches.unshift(patches.pop());
-        updateScreen();
-        break;
-      case SAVE:
-        patches.unshift(patches.pop());
-        updateScreen();
-        break;
       case PATCHNAMING:
-        if (charIndex == -1)
-          charIndex = TOTALCHARS - 1;
+        if (charIndex == -1) charIndex = TOTALCHARS - 1;
         currentCharacter = CHARACTERS[charIndex--];
         showRenamingPage(renamedPatch + currentCharacter);
-        updateScreen();
-        break;
-      case DELETE:
-        patches.unshift(patches.pop());
         updateScreen();
         break;
       case SETTINGS:
@@ -8472,6 +8363,18 @@ void checkEncoder() {
       case SETTINGSVALUE:
         settings::decrement_setting_value();
         showSettingsPage();
+        updateScreen();
+        break;
+      case ARP_EDIT:
+        arpParamIndex = (arpParamIndex + 7) % 8;
+        showCurrentParameterPage(arpParamNames[arpParamIndex],
+                                 arpParamValueString(arpParamIndex));
+        updateScreen();
+        break;
+      case ARP_EDITVALUE:
+        arpDecrementParam(arpParamIndex);
+        showCurrentParameterPage(arpParamNames[arpParamIndex],
+                                 arpParamValueString(arpParamIndex));
         updateScreen();
         break;
     }
@@ -8568,6 +8471,334 @@ void mainButtonChanged(Button *btn, bool released) {
 
       // Keymode Buttons
 
+    case SEQ_FUNCTION_BUTTON:
+      if (!released) {
+        arpFunctionMode = !arpFunctionMode;
+        if (arpFunctionMode) {
+          state = ARP_EDIT;
+          showCurrentParameterPage(arpParamNames[arpParamIndex],
+                                   arpParamValueString(arpParamIndex));
+        } else {
+          state = PARAMETER;
+        }
+        updateScreen();
+      }
+      break;
+
+    case SEQ_START_STOP_BUTTON:
+      if (!released) {
+        arpEnabled = !arpEnabled;
+        if (arpEnabled) {
+          arpPos = -1;
+          arpDir = 1;
+          arpNextStepUs = 0;
+          arpMidiTickCount = 0;
+          arpNoteActive = false;
+          arpInsertCounter = 0;
+          // Don't set arpRunning yet - it starts when first note is pressed
+        } else {
+          arpStopCurrentNote();
+          arpRunning = false;
+          arpEnabled = false;
+          if (!arpLatch) {
+            arpClearPattern();
+            arpBuildStepList();
+          }
+          mcp9.digitalWrite(SEQ_START_STOP_LED_RED, LOW);
+        }
+      }
+      break;
+
+    case SEQ_RECORD_BUTTON:
+      if (!released) {
+        arpLatch = !arpLatch;
+        if (!arpLatch) {
+          // Latch turned off - clear held notes if nothing physically held
+          arpClearNonHeldNotes();
+        }
+        showCurrentParameterPage("LATCH", arpLatch ? "ON" : "OFF");
+        updateScreen();
+      }
+      break;
+
+    case PATCH_1_BUTTON:
+      if (!released) {
+        if (arpFunctionMode) {
+          arpParamIndex = ARP_P_BPM;
+          state = ARP_EDITVALUE;
+          showCurrentParameterPage(arpParamNames[arpParamIndex],
+                                   arpParamValueString(arpParamIndex));
+          updateScreen();
+        } else {
+          handlePatchButton(-1, 1);
+        }
+      }
+      break;
+
+    case PATCH_2_BUTTON:
+      if (!released) {
+        if (arpFunctionMode) {
+          arpParamIndex = ARP_P_MODE;
+          state = ARP_EDITVALUE;
+          showCurrentParameterPage(arpParamNames[arpParamIndex],
+                                   arpParamValueString(arpParamIndex));
+          updateScreen();
+        } else {
+          handlePatchButton(-1, 2);
+        }
+      }
+      break;
+
+    case PATCH_3_BUTTON:
+      if (!released) {
+        if (arpFunctionMode) {
+          arpParamIndex = ARP_P_OCTAVE;
+          state = ARP_EDITVALUE;
+          showCurrentParameterPage(arpParamNames[arpParamIndex],
+                                   arpParamValueString(arpParamIndex));
+          updateScreen();
+        } else {
+          handlePatchButton(-1, 3);
+        }
+      }
+      break;
+
+    case PATCH_4_BUTTON:
+      if (!released) {
+        if (arpFunctionMode) {
+          arpParamIndex = ARP_P_INSERT;
+          state = ARP_EDITVALUE;
+          showCurrentParameterPage(arpParamNames[arpParamIndex],
+                                   arpParamValueString(arpParamIndex));
+          updateScreen();
+        } else {
+          handlePatchButton(-1, 4);
+        }
+      }
+      break;
+
+    case PATCH_5_BUTTON:
+      if (!released) {
+        if (arpFunctionMode) {
+          arpParamIndex = ARP_P_RATE;
+          state = ARP_EDITVALUE;
+          showCurrentParameterPage(arpParamNames[arpParamIndex],
+                                   arpParamValueString(arpParamIndex));
+          updateScreen();
+        } else {
+          handlePatchButton(-1, 5);
+        }
+      }
+      break;
+
+    case PATCH_6_BUTTON:
+      if (!released) {
+        if (arpFunctionMode) {
+          arpParamIndex = ARP_P_DURATION;
+          state = ARP_EDITVALUE;
+          showCurrentParameterPage(arpParamNames[arpParamIndex],
+                                   arpParamValueString(arpParamIndex));
+          updateScreen();
+        } else {
+          handlePatchButton(-1, 6);
+        }
+      }
+      break;
+
+    case PATCH_7_BUTTON:
+      if (!released) {
+        if (arpFunctionMode) {
+          arpParamIndex = ARP_P_VELOCITY;
+          state = ARP_EDITVALUE;
+          showCurrentParameterPage(arpParamNames[arpParamIndex],
+                                   arpParamValueString(arpParamIndex));
+          updateScreen();
+        } else {
+          handlePatchButton(-1, 7);
+        }
+      }
+      break;
+
+    case PATCH_8_BUTTON:
+      if (!released) {
+        if (arpFunctionMode) {
+          arpParamIndex = ARP_P_MIDI;
+          state = ARP_EDITVALUE;
+          showCurrentParameterPage(arpParamNames[arpParamIndex],
+                                   arpParamValueString(arpParamIndex));
+          updateScreen();
+        } else {
+          handlePatchButton(-1, 8);
+        }
+      }
+      break;
+
+    case BANK_A_BUTTON:
+      if (!released) {
+        if (arpFunctionMode) {
+          arpMemoryIndex = 0;
+          arp = arpMemories[0];
+          showCurrentParameterPage("ARP MEMORY", "A");
+          updateScreen();
+        } else {
+          handlePatchButton(0, -1);  // A pressed
+        }
+      }
+      break;
+
+    case BANK_B_BUTTON:
+      if (!released) {
+        if (arpFunctionMode) {
+          arpMemoryIndex = 1;
+          arp = arpMemories[1];
+          showCurrentParameterPage("ARP MEMORY", "B");
+          updateScreen();
+        } else {
+          handlePatchButton(1, -1);  // A pressed
+        }
+      }
+      break;
+
+    case BANK_C_BUTTON:
+      if (!released) {
+        if (arpFunctionMode) {
+          arpMemoryIndex = 2;
+          arp = arpMemories[2];
+          showCurrentParameterPage("ARP MEMORY", "C");
+          updateScreen();
+        } else {
+          handlePatchButton(2, -1);  // A pressed
+        }
+      }
+      break;
+
+    case BANK_D_BUTTON:
+      if (!released) {
+        if (arpFunctionMode) {
+          arpMemoryIndex = 3;
+          arp = arpMemories[3];
+          showCurrentParameterPage("ARP MEMORY", "D");
+          updateScreen();
+        } else {
+          handlePatchButton(3, -1);  // A pressed
+        }
+      }
+      break;
+
+    case BANK_E_BUTTON:
+      if (!released) {
+        if (arpFunctionMode) {
+          arpMemoryIndex = 4;
+          arp = arpMemories[4];
+          showCurrentParameterPage("ARP MEMORY", "E");
+          updateScreen();
+        } else {
+          handlePatchButton(4, -1);  // A pressed
+        }
+      }
+      break;
+
+    case BANK_F_BUTTON:
+      if (!released) {
+        if (arpFunctionMode) {
+          arpMemoryIndex = 5;
+          arp = arpMemories[5];
+          showCurrentParameterPage("ARP MEMORY", "F");
+          updateScreen();
+        } else {
+          handlePatchButton(5, -1);  // A pressed
+        }
+      }
+      break;
+
+    case BANK_G_BUTTON:
+      if (!released) {
+        if (arpFunctionMode) {
+          arpMemoryIndex = 6;
+          arp = arpMemories[6];
+          showCurrentParameterPage("ARP MEMORY", "G");
+          updateScreen();
+        } else {
+          handlePatchButton(6, -1);  // A pressed
+        }
+      }
+      break;
+
+    case BANK_H_BUTTON:
+      if (!released) {
+        if (arpFunctionMode) {
+          arpMemoryIndex = 7;
+          arp = arpMemories[7];
+          showCurrentParameterPage("ARP MEMORY", "H");
+          updateScreen();
+        } else {
+          handlePatchButton(7, -1);
+        }
+      }
+      break;
+
+    case TONE_0_BUTTON:
+      if (!released) handleToneDigit(0);
+      break;
+
+    case TONE_1_BUTTON:
+      if (!released) handleToneDigit(1);
+      break;
+
+    case TONE_2_BUTTON:
+      if (!released) handleToneDigit(2);
+      break;
+
+    case TONE_3_BUTTON:
+      if (!released) handleToneDigit(3);
+      break;
+
+    case TONE_4_BUTTON:
+      if (!released) handleToneDigit(4);
+      break;
+
+    case TONE_5_BUTTON:
+      if (!released) handleToneDigit(5);
+      break;
+
+    case TONE_6_BUTTON:
+      if (!released) handleToneDigit(6);
+      break;
+
+    case TONE_7_BUTTON:
+      if (!released) handleToneDigit(7);
+      break;
+
+    case TONE_8_BUTTON:
+      if (!released) handleToneDigit(8);
+      break;
+
+    case TONE_9_BUTTON:
+      if (!released) handleToneDigit(9);
+      break;
+
+    case TONE_ENTER_BUTTON:
+      if (!released) {
+        if (arpFunctionMode) {
+          // existing arp save code
+          arpMemories[arpMemoryIndex] = arp;
+          arpSaveMemory(arpMemoryIndex);
+          showCurrentParameterPage("ARP MEMORY", "SAVED");
+          updateScreen();
+        } else if (toneEntryActive) {
+          uint8_t toneNumber = (toneEntryBuffer == 0) ? 100 : toneEntryBuffer;
+          if (upperSW) {
+            loadToneToSlot(toneNumber - 1, true);
+          } else {
+            loadToneToSlot(toneNumber - 1, false);
+          }
+          toneEntryBuffer = 0;
+          toneEntryActive = false;
+          startParameterDisplay();
+        }
+      }
+      break;
+
     case BEND_ENABLE_BUTTON:
       if (!released) {
         bend_enable = bend_enable + 1;
@@ -8647,8 +8878,8 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case LFO1_SYNC_BUTTON:
       if (!released) {
-        lfo1_sync = lfo1_sync + 1;
-        if (lfo1_sync > 2) {
+        lfo1_sync = lfo1_sync + 32;
+        if (lfo1_sync > 64) {
           lfo1_sync = 0;
         }
         myControlChange(midiChannel, CClfo1_sync, lfo1_sync);
@@ -8657,38 +8888,38 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case LFO2_SYNC_BUTTON:
       if (!released) {
-        lfo2_sync = lfo2_sync + 1;
-        if (lfo2_sync > 2) {
+        lfo2_sync = lfo2_sync + 32;
+        if (lfo2_sync > 64) {
           lfo2_sync = 0;
         }
         myControlChange(midiChannel, CClfo2_sync, lfo2_sync);
       }
       break;
 
-      case DCO1_PWM_DYN_BUTTON:
-        if (!released) {
-          dco1_PWM_dyn = dco1_PWM_dyn + 1;
-          if (dco1_PWM_dyn > 3) {
-            dco1_PWM_dyn = 0;
-          }
-          myControlChange(midiChannel, CCdco1_PWM_dyn, dco1_PWM_dyn);
+    case DCO1_PWM_DYN_BUTTON:
+      if (!released) {
+        dco1_PWM_dyn = dco1_PWM_dyn + 32;
+        if (dco1_PWM_dyn > 96) {
+          dco1_PWM_dyn = 0;
         }
-        break;
+        myControlChange(midiChannel, CCdco1_PWM_dyn, dco1_PWM_dyn);
+      }
+      break;
 
-      case DCO2_PWM_DYN_BUTTON:
-        if (!released) {
-          dco2_PWM_dyn = dco2_PWM_dyn + 1;
-          if (dco2_PWM_dyn > 3) {
-            dco2_PWM_dyn = 0;
-          }
-          myControlChange(midiChannel, CCdco2_PWM_dyn, dco2_PWM_dyn);
+    case DCO2_PWM_DYN_BUTTON:
+      if (!released) {
+        dco2_PWM_dyn = dco2_PWM_dyn + 32;
+        if (dco2_PWM_dyn > 96) {
+          dco2_PWM_dyn = 0;
         }
-        break;
+        myControlChange(midiChannel, CCdco2_PWM_dyn, dco2_PWM_dyn);
+      }
+      break;
 
     case DCO1_PWM_ENV_SOURCE_BUTTON:
       if (!released) {
-        dco1_PWM_env_source = dco1_PWM_env_source + 2;
-        if (dco1_PWM_env_source > 7) {
+        dco1_PWM_env_source = dco1_PWM_env_source + 32;
+        if (dco1_PWM_env_source > 112) {
           dco1_PWM_env_source = 0;
           dco1_PWM_env_pol = 0;
         }
@@ -8698,8 +8929,8 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case DCO2_PWM_ENV_SOURCE_BUTTON:
       if (!released) {
-        dco2_PWM_env_source = dco2_PWM_env_source + 2;
-        if (dco2_PWM_env_source > 7) {
+        dco2_PWM_env_source = dco2_PWM_env_source + 32;
+        if (dco2_PWM_env_source > 112) {
           dco2_PWM_env_source = 0;
           dco2_PWM_env_pol = 0;
         }
@@ -8711,10 +8942,10 @@ void mainButtonChanged(Button *btn, bool released) {
       if (!released) {
         dco1_PWM_env_pol = !dco1_PWM_env_pol;
         if (dco1_PWM_env_pol) {
-          dco1_PWM_env_source++;
+          dco1_PWM_env_source = dco1_PWM_env_source + 16;
         }
         if (!dco1_PWM_env_pol) {
-          dco1_PWM_env_source--;
+          dco1_PWM_env_source = dco1_PWM_env_source - 16;
         }
         myControlChange(midiChannel, CCdco1_PWM_env_source, dco1_PWM_env_source);
       }
@@ -8724,10 +8955,10 @@ void mainButtonChanged(Button *btn, bool released) {
       if (!released) {
         dco2_PWM_env_pol = !dco2_PWM_env_pol;
         if (dco2_PWM_env_pol) {
-          dco2_PWM_env_source++;
+          dco2_PWM_env_source = dco2_PWM_env_source + 16;
         }
         if (!dco2_PWM_env_pol) {
-          dco2_PWM_env_source--;
+          dco2_PWM_env_source = dco2_PWM_env_source - 16;
         }
         myControlChange(midiChannel, CCdco2_PWM_env_source, dco2_PWM_env_source);
       }
@@ -8735,8 +8966,8 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case DCO1_PWM_LFO_SOURCE_BUTTON:
       if (!released) {
-        dco1_PWM_lfo_source = dco1_PWM_lfo_source + 1;
-        if (dco1_PWM_lfo_source > 3) {
+        dco1_PWM_lfo_source = dco1_PWM_lfo_source + 32;
+        if (dco1_PWM_lfo_source > 96) {
           dco1_PWM_lfo_source = 0;
         }
         myControlChange(midiChannel, CCdco1_PWM_lfo_source, dco1_PWM_lfo_source);
@@ -8745,8 +8976,8 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case DCO2_PWM_LFO_SOURCE_BUTTON:
       if (!released) {
-        dco2_PWM_lfo_source = dco2_PWM_lfo_source + 1;
-        if (dco2_PWM_lfo_source > 3) {
+        dco2_PWM_lfo_source = dco2_PWM_lfo_source + 32;
+        if (dco2_PWM_lfo_source > 96) {
           dco2_PWM_lfo_source = 0;
         }
         myControlChange(midiChannel, CCdco2_PWM_lfo_source, dco2_PWM_lfo_source);
@@ -8755,8 +8986,8 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case DCO1_PITCH_DYN_BUTTON:
       if (!released) {
-        dco1_pitch_dyn = dco1_pitch_dyn + 1;
-        if (dco1_pitch_dyn > 3) {
+        dco1_pitch_dyn = dco1_pitch_dyn + 32;
+        if (dco1_pitch_dyn > 96) {
           dco1_pitch_dyn = 0;
         }
         myControlChange(midiChannel, CCdco1_pitch_dyn, dco1_pitch_dyn);
@@ -8765,8 +8996,8 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case DCO2_PITCH_DYN_BUTTON:
       if (!released) {
-        dco2_pitch_dyn = dco2_pitch_dyn + 1;
-        if (dco2_pitch_dyn > 3) {
+        dco2_pitch_dyn = dco2_pitch_dyn + 32;
+        if (dco2_pitch_dyn > 96) {
           dco2_pitch_dyn = 0;
         }
         myControlChange(midiChannel, CCdco2_pitch_dyn, dco2_pitch_dyn);
@@ -8775,8 +9006,8 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case DCO1_PITCH_LFO_SOURCE_BUTTON:
       if (!released) {
-        dco1_pitch_lfo_source = dco1_pitch_lfo_source + 1;
-        if (dco1_pitch_lfo_source > 3) {
+        dco1_pitch_lfo_source = dco1_pitch_lfo_source + 32;
+        if (dco1_pitch_lfo_source > 96) {
           dco1_pitch_lfo_source = 0;
         }
         myControlChange(midiChannel, CCdco1_pitch_lfo_source, dco1_pitch_lfo_source);
@@ -8785,8 +9016,8 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case DCO2_PITCH_LFO_SOURCE_BUTTON:
       if (!released) {
-        dco2_pitch_lfo_source = dco2_pitch_lfo_source + 1;
-        if (dco2_pitch_lfo_source > 3) {
+        dco2_pitch_lfo_source = dco2_pitch_lfo_source + 32;
+        if (dco2_pitch_lfo_source > 96) {
           dco2_pitch_lfo_source = 0;
         }
         myControlChange(midiChannel, CCdco2_pitch_lfo_source, dco2_pitch_lfo_source);
@@ -8795,8 +9026,8 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case DCO1_PITCH_ENV_SOURCE_BUTTON:
       if (!released) {
-        dco1_pitch_env_source = dco1_pitch_env_source + 2;
-        if (dco1_pitch_env_source > 7) {
+        dco1_pitch_env_source = dco1_pitch_env_source + 32;
+        if (dco1_pitch_env_source > 112) {
           dco1_pitch_env_source = 0;
           dco1_pitch_env_pol = 0;
         }
@@ -8806,8 +9037,8 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case DCO2_PITCH_ENV_SOURCE_BUTTON:
       if (!released) {
-        dco2_pitch_env_source = dco2_pitch_env_source + 2;
-        if (dco2_pitch_env_source > 7) {
+        dco2_pitch_env_source = dco2_pitch_env_source + 32;
+        if (dco2_pitch_env_source > 112) {
           dco2_pitch_env_source = 0;
           dco2_pitch_env_pol = 0;
         }
@@ -8819,10 +9050,10 @@ void mainButtonChanged(Button *btn, bool released) {
       if (!released) {
         dco1_pitch_env_pol = !dco1_pitch_env_pol;
         if (dco1_pitch_env_pol) {
-          dco1_pitch_env_source++;
+          dco1_pitch_env_source = dco1_pitch_env_source + 16;
         }
         if (!dco1_pitch_env_pol) {
-          dco1_pitch_env_source--;
+          dco1_pitch_env_source = dco1_pitch_env_source - 16;
         }
         myControlChange(midiChannel, CCdco1_pitch_env_source, dco1_pitch_env_pol);
       }
@@ -8832,10 +9063,10 @@ void mainButtonChanged(Button *btn, bool released) {
       if (!released) {
         dco2_pitch_env_pol = !dco2_pitch_env_pol;
         if (dco2_pitch_env_pol) {
-          dco2_pitch_env_source++;
+          dco2_pitch_env_source = dco2_pitch_env_source + 16;
         }
         if (!dco2_pitch_env_pol) {
-          dco2_pitch_env_source--;
+          dco2_pitch_env_source = dco2_pitch_env_source - 16;
         }
         myControlChange(midiChannel, CCdco2_pitch_env_source, dco2_pitch_env_pol);
       }
@@ -8844,6 +9075,7 @@ void mainButtonChanged(Button *btn, bool released) {
     case LOWER_BUTTON:
       if (!released) {
         editMode = 0;
+        upperSW = false;
         myControlChange(midiChannel, CCeditMode, editMode);
       }
       break;
@@ -8851,14 +9083,15 @@ void mainButtonChanged(Button *btn, bool released) {
     case UPPER_BUTTON:
       if (!released) {
         editMode = 1;
+        upperSW = true;
         myControlChange(midiChannel, CCeditMode, editMode);
       }
       break;
 
     case DCO_MIX_ENV_SOURCE_BUTTON:
       if (!released) {
-        dco_mix_env_source = dco_mix_env_source + 2;
-        if (dco_mix_env_source > 7) {
+        dco_mix_env_source = dco_mix_env_source + 32;
+        if (dco_mix_env_source > 112) {
           dco_mix_env_source = 0;
           dco_mix_env_pol = 0;
         }
@@ -8870,10 +9103,10 @@ void mainButtonChanged(Button *btn, bool released) {
       if (!released) {
         dco_mix_env_pol = !dco_mix_env_pol;
         if (dco_mix_env_pol) {
-          dco_mix_env_source++;
+          dco_mix_env_source = dco_mix_env_source + 16;
         }
         if (!dco_mix_env_pol) {
-          dco_mix_env_source--;
+          dco_mix_env_source = dco_mix_env_source - 16;
         }
         myControlChange(midiChannel, CCdco_mix_env_source, dco_mix_env_source);
       }
@@ -8881,8 +9114,8 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case DCO_MIX_DYN_BUTTON:
       if (!released) {
-        dco_mix_dyn = dco_mix_dyn + 1;
-        if (dco_mix_dyn > 3) {
+        dco_mix_dyn = dco_mix_dyn + 32;
+        if (dco_mix_dyn > 96) {
           dco_mix_dyn = 0;
         }
         myControlChange(midiChannel, CCdco_mix_dyn, dco_mix_dyn);
@@ -8891,8 +9124,8 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case VCF_ENV_SOURCE_BUTTON:
       if (!released) {
-        vcf_env_source = vcf_env_source + 2;
-        if (vcf_env_source > 7) {
+        vcf_env_source = vcf_env_source + 32;
+        if (vcf_env_source > 112) {
           vcf_env_source = 0;
           vcf_env_pol = 0;
         }
@@ -8904,10 +9137,10 @@ void mainButtonChanged(Button *btn, bool released) {
       if (!released) {
         vcf_env_pol = !vcf_env_pol;
         if (vcf_env_pol) {
-          vcf_env_source++;
+          vcf_env_source = vcf_env_source + 16;
         }
         if (!vcf_env_pol) {
-          vcf_env_source--;
+          vcf_env_source = vcf_env_source - 16;
         }
         myControlChange(midiChannel, CCvcf_env_source, vcf_env_source);
       }
@@ -8915,8 +9148,8 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case VCF_DYN_BUTTON:
       if (!released) {
-        vcf_dyn = vcf_dyn + 1;
-        if (vcf_dyn > 3) {
+        vcf_dyn = vcf_dyn + 32;
+        if (vcf_dyn > 96) {
           vcf_dyn = 0;
         }
         myControlChange(midiChannel, CCvcf_dyn, vcf_dyn);
@@ -8925,8 +9158,8 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case VCA_ENV_SOURCE_BUTTON:
       if (!released) {
-        vca_env_source = vca_env_source + 1;
-        if (vca_env_source > 3) {
+        vca_env_source = vca_env_source + 32;
+        if (vca_env_source > 96) {
           vca_env_source = 0;
         }
         myControlChange(midiChannel, CCvca_env_source, vca_env_source);
@@ -8935,8 +9168,8 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case VCA_DYN_BUTTON:
       if (!released) {
-        vca_dyn = vca_dyn + 1;
-        if (vca_dyn > 3) {
+        vca_dyn = vca_dyn + 32;
+        if (vca_dyn > 96) {
           vca_dyn = 0;
         }
         myControlChange(midiChannel, CCvca_dyn, vca_dyn);
@@ -8945,8 +9178,8 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case CHORUS_BUTTON:
       if (!released) {
-        chorus = chorus + 1;
-        if (chorus > 2) {
+        chorus = chorus + 32;
+        if (chorus > 64) {
           chorus = 0;
         }
         myControlChange(midiChannel, CCchorus_sw, chorus);
@@ -9328,14 +9561,49 @@ void loop() {
   midi1.read();
   usbMIDI.read(midiChannel);
   MIDI.read(midiChannel);
-  checkMux();
-  checkEncoder();
-  checkSwitches();
-  pollAllMCPs();
 
+  if (!receivingSysEx) {
+    checkMux();
+    checkEncoder();
+    checkSwitches();
+    pollAllMCPs();
+  }
+
+  arpEngine();
+  arpServiceLed();
+
+  if (sysexComplete) {
+
+    noInterrupts();
+    sysexComplete = false;   // claim it
+    receivingSysEx = false;  // prevent any mid-stream logic
+    interrupts();
+
+    // Now decode + assign params + save patches
+    decodeAndStoreDump();
+
+    noInterrupts();
+    currentBlock = 0;
+    byteIndex = 0;
+    interrupts();
+  }
 
   if (waitingToUpdate && (millis() - lastDisplayTriggerTime >= displayTimeout)) {
     updateScreen();  // retrigger
     waitingToUpdate = false;
   }
+
+  // Handle VOICE1_RESET trigger
+  if (voice1ResetTriggered) {
+    voice1ResetTriggered = false;  // Clear flag first
+    mcp9.digitalWrite(PATCH_LED_RED, LOW);
+  }
+
+  // Handle VOICE2_RESET trigger
+  if (voice2ResetTriggered) {
+    voice2ResetTriggered = false;  // Clear flag first
+    mcp9.digitalWrite(TONE_LED_RED, LOW);
+  }
+
+  updateToneBlink();
 }

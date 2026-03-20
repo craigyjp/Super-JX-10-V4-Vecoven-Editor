@@ -42,54 +42,61 @@ void renderBootUpPage() {
 }
 
 void renderCurrentPatchPage() {
-    lcd.clear();
-    // upper section of screen
-    lcd.setCursor(0, 0);
-    lcd.print("I:");
-    lcd.setCursor(2, 0);
-    lcd.print(patches.last().patchNo);
-    lcd.setCursor(14, 0);
-    lcd.print(patches.first().patchName);
-    lcd.setCursor(35, 0);
-    lcd.write(byte(0));
-    lcd.print(upperData[P_toneNumber]);
-    lcd.setCursor(39, 0);
-    lcd.write(byte(0));
-    // lower section of screen
-    lcd.setCursor(0, 1);
-    lcd.print("A1");
-    lcd.setCursor(36, 1);
-    lcd.print(lowerData[P_toneNumber]);
+  lcd.clear();
+  lcd.noBlink();
+  // upper section of screen
+  lcd.setCursor(0, 0);
+  lcd.print("I:");
+  lcd.setCursor(2, 0);
+  lcd.print((char)('A' + currentBank));
+  lcd.setCursor(14, 0);
+  lcd.print(patchName);
+  lcd.setCursor(35, 0);
+  lcd.write(byte(0));
+  lcd.print(upperData[P_toneNumber]);
+  lcd.setCursor(39, 0);
+  lcd.write(byte(0));
+  // lower section
+  lcd.setCursor(0, 1);
+  lcd.print((char)('A' + currentGroup));
+  lcd.print(currentSlot);
+  lcd.setCursor(36, 1);
+  lcd.print(lowerData[P_toneNumber]);
+
 }
 
 void renderCurrentParameterPage() {
   switch (state) {
     case PARAMETER:
       lcd.clear();
-      // upper section of screen
+      // upper section of screen - show current bank
       lcd.setCursor(0, 0);
-      lcd.print("I:");
-      lcd.setCursor(2, 0);
-      lcd.print(patches.last().patchNo);
+      lcd.print("Bank:");
       lcd.setCursor(5, 0);
+      lcd.print((char)('A' + currentBank));
+      lcd.setCursor(7, 0);
+      // show current patch label e.g. "A1"
+      lcd.print((char)('A' + currentGroup));
+      lcd.print(currentSlot);
+      lcd.setCursor(10, 0);
       if (displayMode == 0) {
-      lcd.print("LOWER PARAMETER");
-      lcd.setCursor(27, 0);
-      lcd.write(byte(0));
-      lcd.print("LOWER");
-      lcd.write(byte(0));
-      lcd.print(" UPPER");
+        lcd.print("LOWER PARAMETER");
+        lcd.setCursor(27, 0);
+        lcd.write(byte(0));
+        lcd.print("LOWER");
+        lcd.write(byte(0));
+        lcd.print(" UPPER");
 
-      // lower section of screen
-      lcd.setCursor(0, 1);
-      lcd.setCursor(15, 1);
-      lcd.print(currentParameter);
-      lcd.setCursor(27, 1);
-      lcd.write(byte(0));
-      lcd.setCursor(28, 1);
-      lcd.print(currentValue);
-      lcd.setCursor(33, 1);
-      lcd.write(byte(0));
+        // lower section of screen
+        lcd.setCursor(0, 1);
+        lcd.setCursor(15, 1);
+        lcd.print(currentParameter);
+        lcd.setCursor(27, 1);
+        lcd.write(byte(0));
+        lcd.setCursor(28, 1);
+        lcd.print(currentValue);
+        lcd.setCursor(33, 1);
+        lcd.write(byte(0));
       }
       if (displayMode == 1) {
         lcd.print("PATCH PARAMETER");
@@ -109,48 +116,24 @@ void renderCurrentParameterPage() {
   }
 }
 
-void renderDeletePatchPage() {
-  // tft.fillScreen(ST7735_BLACK);
-  // tft.setCursor(0, 34);
-  // tft.setTextColor(ST7735_YELLOW);
-  // tft.setTextSize(1);
-  // tft.println("Delete?");
-  // tft.drawFastHLine(10, 66, tft.width() - 20, ST7735_RED);
-  // tft.fillRect(0, 75, tft.width(), 23, ST7735_RED);
-  // tft.setCursor(5, 81);
-  // tft.setTextColor(ST7735_YELLOW);
-  // tft.println(patches.first().patchNo);
-  // tft.setCursor(40, 81);
-  // tft.setTextColor(ST7735_WHITE);
-  // tft.println(patches.first().patchName);
-}
-
-void renderDeleteMessagePage() {
-  // tft.fillScreen(ST7735_BLACK);
-  // tft.setFont(&FreeSans12pt7b);
-  // tft.setCursor(2, 34);
-  // tft.setTextColor(ST7735_YELLOW);
-  // tft.setTextSize(1);
-  // tft.println("Renumbering");
-  // tft.setCursor(10, 84);
-  // tft.println("SD Card");
-}
-
 void renderSavePage() {
   lcd.clear();
-  
-  // Line 1: "Save?" prompt with patch number
+
+  // Line 0: save destination - bank and patch label
   lcd.setCursor(0, 0);
-  lcd.print("Save? Patch: ");
-  lcd.print(patches.last().patchNo);
-  
-  // Line 2: Patch name (truncate if needed to fit 40 chars)
+  lcd.print("Save to: Bank ");
+  lcd.print((char)('A' + currentBank));
+  lcd.print(" ");
+  lcd.print((char)('A' + currentGroup));
+  lcd.print(currentSlot);
+
+  // Line 1: current patch name
   lcd.setCursor(0, 1);
-  String patchName = patches.last().patchName;
-  if (patchName.length() > 40) {
-    patchName = patchName.substring(0, 37) + "...";
+  String name = patchName;
+  if (name.length() > 40) {
+    name = name.substring(0, 37) + "...";
   }
-  lcd.print(patchName);
+  lcd.print(name);
 }
 
 void renderReinitialisePage() {
@@ -207,13 +190,19 @@ void showRenamingPage(String newName) {
   newPatchName = newName;
 }
 
-void renderUpDown(uint16_t x, uint16_t y, uint16_t colour) {
-  //Produces up/down indicator glyph at x,y
-  // tft.setCursor(x, y);
-  // tft.fillTriangle(x, y, x + 8, y - 8, x + 16, y, colour);
-  // tft.fillTriangle(x, y + 4, x + 8, y + 12, x + 16, y + 4, colour);
+void renderArpParameterPage() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("ARP ");
+  lcd.setCursor(4, 0);
+  lcd.print(arpParamNames[arpParamIndex]);
+  lcd.setCursor(0, 1);
+  lcd.print("MEM:");
+  lcd.setCursor(4, 1);
+  lcd.print((char)('A' + arpMemoryIndex));
+  lcd.setCursor(15, 1);
+  lcd.print(arpParamValueString(arpParamIndex));
 }
-
 
 void renderSettingsPage() {
   lcd.clear();
@@ -313,15 +302,13 @@ void updateScreen() {
     case PATCH:
       renderCurrentPatchPage();
       break;
-    case DELETE:
-      renderDeletePatchPage();
-      break;
-    case DELETEMSG:
-      renderDeleteMessagePage();
-      break;
     case SETTINGS:
     case SETTINGSVALUE:
       renderSettingsPage();
+      break;
+    case ARP_EDIT:
+    case ARP_EDITVALUE:
+      renderArpParameterPage();
       break;
   }
   //tft.updateScreen();

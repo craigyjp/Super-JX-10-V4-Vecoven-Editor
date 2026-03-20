@@ -43,9 +43,9 @@ static inline const char *lfowaveStepToLabel(uint8_t step) {
 static inline uint8_t dco1waveStepToValue(uint8_t step) {
   switch (step) {
     case 0: return 0x00;  // NOIS
-    case 1: return 0x20;  // SQR
-    case 2: return 0x40;  // PWM
-    case 3: return 0x60;  // SAW
+    case 32: return 0x20;  // SQR
+    case 64: return 0x40;  // PWM
+    case 96: return 0x60;  // SAW
     default: return 0x00;
   }
 }
@@ -53,9 +53,9 @@ static inline uint8_t dco1waveStepToValue(uint8_t step) {
 static inline const char *dco1waveStepToLabel(uint8_t step) {
   switch (step) {
     case 0: return "NOIS";
-    case 1: return "SQR";
-    case 2: return "PWM";
-    case 3: return "SAW";
+    case 32: return "SQR";
+    case 64: return "PWM";
+    case 96: return "SAW";
     default: return "NOIS";
   }
 }

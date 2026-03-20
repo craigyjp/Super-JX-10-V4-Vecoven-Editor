@@ -263,7 +263,7 @@ void loadToneToSlot(uint8_t toneIndex, bool upper) {
   uint8_t vcfEnvSrc, vcfEnvPol;
   uint8_t dco1Range, dco1Wave;
   uint8_t dco2Range, dco2Wave;
-  uint8_t lfo1Wave, dcoMode, keyFollow;
+  uint8_t lfo1Wave, dcoMode, keyFollow1, keyFollow2;
   decodeEnvMode(t.params[TP_DCO_ENV_MODE], dcoEnvSrc, dcoEnvPol);
   decodeEnvMode(t.params[TP_MIXER_ENV_MODE], mixEnvSrc, mixEnvPol);
   decodeEnvMode(t.params[TP_VCF_ENV_MODE], vcfEnvSrc, vcfEnvPol);
@@ -273,7 +273,8 @@ void loadToneToSlot(uint8_t toneIndex, bool upper) {
   decodeDCORange(t.params[TP_DCO2_WAVE], dco2Wave);
   decodeLFOWave(t.params[TP_LFO_WAVE], lfo1Wave);
   decodeDCORange(t.params[TP_DCO2_CROSSMOD], dcoMode);
-  decodeKeyFollow(t.params[TP_ENV1_KEY_FOLLOW], keyFollow);
+  decodeKeyFollow(t.params[TP_ENV1_KEY_FOLLOW], keyFollow1);
+  decodeKeyFollow(t.params[TP_ENV2_KEY_FOLLOW], keyFollow1);
 
   // --- DCO1 ---
   data[P_dco1_range] = dco1Range;
@@ -360,7 +361,7 @@ void loadToneToSlot(uint8_t toneIndex, bool upper) {
   data[P_time3] = t.params[TP_ENV1_DECAY];
   data[P_level3] = t.params[TP_ENV1_SUSTAIN];
   data[P_time4] = t.params[TP_ENV1_RELEASE];
-  data[P_env5stage_mode] = keyFollow;
+  data[P_env5stage_mode] = keyFollow1;
 
   // --- Env2 - zeroed ---
   data[P_env2_time1] = 0;
@@ -377,7 +378,7 @@ void loadToneToSlot(uint8_t toneIndex, bool upper) {
   data[P_decay] = t.params[TP_ENV2_DECAY];
   data[P_sustain] = t.params[TP_ENV2_SUSTAIN];
   data[P_release] = t.params[TP_ENV2_RELEASE];
-  data[P_adsr_mode] = keyFollow;
+  data[P_adsr_mode] = keyFollow2;
 
   // --- Env4 - zeroed ---
   data[P_env4_attack] = 0;

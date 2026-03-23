@@ -1,5 +1,7 @@
 # Super-JX-10-V4-Vecoven-Editor
 
+![Synth](Photos/synth.jpg)
+
 I bought a reasonably cheap JX-10 internals and decided to build it into a CME UF-70 MIDI Controller with an editor to control the parameters.
 
 But then I saw a project where an MKS-70 was being edited over USB with a serial port directly connected to the voice cards. 

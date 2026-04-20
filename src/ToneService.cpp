@@ -2,6 +2,8 @@
 #include <stdint.h>
 #include <vector>
 
+extern bool upperSW;
+
 std::vector<tonemenu::ToneOption> toneOptions;
 
 static int selectedToneIndex = 0;
@@ -45,6 +47,19 @@ const char* tonemenu::next_setting_value() {
 
 const char* tonemenu::current_setting_value() {
   return toneOptions[currentToneIndex()].value[selectedToneValueIndex];
+}
+
+const char* tonemenu::other_tone_value() {
+  const ToneOption& opt = toneOptions[currentToneIndex()];
+
+  bool saved = upperSW;
+  upperSW = !saved;
+  int idx = opt.currentIndex();
+  upperSW = saved;
+
+  if (idx < 0)               idx = 0;
+  if (idx >= opt.valueCount) idx = opt.valueCount - 1;
+  return opt.value[idx];
 }
 
 const char* tonemenu::current_setting_previous_value() {

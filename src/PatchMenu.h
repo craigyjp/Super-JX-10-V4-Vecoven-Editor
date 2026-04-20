@@ -94,6 +94,31 @@ static void buildPatch100Labels() {
 }
 
 // ─────────────────────────────────────────────
+// Note-name label table for split points
+// Anchor: stored 38 = B3, stored 39 = C4 (one semitone per unit).
+// Derived:  octave = (stored + 21) / 12 - 1
+//           pitchClass = (stored + 21) % 12
+// Valid keyboard range is stored 7..82 (E1..G7) but we label all 128
+// positions so loaded patches never display blank.
+// ─────────────────────────────────────────────
+static char patchNoteLabels[128][5];
+static const char *patchNotePtrs[129];
+
+static void buildPatchNoteLabels() {
+  static const char * const pc[] = {
+    "C","C#","D","D#","E","F","F#","G","G#","A","A#","B"
+  };
+  for (int s = 0; s < 128; s++) {
+    int n    = s + 21;           // shift so stored 39 -> n=60 -> C4
+    int oct  = (n / 12) - 1;
+    int pidx = n % 12;
+    snprintf(patchNoteLabels[s], 5, "%s%d", pc[pidx], oct);
+    patchNotePtrs[s] = patchNoteLabels[s];
+  }
+  patchNotePtrs[128] = "\0";
+}
+
+// ─────────────────────────────────────────────
 // Chromatic shift label table (-24..+24 semitones)
 // Stored value:  0x00..0x18 = 0..+24,  0x68..0x7F = -24..-1
 // Menu index runs 0..48  →  -24..+24 in order.
@@ -515,14 +540,15 @@ int idxChasePlay() { return chasePlay ? 1 : 0; }
 void setUpPatch() {
   buildPatch128Labels();
   buildPatch100Labels();
+  buildPatchNoteLabels();
   buildPatchShiftLabels();
   buildPatchDetuneLabels();
 
   // 12H..1CH — patch-scope
   patchmenu::append({ "11 U/L BALANCE",   patch100Ptrs, 100, patchBalance,         idxBalance         });
   patchmenu::append({ "12 DUAL DETUNE",   patchDetunePtrs, 102, patchDualDetune,   idxDualDetune      });
-  patchmenu::append({ "13 UPPER SPLIT POINT",   patch128Ptrs, 128, patchUpperSplitPoint, idxUpperSplitPoint });
-  patchmenu::append({ "14 LOWER SPLIT POINT",   patch128Ptrs, 128, patchLowerSplitPoint, idxLowerSplitPoint });
+  patchmenu::append({ "13 UPPER SPLIT POINT",   patchNotePtrs, 128, patchUpperSplitPoint, idxUpperSplitPoint });
+  patchmenu::append({ "14 LOWER SPLIT POINT",   patchNotePtrs, 128, patchLowerSplitPoint, idxLowerSplitPoint });
   patchmenu::append({ "15 PORTAMENTO TIME",   patch100Ptrs, 100, patchPortamentoTime,  idxPortamentoTime  });
   patchmenu::append({ "16 BEND RANGE",    patchBendRangeValues, 5, patchBendRange, idxBendRange       });
   patchmenu::append({ "17 KEY  MODE",      patchKeyModeValues,   6, patchKeyModeAA, idxKeyModeAA       });

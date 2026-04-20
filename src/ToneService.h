@@ -16,6 +16,7 @@ struct ToneOption
   index         currentIndex;
 };
 
+const char* other_tone_value();
 const char* current_setting();
 const char* previous_setting();
 const char* next_setting();

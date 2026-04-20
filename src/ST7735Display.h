@@ -1,6 +1,7 @@
 #define DISPLAYTIMEOUT 1500
 
 #include <LiquidCrystal_PCF8574.h>
+#include "ToneService.h"
 
 #define PULSE 1
 #define VAR_TRI 2
@@ -36,6 +37,8 @@ int paramType = PARAMETER;
 boolean MIDIClkSignal = false;
 int Patchnumber = 0;
 unsigned long timeout = 0;
+
+char buf[7];  // 6 chars + null terminator
 
 void startTimer() {
   if (state == PARAMETER) {
@@ -204,33 +207,28 @@ void renderPatchEditPage() {
   lcd.print("I:");
   lcd.setCursor(2, 0);
   lcd.print(currentBank + 1);
-  lcd.setCursor(6, 0);
+  lcd.setCursor(5, 0);
   lcd.print("PATCH  PARAMETER");
 
   // lower section
   lcd.setCursor(0, 1);
   lcd.print((char)('A' + currentGroup));
   lcd.print(currentSlot);
-  lcd.setCursor(6, 1);
+  lcd.setCursor(5, 1);
   lcd.print("SETUP");
 
-  lcd.setCursor(13, 1);
+  lcd.setCursor(12, 1);
   String optionName = currentPatchOption;
   if (optionName.length() > 27) optionName = optionName.substring(0, 27);
   lcd.print(optionName);
 
-  lcd.setCursor(38, 0);
-  if (currentPatchPart == PATCH_EDIT) lcd.write(byte(1));
-  else lcd.print("  ");
-
   lcd.setCursor(34, 1);
   String valueStr = String(currentPatchValue);
   if (valueStr.length() > 27) valueStr = valueStr.substring(0, 27);
-  lcd.print(valueStr);
 
-  lcd.setCursor(38, 1);
-  if (currentPatchPart == PATCH_EDITVALUE) lcd.write(byte(2));
-  else lcd.print("  ");
+  snprintf(buf, sizeof(buf), "%6s", valueStr.c_str());
+  lcd.print(buf);
+
 }
 
 void renderToneEditPage() {
@@ -289,55 +287,77 @@ void renderToneEditPage() {
   lcd.print((char)('A' + currentGroup));
   lcd.print(currentSlot);
 
+  // ... your existing selection markers code ...
+
   lcd.setCursor(12, 1);
   String optionName = currentToneOption;
   if (optionName.length() > 30) optionName = optionName.substring(0, 30);
   lcd.print(optionName);
 
+  // Print the currently-edited tone number in column 5
+  lcd.setCursor(5, 1);
+  lcd.print("  ");
+  lcd.setCursor(5, 1);
+  lcd.print(upperSW ? upperToneNumber : lowerToneNumber);
+
+  // --- show BOTH values ---
+
+  // Both values — active side at its column, other side at the other column.
+  String activeValueStr = String(currentToneValue);
+  String otherValueStr = String(tonemenu::other_tone_value());
+
+  if (activeValueStr.length() > 5) activeValueStr = activeValueStr.substring(0, 5);
+  if (otherValueStr.length() > 5) otherValueStr = otherValueStr.substring(0, 5);
+
+  // Clear the value columns (5 chars each at 27 and 34)
+  lcd.setCursor(27, 1);
+  lcd.print("     ");
+  lcd.setCursor(34, 1);
+  lcd.print("     ");
+
   if (upperSW) {
+    lcd.setCursor(27, 1);
+    lcd.print(otherValueStr);  // LOWER column = other
     lcd.setCursor(34, 1);
-    String valueStr = String(currentToneValue);
-    if (valueStr.length() > 27) valueStr = valueStr.substring(0, 27);
-    lcd.print(valueStr);
-    lcd.setCursor(5, 1);
-    lcd.print("  ");
-    lcd.setCursor(5, 1);
-    lcd.print(upperToneNumber);
+    lcd.print(activeValueStr);  // UPPER column = active
   } else {
     lcd.setCursor(27, 1);
-    String valueStr = String(currentToneValue);
-    if (valueStr.length() > 27) valueStr = valueStr.substring(0, 27);
-    lcd.print(valueStr);
-    lcd.setCursor(5, 1);
-    lcd.print("  ");
-    lcd.setCursor(5, 1);
-    lcd.print(lowerToneNumber);
+    lcd.print(activeValueStr);  // LOWER column = active
+    lcd.setCursor(34, 1);
+    lcd.print(otherValueStr);  // UPPER column = other
   }
 }
 
 void renderMIDIEditPage() {
   lcd.clear();
+  lcd.noBlink();
+  // upper section of screen
   lcd.setCursor(0, 0);
-  lcd.print("MIDI      ");
-  lcd.setCursor(10, 0);
+  lcd.print("I:");
+  lcd.setCursor(2, 0);
+  lcd.print(currentBank + 1);
+  lcd.setCursor(5, 0);
+  lcd.print("MIDI   PARAMETER");
+
+  // lower section
+  lcd.setCursor(0, 1);
+  lcd.print((char)('A' + currentGroup));
+  lcd.print(currentSlot);
+  lcd.setCursor(5, 1);
+  lcd.print("SETUP");
+
+
+  lcd.setCursor(12, 1);
   String optionName = currentMIDIOption;
   if (optionName.length() > 27) optionName = optionName.substring(0, 27);
   lcd.print(optionName);
 
-  lcd.setCursor(38, 0);
-  if (currentMIDIPart == MIDI_EDIT) lcd.write(byte(1));
-  else lcd.print("  ");
-
-  lcd.setCursor(0, 1);
-  lcd.print("VALUE ");
-  lcd.setCursor(10, 1);
+  lcd.setCursor(34, 1);
   String valueStr = String(currentMIDIValue);
   if (valueStr.length() > 27) valueStr = valueStr.substring(0, 27);
-  lcd.print(valueStr);
 
-  lcd.setCursor(38, 1);
-  if (currentMIDIPart == MIDI_EDITVALUE) lcd.write(byte(2));
-  else lcd.print("  ");
+  snprintf(buf, sizeof(buf), "%6s", valueStr.c_str());
+  lcd.print(buf);
 }
 
 void renderReinitialisePage() {

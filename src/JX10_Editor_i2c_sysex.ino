@@ -5095,6 +5095,7 @@ FLASHMEM void updateeditMode(bool announce) {
     showToneEditPage(tonemenu::current_setting(),
                      tonemenu::current_setting_value(),
                      currentTonePart);
+    updateScreen();
   }
 }
 
@@ -8236,7 +8237,7 @@ void checkEncoder() {
         showPatchEditPage(patchmenu::current_setting(),
                           patchmenu::current_setting_value(),
                           PATCH_EDIT);
-        updateScreen();                  
+        updateScreen();
         break;
 
       case PATCH_EDITVALUE:
@@ -8474,7 +8475,7 @@ void mainButtonChanged(Button *btn, bool released) {
           mcp9.digitalWrite(MIDI_LED_RED, LOW);
           state = PATCH_EDIT;
           mcp9.digitalWrite(PATCH_LED_RED, HIGH);
-          patchmenu::refresh_value();   // ← add this
+          patchmenu::refresh_value();  // ← add this
           showPatchEditPage(patchmenu::current_setting(),
                             patchmenu::current_setting_value(),
                             PATCH_EDIT);
@@ -8493,7 +8494,7 @@ void mainButtonChanged(Button *btn, bool released) {
           mcp9.digitalWrite(MIDI_LED_RED, LOW);
           state = TONE_EDIT;
           mcp9.digitalWrite(TONE_LED_RED, HIGH);
-          tonemenu::refresh_value();   // ← add this
+          tonemenu::refresh_value();  // ← add this
           showToneEditPage(tonemenu::current_setting(),
                            tonemenu::current_setting_value(),
                            TONE_EDIT);
@@ -8517,6 +8518,67 @@ void mainButtonChanged(Button *btn, bool released) {
                            MIDI_EDIT);
         }
         updateScreen();
+      }
+      break;
+
+    case PARAM_BUTTON:
+      if (!released) {
+        switch (state) {
+          case PATCH_EDIT:
+          case PATCH_EDITVALUE:
+            state = PATCH_EDIT;
+            showPatchEditPage();
+            updateScreen();
+            break;
+          case TONE_EDIT:
+          case TONE_EDITVALUE:
+            state = TONE_EDIT;
+            showToneEditPage();
+            updateScreen();
+            break;
+          case MIDI_EDIT:
+          case MIDI_EDITVALUE:
+            state = MIDI_EDIT;
+            showMIDIEditPage();
+            updateScreen();
+            break;
+          default:
+            // PARAM has no meaning outside an edit page — ignore
+            break;
+        }
+      }
+      break;
+
+    case VALUE_BUTTON:
+      if (!released) {
+        switch (state) {
+          case PATCH_EDIT:
+          case PATCH_EDITVALUE:
+            state = PATCH_EDITVALUE;
+            showPatchEditPage();
+            updateScreen();
+            break;
+          case TONE_EDIT:
+          case TONE_EDITVALUE:
+            state = TONE_EDITVALUE;
+            showToneEditPage();
+            updateScreen();
+            break;
+          case MIDI_EDIT:
+          case MIDI_EDITVALUE:
+            state = MIDI_EDITVALUE;
+            showMIDIEditPage();
+            updateScreen();
+            break;
+          default:
+            break;
+        }
+      }
+      break;
+
+    case NAME_BUTTON:
+      if (!released) {
+
       }
       break;
 

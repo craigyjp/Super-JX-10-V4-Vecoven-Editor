@@ -175,7 +175,7 @@ static void buildToneFineLabels() {
 // ─────────────────────────────────────────────
 // Label tables for categorical params
 // ─────────────────────────────────────────────
-static const char *toneDcoRangeValues[]  = { "16", "8", "4", "2", "\0" };          // 4 opts, step 0x20
+static const char *toneDcoRangeValues[]  = { " 16'", " 8'", " 4'", " 2'", "\0" };          // 4 opts, step 0x20
 static const char *toneDcoWaveValues[]   = { "NOIS", "SQR", "PULS", "SAWT", "\0" };// 4 opts, step 0x20
 static const char *toneDcoLFOValues[]    = { "1NEG", "1POS", "2NEG", "2POS", "\0" };// 4 opts, step 0x20
 static const char *toneDynValues[]       = { "OFF", "DYN1", "DYN2", "DYN3", "\0" }; // 4 opts, step 0x20
@@ -188,7 +188,7 @@ static const char *toneEnvKeyValues[]    = { "OFF", "KEY 1", "KEY 2", "KEY 3",
                                              "LOOP0", "LOOP1", "LOOP2", "LOOP3", "\0" };// 8 opts, step 0x10
 static const char *toneDcoXMODValues[]   = { "OFF", "SYNC1", "SYNC2", "SYNC3", "\0" };// 4 opts, step 0x20
 static const char *VCFHPFValues[]        = { "HPF0", "HPF1", "HPF2", "HPF3", "\0" }; // 4 opts, step 0x20
-static const char *ChorusValues[]        = { "OFF", "1", "2", "\0" };               // 3 opts, step 0x20
+static const char *ChorusValues[]        = { "OFF", " 1", " 2", "\0" };               // 3 opts, step 0x20
 
 // ============================================================================
 // Handlers

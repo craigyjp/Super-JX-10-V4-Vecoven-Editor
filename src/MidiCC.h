@@ -107,7 +107,7 @@
 #define CCunisondetune    0x55
 #define CCbalance         0x56
 #define CCat_vib          0x57
-#define CCat_lpf          0x58
+#define CCat_bri          0x58
 #define CCat_vol          0x59
 #define CCenv5stage       0x5A
 #define CCadsr            0x5B
@@ -128,6 +128,8 @@
 #define CCunison_button   0x6C
 #define CCkeyMode         0x6D
 #define CCbend_enable     0x6E
-#define CCafter_enable    0x6F
+#define CCat_vib_sw       0x6F
+#define CCat_bri_sw       0x70
+#define CCat_vol_sw       0x71
 
 #define CCallnotesoff 123//Panic button

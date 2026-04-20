@@ -146,22 +146,7 @@ bool    toneEntryActive = false;
 // Sysex reception
 // ---------------------Sysex variables
 
-const int totalBytes = 3200;
-byte ramArray[64][156]; // Array to store SysEx data
-byte sysexBuff(156);
-byte data(156);
-byte sysexData[156];
-bool sysexComplete = false;
-bool receivingSysEx = false; // Flag to indicate if a SysEx message is in progress
-uint16_t byteIndex = 0;
-uint8_t currentBlock = 0;
 
-static constexpr uint8_t  DEVICE_ID_EXPECTED = 0x01;
-static constexpr uint8_t  CMD_PATCH_DUMP     = 0x01;
-static constexpr uint8_t  VERSION_EXPECTED   = 0x01;
-static constexpr uint8_t  NAME_LEN = 13;
-static constexpr uint16_t PARAM_COUNT = 60;
-static constexpr uint16_t EXPECTED_INNER_LEN = 154;
 
 // New JX parameters
 
@@ -224,55 +209,46 @@ int patchData[30];
 #define P_dco_mix_env_source 49
 #define P_dco_mix_dyn 50
 #define P_toneName 51
-#define P_spare 52
-#define P_vcf_hpf 53
-#define P_vcf_cutoff 54
-#define P_vcf_res 55
-#define P_vcf_kb 56
-#define P_vcf_env 57
-#define P_vcf_lfo1 58
-#define P_vcf_lfo2 59
-#define P_vcf_env_source 60
-#define P_vcf_env_pol 61
-#define P_vcf_dyn 62
-#define P_vca_mod 63
-#define P_vca_env_source 64
-#define P_vca_dyn 65
-#define P_portamento_sw 66
-#define P_time1 67
-#define P_level1 68
-#define P_time2 69
-#define P_level2 70
-#define P_time3 71
-#define P_level3 72
-#define P_time4 73
-#define P_env5stage_mode 74
-#define P_env2_time1 75
-#define P_env2_level1 76
-#define P_env2_time2 77
-#define P_env2_level2 78
-#define P_env2_time3 79
-#define P_env2_level3 80
-#define P_env2_time4 82
-#define P_env2_5stage_mode 83
-#define P_attack 84
-#define P_decay 85
-#define P_sustain 86
-#define P_release 87
-#define P_adsr_mode 88
-#define P_env4_attack 89
-#define P_env4_decay 90
-#define P_env4_sustain 91
-#define P_env4_release 92
-#define P_env4_adsr_mode 93
-#define P_chorus 94
-#define P_unisondetune 95
-#define P_mod_lfo 96
-#define P_octave_down 97
-#define P_octave_up 98
-#define P_bend_enable 99
-#define P_assign 100
-#define P_toneNumber 101
+#define P_vcf_hpf 52
+#define P_vcf_cutoff 53
+#define P_vcf_res 54
+#define P_vcf_kb 55
+#define P_vcf_env 56
+#define P_vcf_lfo1 57
+#define P_vcf_lfo2 58
+#define P_vcf_env_source 59
+#define P_vcf_env_pol 60
+#define P_vcf_dyn 61
+#define P_vca_mod 62
+#define P_vca_env_source 63
+#define P_vca_dyn 64
+#define P_time1 65
+#define P_level1 66
+#define P_time2 67
+#define P_level2 68
+#define P_time3 69
+#define P_level3 70
+#define P_time4 71
+#define P_env5stage_mode 72
+#define P_env2_time1 73
+#define P_env2_level1 74
+#define P_env2_time2 75
+#define P_env2_level2 76
+#define P_env2_time3 77
+#define P_env2_level3 78
+#define P_env2_time4 79
+#define P_env2_5stage_mode 80
+#define P_attack 81
+#define P_decay 82
+#define P_sustain 83
+#define P_release 84
+#define P_adsr_mode 85
+#define P_env4_attack 86
+#define P_env4_decay 87
+#define P_env4_sustain 88
+#define P_env4_release 89
+#define P_env4_adsr_mode 90
+#define P_chorus 91
 
 int arpRangeU;
 int arpRangeL;
@@ -280,7 +256,7 @@ int arpModeU;
 int arpModeL;
 
 int at_vib;
-int at_lpf;
+int at_bri;
 int at_vol;
 int balance;
 int portamento;
@@ -288,13 +264,37 @@ int portamento_sw;
 int volume;
 int dualdetune = 0x2C;
 int bend_range;
+int bend_range2;
 int bend_enable;
 int after_enable;
 int keyMode = 0;
+int keyMode2 = 0;
 int chaseLevel;
 int chaseMode;
 int chaseTime;
 int chasePlay;
+int upperSplitPoint;
+int lowerSplitPoint;
+int upperToneNumber;
+int lowerToneNumber;
+int upperChromatic;
+int lowerChromatic;
+int upperAssign;
+int lowerAssign;
+int upperUnisonDetune;
+int lowerUnisonDetune;
+int upperHold;
+int lowerHold;
+int upperLFOModDepth;
+int lowerLFOModDepth;
+int upperPortamento_SW;
+int lowerPortamento_SW;
+int upperbend_enable_SW;
+int lowerbend_enable_SW;
+int at_vib_sw = 0;
+int at_bri_sw = 0;
+int at_vol_sw = 0;
+int midiSplitPoint;
 
 int lfo1_wave_str;
 int lfo1_rate_str;
@@ -362,7 +362,7 @@ int env4_adsr_mode_str;
 int unisondetune_str;
 int mod_lfo_str;
 int at_vib_str;
-int at_lpf_str;
+int at_bri_str;
 int at_vol_str;
 int balance_str;
 int portamento_str;
@@ -371,17 +371,20 @@ int dualdetune_str;
 int bend_range_str;
 bool set10ctave = false;
 bool octave_down_upwards = true;  // true = going up, false = going down
-int octave_up = 0;
+int upperChromaticSW = 0;
+int lowerChromaticSW = 0;
+uint8_t upperByte = 0;
+uint8_t lowerByte = 0;
 int octave_upU = 0;
 int octave_upL = 0;
 bool octave_up_upwards = true;
-
+bool gatedEnv = false;
 
 // Balance variables
 
 static constexpr uint8_t kBalanceParam = 0x9E;
-static constexpr uint8_t kBoardLowerPrefix = 0xF1;
-static constexpr uint8_t kBoardUpperPrefix = 0xF9;
+static constexpr uint8_t kBoardLowerPrefix = 0x02;
+static constexpr uint8_t kBoardUpperPrefix = 0x01;
 static constexpr uint8_t kBoardBothPrefix  = 0xF4; // keyMode 1/2 broadcast
 static constexpr uint8_t kBoardOffset0Prefix  = 0x0C;
 static constexpr uint8_t kBoardOffset1Prefix  = 0x0D;
@@ -398,6 +401,7 @@ static constexpr uint8_t kDetuneNegZero   = 0x2B; // "-00"
 static constexpr uint8_t kDetuneMax       = 0x6B; // "+50"
 constexpr uint8_t TUNE_442HZ = 0x41;  // 442.0 Hz threshold
 
+
 // Pitch bend
 
 static constexpr uint8_t kPrefixBroadcast = 0xF4;
@@ -407,6 +411,9 @@ static constexpr bool kInvertPb14 = true;
 
 // None saved variables
 
+int at_vib_safe = 0;
+int at_bri_safe = 0;
+int at_vol_safe = 0;
 int lfo1_sync = 0;
 int lfo2_sync = 0;
 int chorus = 0;
@@ -414,24 +421,24 @@ int vca_env_source = 0;
 int vca_dyn = 0;
 int vcf_dyn = 0;
 int vcf_env_source = 0;
-int vcf_env_pol = 0;
+int vcf_env_pol = 1;
 int dco_mix_dyn = 0;
 int dco_mix_env_source = 0;
-int dco_mix_env_pol = 0;
+int dco_mix_env_pol = 1;
 int dco1_pitch_lfo_source = 0;
 int dco2_pitch_lfo_source = 0;
 int dco1_pitch_env_source = 0;
 int dco2_pitch_env_source = 0;
-int dco1_pitch_env_pol = 0;
-int dco2_pitch_env_pol = 0;
+int dco1_pitch_env_pol = 1;
+int dco2_pitch_env_pol = 1;
 int dco1_pitch_dyn = 0;
 int dco2_pitch_dyn = 0;
 int dco1_PWM_lfo_source = 0;
 int dco2_PWM_lfo_source = 0;
 int dco1_PWM_env_source = 0;
 int dco2_PWM_env_source = 0;
-int dco1_PWM_env_pol = 0;
-int dco2_PWM_env_pol = 0;
+int dco1_PWM_env_pol = 1;
+int dco2_PWM_env_pol = 1;
 int dco1_PWM_dyn = 0;
 int dco2_PWM_dyn = 0;
 int masterTune = 0;
@@ -459,6 +466,7 @@ uint8_t LAST_PARAM = 0x00;
 uint8_t EXTRA_OFFSET = 0x00;
 uint8_t board = 0xF4;
 #define NO_OFFSET 0xFE
+#define NO_BOARD 0xFE
 
 boolean dual_button;
 boolean split_button;
@@ -468,7 +476,7 @@ boolean poly_button;
 boolean mono_button;
 boolean unison_button;
 
-byte splitPoint = 60;
+
 byte oldsplitPoint = 0;
 byte newsplitPoint = 0;
 byte splitTrans = 0;

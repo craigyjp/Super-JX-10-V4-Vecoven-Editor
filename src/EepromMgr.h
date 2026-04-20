@@ -4,18 +4,7 @@
 #define EEPROM_ENCODER_DIR 1
 #define EEPROM_LAST_PATCH 2
 #define EEPROM_MIDI_OUT_CH 3
-#define EEPROM_MASTER_TUNE   4   // fits in the gap
 #define EEPROM_UPDATE_PARAMS 5
-
-int getMasterTune() {
-  byte mt = EEPROM.read(EEPROM_MASTER_TUNE);
-  if (mt > 0x7F) mt = 0x2C;   // if EEPROM uninitialised, default to A440
-  return mt;
-}
-
-void storeMasterTune(byte tuning) {
-  EEPROM.update(EEPROM_MASTER_TUNE, tuning);
-}
 
 int getMIDIChannel() {
   byte midiChannel = EEPROM.read(EEPROM_MIDI_CH);

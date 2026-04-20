@@ -1,10 +1,10 @@
 static inline uint8_t bendStepToValue(uint8_t step) {
   switch (step) {
     case 0: return 0x00;  // 2
-    case 1: return 0x10;  // 3
-    case 2: return 0x20;  // 4
-    case 3: return 0x30;  // 7
-    case 4: return 0x70;  // 12
+    case 1: return 0x20;  // 3
+    case 2: return 0x40;  // 4
+    case 3: return 0x60;  // 7
+    case 4: return 0x01;  // 12
     default: return 0x00;
   }
 }
@@ -26,7 +26,8 @@ static inline uint8_t lfowaveStepToValue(uint8_t step) {
     case 1: return 0x10;  // 3
     case 2: return 0x20;  // 4
     case 3: return 0x30;  // 7
-    default: return 0x40;  // 12
+    case 4: return 0x40;  // 12
+    default: return 0x10;  // 2
   }
 }
 
@@ -77,6 +78,26 @@ static inline const char *dco1rangeStepToLabel(uint8_t step) {
     case 2: return "4";
     case 3: return "2";
     default: return "16";
+  }
+}
+
+static inline uint8_t vcfrangeStepToValue(uint8_t step) {
+  switch (step) {
+    case 0: return 0x00;  // 16
+    case 1: return 0x20;  // 8
+    case 2: return 0x40;  // 4
+    case 3: return 0x60;  // 2
+    default: return 0x00;
+  }
+}
+
+static inline const char *vcfrangeStepToLabel(uint8_t step) {
+  switch (step) {
+    case 0: return "HPF0";
+    case 1: return "HPF1";
+    case 2: return "HPF2";
+    case 3: return "HPF3";
+    default: return "HPF0";
   }
 }
 

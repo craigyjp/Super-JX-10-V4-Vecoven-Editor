@@ -84,7 +84,7 @@ ADC *adc = new ADC();
 #define MUX3_VCF_LFO2 9
 #define MUX3_VCA_MOD 10
 #define MUX3_AT_VIB 11
-#define MUX3_AT_LPF 12
+#define MUX3_AT_BRI 12
 #define MUX3_AT_VOL 13
 #define MUX3_BALANCE 14
 #define MUX3_VOLUME 15
@@ -221,7 +221,9 @@ ADC *adc = new ADC();
 #define PATCH_BUTTON 81
 #define TONE_BUTTON 82
 #define MIDI_BUTTON 83
-#define AFTER_ENABLE_BUTTON 84
+#define AFTER_VIB_BUTTON 84
+#define AFTER_BRI_BUTTON 85
+#define AFTER_VOL_BUTTON 86
 
 //void RotaryEncoderChanged (bool clockwise, int id);
 
@@ -352,7 +354,9 @@ Button patch_5_Button = Button(&mcp11, 4, PATCH_5_BUTTON, &mainButtonChanged);
 Button patch_6_Button = Button(&mcp11, 5, PATCH_6_BUTTON, &mainButtonChanged);
 Button patch_7_Button = Button(&mcp11, 6, PATCH_7_BUTTON, &mainButtonChanged);
 
-Button after_enable_Button = Button(&mcp12, 5, AFTER_ENABLE_BUTTON, &mainButtonChanged);
+Button after_vol_Button = Button(&mcp12, 5, AFTER_VIB_BUTTON, &mainButtonChanged);
+Button after_bri_Button = Button(&mcp12, 3, AFTER_BRI_BUTTON, &mainButtonChanged);
+Button after_vib_Button = Button(&mcp12, 2, AFTER_VOL_BUTTON, &mainButtonChanged);
 
 Button *mainButtons[] = {
   &lfo1_sync_Button, &lfo2_sync_Button, &dco1_PWM_env_src_Button, &dco2_PWM_env_src_Button, &dco1_PWM_env_pol_Button, &dco2_PWM_env_pol_Button, &dco1_PWM_dyn_Button, &dco2_PWM_dyn_Button,
@@ -361,11 +365,12 @@ Button *mainButtons[] = {
   &dco_mix_env_pol_Button, &dco_mix_env_src_Button, &vcf_env_pol_Button, &dco_mix_dyn_Button, &env5stage_select_Button,
   &vca_dyn_Button, &vca_env_src_Button, &vcf_env_src_Button, &vcf_dyn_Button, &adsr_select_Button, &lower_Button, &upper_Button, &chorus_Button, &portamento_Button,
   &octave_down_Button, &octave_up_Button, &bend_enable_Button, &key_single_Button, &assign_poly_Button, &assign_mono_Button, &assign_uni_Button,
-  &key_dual_Button, &key_split_Button, &key_special_Button, &after_enable_Button,
+  &key_dual_Button, &key_split_Button, &key_special_Button, &after_vib_Button, &after_bri_Button, &after_vol_Button,
   &patch_1_Button, &patch_2_Button, &patch_3_Button, &patch_4_Button, &patch_5_Button, &patch_6_Button, &patch_7_Button, &patch_8_Button,
   &bank_a_Button, &bank_b_Button, &bank_c_Button, &bank_d_Button, &bank_e_Button, &bank_f_Button, &bank_g_Button, &bank_h_Button,
   &tone_enter_Button, &seq_start_stop_Button, &seq_function_Button, &seq_record_Button,
-  &tone_0_Button, &tone_1_Button, &tone_2_Button, &tone_3_Button, &tone_4_Button, &tone_5_Button, &tone_6_Button, &tone_7_Button, &tone_8_Button, &tone_9_Button
+  &tone_0_Button, &tone_1_Button, &tone_2_Button, &tone_3_Button, &tone_4_Button, &tone_5_Button, &tone_6_Button, &tone_7_Button, &tone_8_Button, &tone_9_Button,
+  &patch_Button, &tone_Button, &midi_Button
 };
 
 Button *allButtons[] = {
@@ -375,11 +380,12 @@ Button *allButtons[] = {
   &dco_mix_env_pol_Button, &dco_mix_env_src_Button, &vcf_env_pol_Button, &dco_mix_dyn_Button, &env5stage_select_Button,
   &vca_dyn_Button, &vca_env_src_Button, &vcf_env_src_Button, &vcf_dyn_Button, &adsr_select_Button, &lower_Button, &upper_Button, &chorus_Button, &portamento_Button,
   &octave_down_Button, &octave_up_Button, &bend_enable_Button, &key_single_Button, &assign_poly_Button, &assign_mono_Button, &assign_uni_Button,
-  &key_dual_Button, &key_split_Button, &key_special_Button, &after_enable_Button,
+  &key_dual_Button, &key_split_Button, &key_special_Button, &after_vib_Button, &after_bri_Button, &after_vol_Button,
   &patch_1_Button, &patch_2_Button, &patch_3_Button, &patch_4_Button, &patch_5_Button, &patch_6_Button, &patch_7_Button, &patch_8_Button,
   &bank_a_Button, &bank_b_Button, &bank_c_Button, &bank_d_Button, &bank_e_Button, &bank_f_Button, &bank_g_Button, &bank_h_Button,
   &tone_enter_Button, &seq_start_stop_Button, &seq_function_Button, &seq_record_Button,
-  &tone_0_Button, &tone_1_Button, &tone_2_Button, &tone_3_Button, &tone_4_Button, &tone_5_Button, &tone_6_Button, &tone_7_Button, &tone_8_Button, &tone_9_Button
+  &tone_0_Button, &tone_1_Button, &tone_2_Button, &tone_3_Button, &tone_4_Button, &tone_5_Button, &tone_6_Button, &tone_7_Button, &tone_8_Button, &tone_9_Button,
+  &patch_Button, &tone_Button, &midi_Button
 };
 
 // an array of vectors to hold pointers to the encoders on each MCP
@@ -514,8 +520,10 @@ std::vector<RotaryEncOverMCP *> encByMCP[NUM_MCP];
 
 // GP12
 
-#define AFTER_ENABLE_RED 6
-#define AFTER_ENABLE_GREEN 7
+#define AFTER_VIB_RED 6
+#define AFTER_VOL_RED 4
+#define AFTER_BRI_RED 7
+
 
 #define MUXCHANNELS 16
 #define QUANTISE_FACTOR 1
@@ -685,5 +693,6 @@ void setupMCPoutputs() {
 
   mcp12.pinMode(6, OUTPUT);  // pin 6 = GPA7 of MCP2301X
   mcp12.pinMode(7, OUTPUT);  // pin 7 = GPA7 of MCP2301X
+  mcp12.pinMode(4, OUTPUT);  // pin 4 = GPA7 of MCP2301X
 
 }

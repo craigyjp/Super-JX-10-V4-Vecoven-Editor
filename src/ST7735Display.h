@@ -18,6 +18,19 @@ String newPatchName = "";
 const char *currentSettingsOption = "";
 const char *currentSettingsValue = "";
 int currentSettingsPart = SETTINGS;
+
+const char *currentPatchOption = "";
+const char *currentPatchValue = "";
+int currentPatchPart = PATCH_EDIT;
+
+const char *currentToneOption = "";
+const char *currentToneValue = "";
+int currentTonePart = TONE_EDIT;
+
+const char *currentMIDIOption = "";
+const char *currentMIDIValue = "";
+int currentMIDIPart = MIDI_EDIT;
+
 int paramType = PARAMETER;
 
 boolean MIDIClkSignal = false;
@@ -48,71 +61,118 @@ void renderCurrentPatchPage() {
   lcd.setCursor(0, 0);
   lcd.print("I:");
   lcd.setCursor(2, 0);
-  lcd.print((char)('A' + currentBank));
-  lcd.setCursor(14, 0);
+  lcd.print(currentBank + 1);
+  lcd.setCursor(6, 0);
+  switch (keyMode) {
+    case 0:
+      lcd.print("DUAL");
+      break;
+
+    case 1:
+      lcd.print("WH-L");
+      break;
+
+    case 2:
+      lcd.print("WH-U");
+      break;
+
+    case 3:
+      lcd.print("SPLT");
+      break;
+
+    case 4:
+      lcd.print("X-FD");
+      break;
+
+    case 5:
+      lcd.print("T-VC");
+      break;
+  }
+  lcd.setCursor(12, 0);
   lcd.print(patchName);
-  lcd.setCursor(35, 0);
-  lcd.write(byte(0));
-  lcd.print(upperData[P_toneNumber]);
-  lcd.setCursor(39, 0);
-  lcd.write(byte(0));
+  if (upperSW) {
+    lcd.setCursor(35, 0);
+    lcd.write(byte(0));
+  } else {
+    lcd.setCursor(35, 1);
+    lcd.write(byte(0));
+  }
+  lcd.setCursor(36, 0);
+  lcd.print(upperToneNumber);
+  if (upperSW) {
+    lcd.setCursor(39, 0);
+    lcd.write(byte(0));
+  } else {
+    lcd.setCursor(39, 1);
+    lcd.write(byte(0));
+  }
   // lower section
   lcd.setCursor(0, 1);
   lcd.print((char)('A' + currentGroup));
   lcd.print(currentSlot);
   lcd.setCursor(36, 1);
-  lcd.print(lowerData[P_toneNumber]);
-
+  lcd.print(lowerToneNumber);
 }
 
 void renderCurrentParameterPage() {
   switch (state) {
     case PARAMETER:
-      lcd.clear();
-      // upper section of screen - show current bank
-      lcd.setCursor(0, 0);
-      lcd.print("Bank:");
-      lcd.setCursor(5, 0);
-      lcd.print((char)('A' + currentBank));
-      lcd.setCursor(7, 0);
-      // show current patch label e.g. "A1"
-      lcd.print((char)('A' + currentGroup));
-      lcd.print(currentSlot);
-      lcd.setCursor(10, 0);
-      if (displayMode == 0) {
-        lcd.print("LOWER PARAMETER");
-        lcd.setCursor(27, 0);
-        lcd.write(byte(0));
-        lcd.print("LOWER");
-        lcd.write(byte(0));
-        lcd.print(" UPPER");
-
-        // lower section of screen
+      if (displayMode == 5) {
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print("**********");
+        lcd.setCursor(12, 0);
+        lcd.print(currentParameter);
+        lcd.setCursor(18, 0);
+        lcd.print(currentValue);
+        lcd.setCursor(30, 0);
+        lcd.print("**********");
+      } else {
+        lcd.clear();
+        // upper section of screen - show current bank
+        lcd.setCursor(0, 0);
+        lcd.print("I:");
+        lcd.setCursor(2, 0);
+        lcd.print(currentBank + 1);
         lcd.setCursor(0, 1);
-        lcd.setCursor(15, 1);
-        lcd.print(currentParameter);
-        lcd.setCursor(27, 1);
-        lcd.write(byte(0));
-        lcd.setCursor(28, 1);
-        lcd.print(currentValue);
-        lcd.setCursor(33, 1);
-        lcd.write(byte(0));
+        lcd.print((char)('A' + currentGroup));
+        lcd.print(currentSlot);
+        lcd.setCursor(6, 0);
+        if (displayMode == 0) {
+          lcd.print("LOWER PARAMETER");
+          lcd.setCursor(27, 0);
+          lcd.write(byte(0));
+          lcd.print("LOWER");
+          lcd.write(byte(0));
+          lcd.print(" UPPER");
+
+          // lower section of screen
+          lcd.setCursor(0, 1);
+          lcd.setCursor(15, 1);
+          lcd.print(currentParameter);
+          lcd.setCursor(27, 1);
+          lcd.write(byte(0));
+          lcd.setCursor(28, 1);
+          lcd.print(currentValue);
+          lcd.setCursor(33, 1);
+          lcd.write(byte(0));
+        }
+        if (displayMode == 1) {
+          lcd.print("PATCH PARAMETER");
+          lcd.setCursor(15, 1);
+          lcd.print(currentParameter);
+          lcd.setCursor(28, 1);
+          lcd.print(currentValue);
+        }
+        if (displayMode == 2) {
+          lcd.print("EDITING PARAMETER");
+          lcd.setCursor(15, 1);
+          lcd.print(currentParameter);
+          lcd.setCursor(28, 1);
+          lcd.print(currentValue);
+        }
+        break;
       }
-      if (displayMode == 1) {
-        lcd.print("PATCH PARAMETER");
-        lcd.setCursor(15, 1);
-        lcd.print(currentParameter);
-        lcd.setCursor(28, 1);
-        lcd.print(currentValue);
-      }
-      if (displayMode == 2) {
-        lcd.print("EDITING PARAMETER");
-        lcd.setCursor(15, 1);
-        lcd.print(currentParameter);
-        lcd.setCursor(28, 1);
-        lcd.print(currentValue);
-      }
-      break;
   }
 }
 
@@ -122,7 +182,7 @@ void renderSavePage() {
   // Line 0: save destination - bank and patch label
   lcd.setCursor(0, 0);
   lcd.print("Save to: Bank ");
-  lcd.print((char)('A' + currentBank));
+  lcd.print(currentBank + 1);
   lcd.print(" ");
   lcd.print((char)('A' + currentGroup));
   lcd.print(currentSlot);
@@ -134,6 +194,150 @@ void renderSavePage() {
     name = name.substring(0, 37) + "...";
   }
   lcd.print(name);
+}
+
+void renderPatchEditPage() {
+  lcd.clear();
+  lcd.noBlink();
+  // upper section of screen
+  lcd.setCursor(0, 0);
+  lcd.print("I:");
+  lcd.setCursor(2, 0);
+  lcd.print(currentBank + 1);
+  lcd.setCursor(6, 0);
+  lcd.print("PATCH  PARAMETER");
+
+  // lower section
+  lcd.setCursor(0, 1);
+  lcd.print((char)('A' + currentGroup));
+  lcd.print(currentSlot);
+  lcd.setCursor(6, 1);
+  lcd.print("SETUP");
+
+  lcd.setCursor(13, 1);
+  String optionName = currentPatchOption;
+  if (optionName.length() > 27) optionName = optionName.substring(0, 27);
+  lcd.print(optionName);
+
+  lcd.setCursor(38, 0);
+  if (currentPatchPart == PATCH_EDIT) lcd.write(byte(1));
+  else lcd.print("  ");
+
+  lcd.setCursor(34, 1);
+  String valueStr = String(currentPatchValue);
+  if (valueStr.length() > 27) valueStr = valueStr.substring(0, 27);
+  lcd.print(valueStr);
+
+  lcd.setCursor(38, 1);
+  if (currentPatchPart == PATCH_EDITVALUE) lcd.write(byte(2));
+  else lcd.print("  ");
+}
+
+void renderToneEditPage() {
+  lcd.clear();
+  lcd.noBlink();
+
+  // upper section of screen
+  lcd.setCursor(0, 0);
+  lcd.print("I:");
+  lcd.setCursor(2, 0);
+  lcd.print(currentBank + 1);
+  lcd.setCursor(5, 0);
+  lcd.print(upperSW ? "UPPER  PARAMETER" : "LOWER  PARAMETER");
+  lcd.setCursor(27, 0);
+  lcd.print("LOWER");
+  lcd.setCursor(34, 0);
+  lcd.print("UPPER");
+  if (upperSW) {
+    lcd.setCursor(26, 0);
+    lcd.print(" ");
+    lcd.setCursor(32, 0);
+    lcd.print(" ");
+    lcd.setCursor(26, 1);
+    lcd.print(" ");
+    lcd.setCursor(32, 1);
+    lcd.print(" ");
+    lcd.setCursor(33, 0);
+    lcd.write(byte(0));
+    lcd.setCursor(39, 0);
+    lcd.write(byte(0));
+    lcd.setCursor(33, 1);
+    lcd.write(byte(0));
+    lcd.setCursor(39, 1);
+    lcd.write(byte(0));
+  } else {
+    lcd.setCursor(33, 0);
+    lcd.print(" ");
+    lcd.setCursor(39, 0);
+    lcd.print(" ");
+    lcd.setCursor(33, 1);
+    lcd.print(" ");
+    lcd.setCursor(39, 1);
+    lcd.print(" ");
+    lcd.setCursor(26, 0);
+    lcd.write(byte(0));
+    lcd.setCursor(32, 0);
+    lcd.write(byte(0));
+    lcd.setCursor(26, 1);
+    lcd.write(byte(0));
+    lcd.setCursor(32, 1);
+    lcd.write(byte(0));
+  }
+
+  // lower section
+  lcd.setCursor(0, 1);
+  lcd.print((char)('A' + currentGroup));
+  lcd.print(currentSlot);
+
+  lcd.setCursor(12, 1);
+  String optionName = currentToneOption;
+  if (optionName.length() > 30) optionName = optionName.substring(0, 30);
+  lcd.print(optionName);
+
+  if (upperSW) {
+    lcd.setCursor(34, 1);
+    String valueStr = String(currentToneValue);
+    if (valueStr.length() > 27) valueStr = valueStr.substring(0, 27);
+    lcd.print(valueStr);
+    lcd.setCursor(5, 1);
+    lcd.print("  ");
+    lcd.setCursor(5, 1);
+    lcd.print(upperToneNumber);
+  } else {
+    lcd.setCursor(27, 1);
+    String valueStr = String(currentToneValue);
+    if (valueStr.length() > 27) valueStr = valueStr.substring(0, 27);
+    lcd.print(valueStr);
+    lcd.setCursor(5, 1);
+    lcd.print("  ");
+    lcd.setCursor(5, 1);
+    lcd.print(lowerToneNumber);
+  }
+}
+
+void renderMIDIEditPage() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("MIDI      ");
+  lcd.setCursor(10, 0);
+  String optionName = currentMIDIOption;
+  if (optionName.length() > 27) optionName = optionName.substring(0, 27);
+  lcd.print(optionName);
+
+  lcd.setCursor(38, 0);
+  if (currentMIDIPart == MIDI_EDIT) lcd.write(byte(1));
+  else lcd.print("  ");
+
+  lcd.setCursor(0, 1);
+  lcd.print("VALUE ");
+  lcd.setCursor(10, 1);
+  String valueStr = String(currentMIDIValue);
+  if (valueStr.length() > 27) valueStr = valueStr.substring(0, 27);
+  lcd.print(valueStr);
+
+  lcd.setCursor(38, 1);
+  if (currentMIDIPart == MIDI_EDITVALUE) lcd.write(byte(2));
+  else lcd.print("  ");
 }
 
 void renderReinitialisePage() {
@@ -206,7 +410,7 @@ void renderArpParameterPage() {
 
 void renderSettingsPage() {
   lcd.clear();
-  
+
   // Line 1: Setting name with up/down indicators on the right
   lcd.setCursor(0, 0);
   lcd.print("PARAMETER ");
@@ -216,7 +420,7 @@ void renderSettingsPage() {
     optionName = optionName.substring(0, 27);
   }
   lcd.print(optionName);
-  
+
   // Up/down indicators for SETTINGS navigation (right side of line 1)
   lcd.setCursor(38, 0);
   if (currentSettingsPart == SETTINGS) {
@@ -224,7 +428,7 @@ void renderSettingsPage() {
   } else {
     lcd.print("  ");
   }
-  
+
   // Line 2: Setting value with up/down indicators on the right
   lcd.setCursor(0, 1);
   lcd.print("VALUE ");
@@ -234,7 +438,7 @@ void renderSettingsPage() {
     valueStr = valueStr.substring(0, 27);
   }
   lcd.print(valueStr);
-  
+
   // Up/down indicators for SETTINGSVALUE navigation (right side of line 2)
   lcd.setCursor(38, 1);
   if (currentSettingsPart == SETTINGSVALUE) {
@@ -242,6 +446,24 @@ void renderSettingsPage() {
   } else {
     lcd.print("  ");
   }
+}
+
+void showPatchEditPage(const char *option, const char *value, int part) {
+  currentPatchOption = option;
+  currentPatchValue = value;
+  currentPatchPart = part;
+}
+
+void showToneEditPage(const char *option, const char *value, int part) {
+  currentToneOption = option;
+  currentToneValue = value;
+  currentTonePart = part;
+}
+
+void showMIDIEditPage(const char *option, const char *value, int part) {
+  currentMIDIOption = option;
+  currentMIDIValue = value;
+  currentMIDIPart = part;
 }
 
 void showCurrentParameterPage(const char *param, float val, int pType) {
@@ -309,6 +531,18 @@ void updateScreen() {
     case ARP_EDIT:
     case ARP_EDITVALUE:
       renderArpParameterPage();
+      break;
+    case PATCH_EDIT:
+    case PATCH_EDITVALUE:
+      renderPatchEditPage();
+      break;
+    case TONE_EDIT:
+    case TONE_EDITVALUE:
+      renderToneEditPage();
+      break;
+    case MIDI_EDIT:
+    case MIDI_EDITVALUE:
+      renderMIDIEditPage();
       break;
   }
   //tft.updateScreen();

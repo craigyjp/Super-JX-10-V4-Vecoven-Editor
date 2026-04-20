@@ -89,6 +89,8 @@ uint8_t arpCurrentVel = 0;
 #define ARP_MAX_STEPS 128
 uint8_t arpSteps[ARP_MAX_STEPS];
 uint8_t arpStepCount = 0;
+static uint8_t up4Phase = 0;
+static int16_t up4PeakPos = 0;
 
 // Timing
 uint32_t arpNextStepUs = 0;
@@ -524,8 +526,6 @@ int16_t arpNextStep() {
             {
               // Play full sequence up, back 2, up to top, repeat
               // Track phase: 0 = going up, 1 = going down, 2 = going up to top
-              static uint8_t up4Phase = 0;
-              static int16_t up4PeakPos = 0;
 
               switch (up4Phase) {
                 case 0:  // going up
@@ -575,7 +575,7 @@ void arpPlayCurrentStep() {
   switch (keyMode) {
     case 0:  // DUAL - both boards
       {
-        switch (upperData[P_assign]) {
+        switch (upperAssign) {
           case 0:
             {
               int v = getLowerSplitVoice(note);
@@ -615,7 +615,7 @@ void arpPlayCurrentStep() {
     case 1:  // SINGLE LOWER - all 12 voices
     case 2:  // SINGLE UPPER - all 12 voices
       {
-        byte assignData = (keyMode == 1) ? lowerData[P_assign] : upperData[P_assign];
+        byte assignData = (keyMode == 1) ? lowerAssign : upperAssign;
         switch (assignData) {
           case 0: { int v = getVoiceNo(-1) - 1; assignVoice(note, vel, v); } break;
           case 1: { int v = getVoiceNoPoly2(-1) - 1; assignVoice(note, vel, v); } break;
@@ -629,7 +629,7 @@ void arpPlayCurrentStep() {
 
     case 3:  // SPLIT - lower section only
       {
-        switch (lowerData[P_assign]) {
+        switch (lowerAssign) {
           case 0:
             {
               int v = getLowerSplitVoice(note);
@@ -659,7 +659,7 @@ void arpPlayCurrentStep() {
     case 4:  // T.VOICE
     case 5:  // X-FADE - use lower board for arp
       {
-        switch (upperData[P_assign]) {
+        switch (upperAssign) {
           case 0:
             {
               int v = getLowerSplitVoice(note);

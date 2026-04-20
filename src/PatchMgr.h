@@ -12,7 +12,7 @@ void showPatchPage(String number, String patchName);
 // Constants
 // ---------------------------------------------------------------------------
 
-#define NUM_BANKS   8   // banks 0-7, selected via Recall + A-H
+#define NUM_BANKS   16   // banks 0-7, selected via Recall + A-H
 #define NUM_GROUPS  8   // groups A-H (1-8), rows of patch buttons
 #define NUM_SLOTS   8   // slots 1-8, columns of patch buttons
 

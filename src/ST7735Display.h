@@ -8,6 +8,13 @@
 #define FILTER_ENV 3
 #define AMP_ENV 4
 
+enum DisplayMode {
+  DM_TONE_FLASH    = 0,  // LOWER/UPPER param flash with arrow markers
+  DM_PATCH_FLASH   = 1,  // patch-param flash
+  DM_EDIT_FLASH    = 2,  // generic "editing parameter" flash
+  DM_SYSEX_BANNER  = 5   // sysex dump banner
+};
+
 LiquidCrystal_PCF8574 lcd(0x27);  // set the LCD address to 0x27 for a 16 chars and 2 line display
 
 String currentParameter = "";
@@ -19,6 +26,10 @@ String newPatchName = "";
 const char *currentSettingsOption = "";
 const char *currentSettingsValue = "";
 int currentSettingsPart = SETTINGS;
+
+String currentToneParameter = "";
+String currentToneUpper     = "";
+String currentToneLower     = "";
 
 const char *currentPatchOption = "";
 const char *currentPatchValue = "";
@@ -40,9 +51,44 @@ unsigned long timeout = 0;
 
 char buf[7];  // 6 chars + null terminator
 
+static void renderToneFlashPage();              // displayMode 0
+static void renderPatchFlashPage();             // displayMode 1  
+static void renderEditFlashPage();              // displayMode 2
+static void renderSysexBannerPage();            // displayMode 5
+
 void startTimer() {
   if (state == PARAMETER) {
     timeout = millis();
+  }
+}
+
+static void drawBankSlotHeader() {
+  lcd.setCursor(0, 0); lcd.print("I:");
+  lcd.setCursor(2, 0); lcd.print(currentBank + 1);
+  lcd.setCursor(0, 1); lcd.print((char)('A' + currentGroup)); lcd.print(currentSlot);
+}
+
+static void clearTheToneMarkers() {
+    // arrows (clear 8, paint 4)
+  lcd.setCursor(26, 0); lcd.print(" ");
+  lcd.setCursor(32, 0); lcd.print(" ");
+  lcd.setCursor(33, 0); lcd.print(" ");
+  lcd.setCursor(39, 0); lcd.print(" ");
+  lcd.setCursor(26, 1); lcd.print(" ");
+  lcd.setCursor(32, 1); lcd.print(" ");
+  lcd.setCursor(33, 1); lcd.print(" ");
+  lcd.setCursor(39, 1); lcd.print(" ");
+
+  if (upperSW) {
+    lcd.setCursor(33, 0); lcd.write(byte(0));
+    lcd.setCursor(39, 0); lcd.write(byte(0));
+    lcd.setCursor(33, 1); lcd.write(byte(0));
+    lcd.setCursor(39, 1); lcd.write(byte(0));
+  } else {
+    lcd.setCursor(26, 0); lcd.write(byte(0));
+    lcd.setCursor(32, 0); lcd.write(byte(0));
+    lcd.setCursor(26, 1); lcd.write(byte(0));
+    lcd.setCursor(32, 1); lcd.write(byte(0));
   }
 }
 
@@ -60,11 +106,8 @@ void renderBootUpPage() {
 void renderCurrentPatchPage() {
   lcd.clear();
   lcd.noBlink();
-  // upper section of screen
-  lcd.setCursor(0, 0);
-  lcd.print("I:");
-  lcd.setCursor(2, 0);
-  lcd.print(currentBank + 1);
+  drawBankSlotHeader();
+
   lcd.setCursor(6, 0);
   switch (keyMode) {
     case 0:
@@ -93,6 +136,7 @@ void renderCurrentPatchPage() {
   }
   lcd.setCursor(12, 0);
   lcd.print(patchName);
+
   if (upperSW) {
     lcd.setCursor(35, 0);
     lcd.write(byte(0));
@@ -110,73 +154,79 @@ void renderCurrentPatchPage() {
     lcd.write(byte(0));
   }
   // lower section
-  lcd.setCursor(0, 1);
-  lcd.print((char)('A' + currentGroup));
-  lcd.print(currentSlot);
   lcd.setCursor(36, 1);
   lcd.print(lowerToneNumber);
 }
 
 void renderCurrentParameterPage() {
-  switch (state) {
-    case PARAMETER:
-      if (displayMode == 5) {
-        lcd.clear();
-        lcd.setCursor(0, 0);
-        lcd.print("**********");
-        lcd.setCursor(12, 0);
-        lcd.print(currentParameter);
-        lcd.setCursor(18, 0);
-        lcd.print(currentValue);
-        lcd.setCursor(30, 0);
-        lcd.print("**********");
-      } else {
-        lcd.clear();
-        // upper section of screen - show current bank
-        lcd.setCursor(0, 0);
-        lcd.print("I:");
-        lcd.setCursor(2, 0);
-        lcd.print(currentBank + 1);
-        lcd.setCursor(0, 1);
-        lcd.print((char)('A' + currentGroup));
-        lcd.print(currentSlot);
-        lcd.setCursor(6, 0);
-        if (displayMode == 0) {
-          lcd.print("LOWER PARAMETER");
-          lcd.setCursor(27, 0);
-          lcd.write(byte(0));
-          lcd.print("LOWER");
-          lcd.write(byte(0));
-          lcd.print(" UPPER");
+  if (state != PARAMETER) return;
 
-          // lower section of screen
-          lcd.setCursor(0, 1);
-          lcd.setCursor(15, 1);
-          lcd.print(currentParameter);
-          lcd.setCursor(27, 1);
-          lcd.write(byte(0));
-          lcd.setCursor(28, 1);
-          lcd.print(currentValue);
-          lcd.setCursor(33, 1);
-          lcd.write(byte(0));
-        }
-        if (displayMode == 1) {
-          lcd.print("PATCH PARAMETER");
-          lcd.setCursor(15, 1);
-          lcd.print(currentParameter);
-          lcd.setCursor(28, 1);
-          lcd.print(currentValue);
-        }
-        if (displayMode == 2) {
-          lcd.print("EDITING PARAMETER");
-          lcd.setCursor(15, 1);
-          lcd.print(currentParameter);
-          lcd.setCursor(28, 1);
-          lcd.print(currentValue);
-        }
-        break;
-      }
+  switch (displayMode) {
+    case DM_TONE_FLASH:    renderToneFlashPage();    break;
+    case DM_PATCH_FLASH:   renderPatchFlashPage();   break;
+    case DM_EDIT_FLASH:    renderEditFlashPage();    break;
+    case DM_SYSEX_BANNER:  renderSysexBannerPage();  break;
+    // no default — unknown mode = no-op, same as original silently did
   }
+}
+
+static void renderToneFlashPage() {
+  lcd.clear();
+  drawBankSlotHeader();
+
+  lcd.setCursor(5, 0);
+  lcd.print(upperSW ? "UPPER  PARAMETER" : "LOWER  PARAMETER");
+  lcd.setCursor(27, 0); lcd.print("LOWER");
+  lcd.setCursor(34, 0); lcd.print("UPPER");
+
+  lcd.setCursor(5, 1);
+  lcd.print("  ");
+  lcd.setCursor(5, 1);
+  lcd.print(upperSW ? upperToneNumber : lowerToneNumber);
+
+  clearTheToneMarkers();
+
+  lcd.setCursor(12, 1); lcd.print(currentToneParameter);
+
+  // Clear value columns then paint both
+  lcd.setCursor(27, 1); lcd.print("     ");
+  lcd.setCursor(34, 1); lcd.print("     ");
+  lcd.setCursor(27, 1); lcd.print(currentToneLower);
+  lcd.setCursor(34, 1); lcd.print(currentToneUpper);
+}
+
+static void renderPatchFlashPage() {
+  lcd.clear();
+
+  drawBankSlotHeader();
+
+  lcd.setCursor(5, 0);  lcd.print("PATCH  PARAMETER");
+  lcd.setCursor(12, 1); lcd.print(currentParameter);
+
+  lcd.setCursor(34, 1);
+  String valueStr = String(currentValue);
+  if (valueStr.length() > 27) valueStr = valueStr.substring(0, 27);
+
+  snprintf(buf, sizeof(buf), "%6s", valueStr.c_str());
+  lcd.print(buf);
+}
+
+static void renderEditFlashPage() {
+  lcd.clear();
+
+  drawBankSlotHeader();
+
+  lcd.setCursor(6, 0);  lcd.print("EDITING PARAMETER");
+  lcd.setCursor(15, 1); lcd.print(currentParameter);
+  lcd.setCursor(28, 1); lcd.print(currentValue);
+}
+
+static void renderSysexBannerPage() {
+  lcd.clear();
+  lcd.setCursor(0, 0);  lcd.print("**********");
+  lcd.setCursor(12, 0); lcd.print(currentParameter);
+  lcd.setCursor(18, 0); lcd.print(currentValue);
+  lcd.setCursor(30, 0); lcd.print("**********");
 }
 
 void renderSavePage() {
@@ -202,18 +252,15 @@ void renderSavePage() {
 void renderPatchEditPage() {
   lcd.clear();
   lcd.noBlink();
+  drawBankSlotHeader();
+
   // upper section of screen
-  lcd.setCursor(0, 0);
-  lcd.print("I:");
-  lcd.setCursor(2, 0);
-  lcd.print(currentBank + 1);
+
   lcd.setCursor(5, 0);
   lcd.print("PATCH  PARAMETER");
 
   // lower section
-  lcd.setCursor(0, 1);
-  lcd.print((char)('A' + currentGroup));
-  lcd.print(currentSlot);
+
   lcd.setCursor(5, 1);
   lcd.print("SETUP");
 
@@ -234,60 +281,20 @@ void renderPatchEditPage() {
 void renderToneEditPage() {
   lcd.clear();
   lcd.noBlink();
+  drawBankSlotHeader();
 
   // upper section of screen
-  lcd.setCursor(0, 0);
-  lcd.print("I:");
-  lcd.setCursor(2, 0);
-  lcd.print(currentBank + 1);
+  
   lcd.setCursor(5, 0);
   lcd.print(upperSW ? "UPPER  PARAMETER" : "LOWER  PARAMETER");
   lcd.setCursor(27, 0);
   lcd.print("LOWER");
   lcd.setCursor(34, 0);
   lcd.print("UPPER");
-  if (upperSW) {
-    lcd.setCursor(26, 0);
-    lcd.print(" ");
-    lcd.setCursor(32, 0);
-    lcd.print(" ");
-    lcd.setCursor(26, 1);
-    lcd.print(" ");
-    lcd.setCursor(32, 1);
-    lcd.print(" ");
-    lcd.setCursor(33, 0);
-    lcd.write(byte(0));
-    lcd.setCursor(39, 0);
-    lcd.write(byte(0));
-    lcd.setCursor(33, 1);
-    lcd.write(byte(0));
-    lcd.setCursor(39, 1);
-    lcd.write(byte(0));
-  } else {
-    lcd.setCursor(33, 0);
-    lcd.print(" ");
-    lcd.setCursor(39, 0);
-    lcd.print(" ");
-    lcd.setCursor(33, 1);
-    lcd.print(" ");
-    lcd.setCursor(39, 1);
-    lcd.print(" ");
-    lcd.setCursor(26, 0);
-    lcd.write(byte(0));
-    lcd.setCursor(32, 0);
-    lcd.write(byte(0));
-    lcd.setCursor(26, 1);
-    lcd.write(byte(0));
-    lcd.setCursor(32, 1);
-    lcd.write(byte(0));
-  }
+
+  clearTheToneMarkers();
 
   // lower section
-  lcd.setCursor(0, 1);
-  lcd.print((char)('A' + currentGroup));
-  lcd.print(currentSlot);
-
-  // ... your existing selection markers code ...
 
   lcd.setCursor(12, 1);
   String optionName = currentToneOption;
@@ -300,7 +307,6 @@ void renderToneEditPage() {
   lcd.setCursor(5, 1);
   lcd.print(upperSW ? upperToneNumber : lowerToneNumber);
 
-  // --- show BOTH values ---
 
   // Both values — active side at its column, other side at the other column.
   String activeValueStr = String(currentToneValue);
@@ -331,18 +337,12 @@ void renderToneEditPage() {
 void renderMIDIEditPage() {
   lcd.clear();
   lcd.noBlink();
+  drawBankSlotHeader();
   // upper section of screen
-  lcd.setCursor(0, 0);
-  lcd.print("I:");
-  lcd.setCursor(2, 0);
-  lcd.print(currentBank + 1);
   lcd.setCursor(5, 0);
   lcd.print("MIDI   PARAMETER");
 
   // lower section
-  lcd.setCursor(0, 1);
-  lcd.print((char)('A' + currentGroup));
-  lcd.print(currentSlot);
   lcd.setCursor(5, 1);
   lcd.print("SETUP");
 
@@ -360,17 +360,6 @@ void renderMIDIEditPage() {
   lcd.print(buf);
 }
 
-void renderReinitialisePage() {
-  // tft.fillScreen(ST7735_BLACK);
-  // tft.setFont(&FreeSans12pt7b);
-  // tft.setTextColor(ST7735_YELLOW);
-  // tft.setTextSize(1);
-  // tft.setCursor(5, 34);
-  // tft.println("Initialise to");
-  // tft.setCursor(5, 84);
-  // tft.println("panel setting");
-}
-
 void renderPatchNamingPage() {
   // tft.fillScreen(ST7735_BLACK);
   // tft.setFont(&FreeSans12pt7b);
@@ -382,32 +371,6 @@ void renderPatchNamingPage() {
   // tft.setTextColor(ST7735_WHITE);
   // tft.setCursor(5, 84);
   // tft.println(newPatchName);
-}
-
-void renderRecallPage() {
-  // tft.fillScreen(ST7735_BLACK);
-  // tft.setFont(&FreeSans9pt7b);
-  // tft.setCursor(5, 34);
-  // tft.setTextColor(ST7735_YELLOW);
-  // tft.println(patches.last().patchNo);
-  // tft.setCursor(40, 34);
-  // tft.setTextColor(ST7735_WHITE);
-  // tft.println(patches.last().patchName);
-
-  // tft.fillRect(0, 56, tft.width(), 23, 0xA000);
-  // tft.setCursor(5, 62);
-  // tft.setTextColor(ST7735_YELLOW);
-  // tft.println(patches.first().patchNo);
-  // tft.setCursor(40, 62);
-  // tft.setTextColor(ST7735_WHITE);
-  // tft.println(patches.first().patchName);
-
-  // tft.setCursor(5, 89);
-  // tft.setTextColor(ST7735_YELLOW);
-  // patches.size() > 1 ? tft.println(patches[1].patchNo) : tft.println(patches.last().patchNo);
-  // tft.setCursor(40, 89);
-  // tft.setTextColor(ST7735_WHITE);
-  // patches.size() > 1 ? tft.println(patches[1].patchName) : tft.println(patches.last().patchName);
 }
 
 void showRenamingPage(String newName) {
@@ -486,6 +449,15 @@ void showMIDIEditPage(const char *option, const char *value, int part) {
   currentMIDIPart = part;
 }
 
+void showCurrentTonePage(const char *param, String upperVal, String lowerVal) {
+  if (state == SETTINGS || state == SETTINGSVALUE) state = PARAMETER;
+  currentToneParameter = param;
+  currentToneUpper     = upperVal;
+  currentToneLower     = lowerVal;
+  displayMode          = DM_TONE_FLASH;
+  startTimer();
+}
+
 void showCurrentParameterPage(const char *param, float val, int pType) {
   currentParameter = param;
   currentValue = String(val);
@@ -527,16 +499,8 @@ void updateScreen() {
         renderCurrentParameterPage();
       }
       break;
-    case RECALL:
-      renderRecallPage();
-      break;
     case SAVE:
       renderSavePage();
-      break;
-    case REINITIALISE:
-      renderReinitialisePage();
-      //tft.updateScreen();  //update before delay
-      state = PARAMETER;
       break;
     case PATCHNAMING:
       renderPatchNamingPage();

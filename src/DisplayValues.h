@@ -11,12 +11,12 @@ static inline uint8_t bendStepToValue(uint8_t step) {
 
 static inline const char *bendStepToLabel(uint8_t step) {
   switch (step) {
-    case 0: return "2 SEMITONES";
-    case 1: return "3 SEMITONES";
-    case 2: return "4 SEMITONES";
-    case 3: return "7 SEMITONES";
-    case 4: return "12 SEMITONES";
-    default: return "2 SEMITONES";
+    case 0: return "2";
+    case 1: return "3";
+    case 2: return "4";
+    case 3: return "7";
+    case 4: return "12";
+    default: return "2";
   }
 }
 
@@ -55,8 +55,8 @@ static inline const char *dco1waveStepToLabel(uint8_t step) {
   switch (step) {
     case 0: return "NOIS";
     case 1: return "SQR";
-    case 2: return "PWM";
-    case 3: return "SAW";
+    case 2: return "PULS";
+    case 3: return "SAWT";
     default: return "NOIS";
   }
 }
@@ -73,11 +73,11 @@ static inline uint8_t dco1rangeStepToValue(uint8_t step) {
 
 static inline const char *dco1rangeStepToLabel(uint8_t step) {
   switch (step) {
-    case 0: return "16";
-    case 1: return "8";
-    case 2: return "4";
-    case 3: return "2";
-    default: return "16";
+    case 0: return " 16'";
+    case 1: return " 8'";
+    case 2: return " 4'";
+    case 3: return " 2'";
+    default: return " 16'";
   }
 }
 

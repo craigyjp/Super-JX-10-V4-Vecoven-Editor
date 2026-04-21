@@ -297,8 +297,6 @@ int at_vol_sw = 0;
 int midiSplitPoint;
 
 int lfo1_wave_str;
-int lfo1_rate_str;
-int lfo1_delay_str;
 int lfo1_lfo2_str;
 int lfo2_wave_str;
 int lfo2_rate_str;

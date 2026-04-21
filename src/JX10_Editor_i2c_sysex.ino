@@ -442,7 +442,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_lfo1_rate] = lowerData[P_lfo1_rate];
         }
       }
-      lfo1_rate_str = value;
       updatelfo1_rate(1);
       break;
 
@@ -458,7 +457,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_lfo1_delay] = lowerData[P_lfo1_delay];
         }
       }
-      lfo1_delay_str = value;
       updatelfo1_delay(1);
       break;
 
@@ -1906,6 +1904,21 @@ void myControlChange(byte channel, byte control, int value) {
   }
 }
 
+// For continuous params (scaled 0..127 → 0..99)
+static void flashToneScale(const char *label, int pIndex, int N = 100) {
+  int u = unpackScaleN(upperData[pIndex], N);
+  int l = unpackScaleN(lowerData[pIndex], N);
+  showCurrentTonePage(label, String(u), String(l));
+}
+
+// For switch params (stepped, string labels)
+static void flashToneStep(const char *label, int pIndex, const char **labels,
+                          uint8_t step, uint8_t maxIndex) {
+  const char *u = labels[unpackStep(upperData[pIndex], step, maxIndex)];
+  const char *l = labels[unpackStep(lowerData[pIndex], step, maxIndex)];
+  showCurrentTonePage(label, String(u), String(l));
+}
+
 FLASHMEM void updatelfo1_wave(bool announce) {
 
   const uint8_t newStep = upperSW ? upperData[P_lfo1_wave] : lowerData[P_lfo1_wave];
@@ -1920,7 +1933,9 @@ FLASHMEM void updatelfo1_wave(bool announce) {
   if (announce && !suppressParamAnnounce) {
     if (firstTouch || changed) {
       displayMode = 0;
-      showCurrentParameterPage("LFO1 WF", lfowaveStepToLabel(newStep));
+      showCurrentTonePage("91 LFO1 WF",
+                          lfowaveStepToLabel(upperData[P_lfo1_wave]),
+                          lfowaveStepToLabel(lowerData[P_lfo1_wave]));
       startParameterDisplay();
     }
   }
@@ -1942,8 +1957,12 @@ FLASHMEM void updatemod_lfo(bool announce) {
   mod_lfo_str = displayVal;
 
   if (announce && !suppressParamAnnounce) {
-    displayMode = 0;
-    showCurrentParameterPage("MOD DEPTH", String(displayVal));
+    displayMode = 1;
+    if (upperSW) {
+      showCurrentParameterPage("36 UPPER LFO MOD DEPTH", String(displayVal));
+    } else {
+      showCurrentParameterPage("46 LOWER LFO MOD DEPTH", String(displayVal));
+    }
     startParameterDisplay();
   }
 
@@ -1969,7 +1988,7 @@ FLASHMEM void updatebend_range(bool announce) {
   if (announce && !suppressParamAnnounce) {
     if (firstTouch || changed) {
       displayMode = 1;
-      showCurrentParameterPage("BEND RANGE", bendStepToLabel(newStep));
+      showCurrentParameterPage("16 BEND RANGE", bendStepToLabel(newStep));
       startParameterDisplay();
     }
   }
@@ -2007,10 +2026,9 @@ FLASHMEM void updatechase(bool announce) {
 
 FLASHMEM void updatelfo1_rate(bool announce) {
   lastStepParam = 0xFF;
-  lfo1_rate_str = map(lfo1_rate_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("LFO1 RATE", String(lfo1_rate_str));
+    flashToneScale("93 LFO1 RATE", P_lfo1_rate);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2022,10 +2040,9 @@ FLASHMEM void updatelfo1_rate(bool announce) {
 
 FLASHMEM void updatelfo1_delay(bool announce) {
   lastStepParam = 0xFF;
-  lfo1_delay_str = map(lfo1_delay_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("LFO1 DELAY", String(lfo1_delay_str));
+    flashToneScale("92 LFO1 DELAY", P_lfo1_delay);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2036,11 +2053,10 @@ FLASHMEM void updatelfo1_delay(bool announce) {
 }
 
 FLASHMEM void updatelfo1_lfo2(bool announce) {
-  lastStepParam = 0xFF;
   lfo1_lfo2_str = map(lfo1_lfo2_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("LFO1 TO LFO2", String(lfo1_lfo2_str));
+    flashToneScale("94 LFO1 LFO", P_lfo1_lfo2);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2052,10 +2068,9 @@ FLASHMEM void updatelfo1_lfo2(bool announce) {
 
 FLASHMEM void updatedco1_PW(bool announce) {
   lastStepParam = 0xFF;
-  dco1_PW_str = map(dco1_PW_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("DCO1 PW", String(dco1_PW_str));
+    flashToneScale("41 PWM1 WIDTH", P_dco1_PW);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2067,10 +2082,9 @@ FLASHMEM void updatedco1_PW(bool announce) {
 
 FLASHMEM void updatedco1_PWM_env(bool announce) {
   lastStepParam = 0xFF;
-  dco1_PWM_env_str = map(dco1_PWM_env_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("DCO1 PWM ENV", String(dco1_PWM_env_str));
+    flashToneScale("42 PWM1 ENV", P_dco1_PWM_env);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2082,10 +2096,9 @@ FLASHMEM void updatedco1_PWM_env(bool announce) {
 
 FLASHMEM void updatedco1_PWM_lfo(bool announce) {
   lastStepParam = 0xFF;
-  dco1_PWM_lfo_str = map(dco1_PWM_lfo_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("DCO1 PWM LFO", String(dco1_PWM_lfo_str));
+    flashToneScale("43 PWM1 LFO", P_dco1_PWM_lfo);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2097,10 +2110,9 @@ FLASHMEM void updatedco1_PWM_lfo(bool announce) {
 
 FLASHMEM void updatedco1_pitch_env(bool announce) {
   lastStepParam = 0xFF;
-  dco1_pitch_env_str = map(dco1_pitch_env_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("DCO1 PITCH ENV", String(dco1_pitch_env_str));
+    flashToneScale("16 DCO1 ENV", P_dco1_pitch_env);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2112,10 +2124,9 @@ FLASHMEM void updatedco1_pitch_env(bool announce) {
 
 FLASHMEM void updatedco1_pitch_lfo(bool announce) {
   lastStepParam = 0xFF;
-  dco1_pitch_lfo_str = map(dco1_pitch_lfo_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("DCO1 PITCH LFO", String(dco1_pitch_lfo_str));
+    flashToneScale("14 DCO1 LFO", P_dco1_pitch_lfo);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2137,18 +2148,17 @@ FLASHMEM void updatedco1_wave(bool announce) {
 
   if (announce && !suppressParamAnnounce) {
     if (firstTouch || changed) {
-      displayMode = 0;
-      showCurrentParameterPage("DCO1 WF", dco1waveStepToLabel(newStep));
+      displayMode = DM_TONE_FLASH;
+      showCurrentTonePage("12 DCO1 WF",
+                          dco1waveStepToLabel(upperData[P_dco1_wave]),
+                          dco1waveStepToLabel(lowerData[P_dco1_wave]));
       startParameterDisplay();
     }
   }
 
   if (changed || recallPatchFlag) {
-    if (upperSW) {
-      sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x0C, dco1waveStepToValue(newStep));
-    } else {
-      sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x0C, dco1waveStepToValue(newStep));
-    }
+    uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+    sendToneSysEx(prefix, (midiOutCh - 1), 0x0C, dco1waveStepToValue(newStep));
     lastStep = newStep;
   }
 }
@@ -2165,8 +2175,10 @@ FLASHMEM void updatedco1_range(bool announce) {
 
   if (announce && !suppressParamAnnounce) {
     if (firstTouch || changed) {
-      displayMode = 0;
-      showCurrentParameterPage("DCO1 RANGE", dco1rangeStepToLabel(newStep));
+      displayMode = DM_TONE_FLASH;
+      showCurrentTonePage("11 DCO1 RANG",
+                          dco1rangeStepToLabel(upperData[P_dco1_range]),
+                          dco1rangeStepToLabel(lowerData[P_dco1_range]));
       startParameterDisplay();
     }
   }
@@ -2184,22 +2196,21 @@ FLASHMEM void updatedco1_range(bool announce) {
 FLASHMEM void updatedco1_tune(bool announce) {
   lastStepParam = 0xFF;
 
-  if (upperSW) {
-    dco1_tune_str = unpackScaleCentred(upperData[P_dco1_tune], 25, 10);
-  } else {
-    dco1_tune_str = unpackScaleCentred(lowerData[P_dco1_tune], 25, 10);
-  }
+  const int activeStored = upperSW ? upperData[P_dco1_tune] : lowerData[P_dco1_tune];
+  dco1_tune_str = unpackScaleCentred(activeStored, 25, 10);
 
   if (announce && !suppressParamAnnounce) {
-    displayMode = 0;
-    showCurrentParameterPage("DCO1 COARSE", String(toneTunePtrs[dco1_tune_str]));
+    int upperIdx = unpackScaleCentred(upperData[P_dco1_tune], 25, 10);
+    int lowerIdx = unpackScaleCentred(lowerData[P_dco1_tune], 25, 10);
+    displayMode = DM_TONE_FLASH;
+    showCurrentTonePage("13 DCO1 TUNE",
+                        toneTunePtrs[upperIdx],
+                        toneTunePtrs[lowerIdx]);
     startParameterDisplay();
   }
-  if (upperSW) {
-    sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x0D, (uint8_t)upperData[P_dco1_tune]);
-  } else {
-    sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x0D, (uint8_t)lowerData[P_dco1_tune]);
-  }
+
+  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+  sendToneSysEx(prefix, (midiOutCh - 1), 0x0D, (uint8_t)activeStored);
 }
 
 FLASHMEM void updatedco1_xmod(bool announce) {
@@ -2215,7 +2226,9 @@ FLASHMEM void updatedco1_xmod(bool announce) {
   if (announce && !suppressParamAnnounce) {
     if (firstTouch || changed) {
       displayMode = 0;
-      showCurrentParameterPage("DCO X-MOD", dco1xmodStepToLabel(newStep));
+      showCurrentTonePage("31 DCO X-MOD",
+                          dco1xmodStepToLabel(upperData[P_dco1_mode]),
+                          dco1xmodStepToLabel(lowerData[P_dco1_mode]));
       startParameterDisplay();
     }
   }
@@ -2243,7 +2256,9 @@ FLASHMEM void updatelfo2_wave(bool announce) {
   if (announce && !suppressParamAnnounce) {
     if (firstTouch || changed) {
       displayMode = 0;
-      showCurrentParameterPage("LFO2 WF", lfowaveStepToLabel(newStep));
+      showCurrentTonePage("A1 LFO2 WF",
+                          lfowaveStepToLabel(upperData[P_lfo2_wave]),
+                          lfowaveStepToLabel(lowerData[P_lfo2_wave]));
       startParameterDisplay();
     }
   }
@@ -2260,10 +2275,9 @@ FLASHMEM void updatelfo2_wave(bool announce) {
 
 FLASHMEM void updatelfo2_rate(bool announce) {
   lastStepParam = 0xFF;
-  lfo2_rate_str = map(lfo2_rate_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("LFO2 RATE", String(lfo2_rate_str));
+    flashToneScale("A3 LFO2 RATE", P_lfo2_rate);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2275,10 +2289,9 @@ FLASHMEM void updatelfo2_rate(bool announce) {
 
 FLASHMEM void updatelfo2_delay(bool announce) {
   lastStepParam = 0xFF;
-  lfo2_delay_str = map(lfo2_delay_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("LFO2 DELAY", String(lfo2_delay_str));
+    flashToneScale("A2 LFO2 DELAY", P_lfo2_delay);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2290,10 +2303,9 @@ FLASHMEM void updatelfo2_delay(bool announce) {
 
 FLASHMEM void updatelfo2_lfo1(bool announce) {
   lastStepParam = 0xFF;
-  lfo2_lfo1_str = map(lfo2_lfo1_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("LFO2 TO LFO1", String(lfo2_lfo1_str));
+    flashToneScale("A4 LFO2 LFO", P_lfo2_lfo1);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2305,10 +2317,9 @@ FLASHMEM void updatelfo2_lfo1(bool announce) {
 
 FLASHMEM void updatedco2_PW(bool announce) {
   lastStepParam = 0xFF;
-  dco2_PW_str = map(dco2_PW_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("DCO2 PW", String(dco2_PW_str));
+    flashToneScale("51 PWM2 WIDTH", P_dco2_PW);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2320,10 +2331,9 @@ FLASHMEM void updatedco2_PW(bool announce) {
 
 FLASHMEM void updatedco2_PWM_env(bool announce) {
   lastStepParam = 0xFF;
-  dco2_PWM_env_str = map(dco2_PWM_env_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("DCO2 PWM ENV", String(dco2_PWM_env_str));
+    flashToneScale("52 PWM2 ENV", P_dco2_PWM_env);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2335,10 +2345,9 @@ FLASHMEM void updatedco2_PWM_env(bool announce) {
 
 FLASHMEM void updatedco2_PWM_lfo(bool announce) {
   lastStepParam = 0xFF;
-  dco2_PWM_lfo_str = map(dco2_PWM_lfo_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("DCO2 PWM LFO", String(dco2_PWM_lfo_str));
+    flashToneScale("53 PWM2 LFO", P_dco2_PWM_lfo);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2350,10 +2359,9 @@ FLASHMEM void updatedco2_PWM_lfo(bool announce) {
 
 FLASHMEM void updatedco2_pitch_env(bool announce) {
   lastStepParam = 0xFF;
-  dco2_pitch_env_str = map(dco2_pitch_env_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("DCO2 PITCH ENV", String(dco2_pitch_env_str));
+    flashToneScale("26 DCO2 ENV", P_dco2_pitch_env);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2365,10 +2373,9 @@ FLASHMEM void updatedco2_pitch_env(bool announce) {
 
 FLASHMEM void updatedco2_pitch_lfo(bool announce) {
   lastStepParam = 0xFF;
-  dco2_pitch_lfo_str = map(dco2_pitch_lfo_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("DCO2 PITCH LFO", String(dco2_pitch_lfo_str));
+    flashToneScale("24 DCO2 LFO", P_dco2_pitch_lfo);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2390,8 +2397,10 @@ FLASHMEM void updatedco2_wave(bool announce) {
 
   if (announce && !suppressParamAnnounce) {
     if (firstTouch || changed) {
-      displayMode = 0;
-      showCurrentParameterPage("DCO2 WF", dco1waveStepToLabel(newStep));
+      displayMode = DM_TONE_FLASH;
+      showCurrentTonePage("22 DCO2 WF",
+                          dco1waveStepToLabel(upperData[P_dco2_wave]),
+                          dco1waveStepToLabel(lowerData[P_dco2_wave]));
       startParameterDisplay();
     }
   }
@@ -2418,8 +2427,10 @@ FLASHMEM void updatedco2_range(bool announce) {
 
   if (announce && !suppressParamAnnounce) {
     if (firstTouch || changed) {
-      displayMode = 0;
-      showCurrentParameterPage("DCO2 RANGE", dco1rangeStepToLabel(newStep));
+      displayMode = DM_TONE_FLASH;
+      showCurrentTonePage("21 DCO2 RANG",
+                          dco1rangeStepToLabel(upperData[P_dco2_range]),
+                          dco1rangeStepToLabel(lowerData[P_dco2_range]));
       startParameterDisplay();
     }
   }
@@ -2436,22 +2447,22 @@ FLASHMEM void updatedco2_range(bool announce) {
 
 FLASHMEM void updatedco2_tune(bool announce) {
   lastStepParam = 0xFF;
-  if (upperSW) {
-    dco2_tune_str = unpackScaleCentred(upperData[P_dco2_tune], 25, 10);
-  } else {
-    dco2_tune_str = unpackScaleCentred(lowerData[P_dco2_tune], 25, 10);
-  }
+
+  const int activeStored = upperSW ? upperData[P_dco2_tune] : lowerData[P_dco2_tune];
+  dco2_tune_str = unpackScaleCentred(activeStored, 25, 10);
 
   if (announce && !suppressParamAnnounce) {
-    displayMode = 0;
-    showCurrentParameterPage("DCO2 COARSE", String(toneTunePtrs[dco2_tune_str]));
+    int upperIdx = unpackScaleCentred(upperData[P_dco2_tune], 25, 10);
+    int lowerIdx = unpackScaleCentred(lowerData[P_dco2_tune], 25, 10);
+    displayMode = DM_TONE_FLASH;
+    showCurrentTonePage("23 DCO2 TUNE",
+                        toneTunePtrs[upperIdx],
+                        toneTunePtrs[lowerIdx]);
     startParameterDisplay();
   }
-  if (upperSW) {
-    sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x15, (uint8_t)upperData[P_dco2_tune]);
-  } else {
-    sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x15, (uint8_t)lowerData[P_dco2_tune]);
-  }
+
+  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+  sendToneSysEx(prefix, (midiOutCh - 1), 0x15, (uint8_t)activeStored);
 }
 
 static inline int unpackSplit(int stored) {
@@ -2467,24 +2478,29 @@ static inline int unpackSplit(int stored) {
 
 FLASHMEM void updatedco2_fine(bool announce) {
   lastStepParam = 0xFF;
-  uint8_t stored = upperSW ? upperData[P_dco2_fine] : lowerData[P_dco2_fine];
-  int ui = unpackSplitFine(stored);
+
+  const int activeStored = upperSW ? upperData[P_dco2_fine] : lowerData[P_dco2_fine];
+  dco2_fine_str = unpackSplitFine(activeStored);
 
   if (announce && !suppressParamAnnounce) {
-    displayMode = 0;
-    showCurrentParameterPage("DCO2 FINE", String(toneFinePtrs[ui]));
+    int upperIdx = unpackSplitFine(upperData[P_dco2_fine]);
+    int lowerIdx = unpackSplitFine(lowerData[P_dco2_fine]);
+    displayMode = DM_TONE_FLASH;
+    showCurrentTonePage("32 DCO2 FTUN",
+                        toneFinePtrs[upperIdx],
+                        toneFinePtrs[lowerIdx]);
     startParameterDisplay();
   }
+
   uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
-  sendToneSysEx(prefix, (midiOutCh - 1), 0x1C, stored);
+  sendToneSysEx(prefix, (midiOutCh - 1), 0x1C, (uint8_t)activeStored);
 }
 
 FLASHMEM void updatedco1_level(bool announce) {
   lastStepParam = 0xFF;
-  dco1_level_str = map(dco1_level_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("DCO1 LEVEL", String(dco1_level_str));
+    flashToneScale("61 MIX DCO1", P_dco1_level);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2496,10 +2512,9 @@ FLASHMEM void updatedco1_level(bool announce) {
 
 FLASHMEM void updatedco2_level(bool announce) {
   lastStepParam = 0xFF;
-  dco2_level_str = map(dco2_level_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("DCO2 LEVEL", String(dco2_level_str));
+    flashToneScale("62 MIX DCO2", P_dco2_level);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2511,10 +2526,9 @@ FLASHMEM void updatedco2_level(bool announce) {
 
 FLASHMEM void updatedco2_mod(bool announce) {
   lastStepParam = 0xFF;
-  dco2_mod_str = map(dco2_mod_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("MIX ENV", String(dco2_mod_str));
+    flashToneScale("63 MIX ENV", P_dco2_mod);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2537,7 +2551,9 @@ FLASHMEM void updatevcf_hpf(bool announce) {
   if (announce && !suppressParamAnnounce) {
     if (firstTouch || changed) {
       displayMode = 0;
-      showCurrentParameterPage("VCF HPF", vcfrangeStepToLabel(newStep));
+      showCurrentTonePage("33 VCF HPF",
+                          vcfrangeStepToLabel(upperData[P_vcf_hpf]),
+                          vcfrangeStepToLabel(lowerData[P_vcf_hpf]));
       startParameterDisplay();
     }
   }
@@ -2554,10 +2570,9 @@ FLASHMEM void updatevcf_hpf(bool announce) {
 
 FLASHMEM void updatevcf_cutoff(bool announce) {
   lastStepParam = 0xFF;
-  vcf_cutoff_str = map(vcf_cutoff_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("VCF FREQ", String(vcf_cutoff_str));
+    flashToneScale("71 VCF FREQ", P_vcf_cutoff);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2569,10 +2584,9 @@ FLASHMEM void updatevcf_cutoff(bool announce) {
 
 FLASHMEM void updatevcf_res(bool announce) {
   lastStepParam = 0xFF;
-  vcf_res_str = map(vcf_res_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("VCF RES", String(vcf_res_str));
+    flashToneScale("72 VCF RES", P_vcf_res);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2584,10 +2598,9 @@ FLASHMEM void updatevcf_res(bool announce) {
 
 FLASHMEM void updatevcf_kb(bool announce) {
   lastStepParam = 0xFF;
-  vcf_kb_str = map(vcf_kb_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("VCF KEYTRACK", String(vcf_kb_str));
+    flashToneScale("76 VCF KEY", P_vcf_kb);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2599,10 +2612,9 @@ FLASHMEM void updatevcf_kb(bool announce) {
 
 FLASHMEM void updatevcf_env(bool announce) {
   lastStepParam = 0xFF;
-  vcf_env_str = map(vcf_env_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("VCF ENVELOPE", String(vcf_env_str));
+    flashToneScale("75 VCF ENV", P_vcf_env);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2614,10 +2626,9 @@ FLASHMEM void updatevcf_env(bool announce) {
 
 FLASHMEM void updatevcf_lfo1(bool announce) {
   lastStepParam = 0xFF;
-  vcf_lfo1_str = map(vcf_lfo1_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("VCF LFO1", String(vcf_lfo1_str));
+    flashToneScale("73 VCF LFO1", P_vcf_lfo1);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2629,10 +2640,9 @@ FLASHMEM void updatevcf_lfo1(bool announce) {
 
 FLASHMEM void updatevcf_lfo2(bool announce) {
   lastStepParam = 0xFF;
-  vcf_lfo2_str = map(vcf_lfo2_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("VCF LFO2", String(vcf_lfo2_str));
+    flashToneScale("74 VCF LFO2", P_vcf_lfo2);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2647,7 +2657,7 @@ FLASHMEM void updateat_vib(bool announce) {
   at_vib_str = map(at_vib_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 1;
-    showCurrentParameterPage("AT VIB", String(at_vib_str));
+    showCurrentParameterPage("21 AFTER TOUCH VIB", String(at_vib_str));
     startParameterDisplay();
   }
   sendCustomSysEx((midiOutCh - 1), 0x1A, (uint8_t)at_vib);
@@ -2659,7 +2669,7 @@ FLASHMEM void updateat_bri(bool announce) {
   at_bri_str = map(at_bri_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 1;
-    showCurrentParameterPage("AT BRI", String(at_bri_str));
+    showCurrentParameterPage("22 AFTER TOUCH BRI", String(at_bri_str));
     startParameterDisplay();
   }
   sendCustomSysEx((midiOutCh - 1), 0x1B, (uint8_t)at_bri);
@@ -2671,7 +2681,7 @@ FLASHMEM void updateat_vol(bool announce) {
   at_vol_str = map(at_vol_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 1;
-    showCurrentParameterPage("AT VOL", String(at_vol_str));
+    showCurrentParameterPage("23 AFTER TOUCH VOL", String(at_vol_str));
     startParameterDisplay();
   }
   sendCustomSysEx((midiOutCh - 1), 0x1C, (uint8_t)at_vol);
@@ -2694,10 +2704,9 @@ static inline uint8_t map_u8(uint8_t x, uint8_t in_min, uint8_t in_max, uint8_t 
 
 FLASHMEM void updatevca_mod(bool announce) {
   lastStepParam = 0xFF;
-  vca_mod_str = map(upperSW ? upperData[P_vca_mod] : lowerData[P_vca_mod], 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("VCA LEVEL", String(vca_mod_str));
+    flashToneScale("81 VCA LEVEL", P_vca_mod);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2712,7 +2721,7 @@ FLASHMEM void updatebalance(bool announce) {
   balance_str = map(balance, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 1;
-    showCurrentParameterPage("BALANCE", String(balance_str));
+    showCurrentParameterPage("11 U/L BALANCE", String(balance_str));
     startParameterDisplay();
   }
   sendCustomSysEx((midiOutCh - 1), 0x12, balance);
@@ -2722,8 +2731,8 @@ FLASHMEM void updateportamento(bool announce) {
   lastStepParam = 0xFF;
   portamento_str = map(portamento_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
-    displayMode = 0;
-    showCurrentParameterPage("PORTAMENTO TIME", String(portamento_str));
+    displayMode = 1;
+    showCurrentParameterPage("15 PORTAMENTO TIME", String(portamento_str));
     startParameterDisplay();
   }
   sendCustomSysEx((midiOutCh - 1), 0x16, portamento);
@@ -2734,8 +2743,8 @@ FLASHMEM void updatevolume(bool announce) {
   lastStepParam = 0xFF;
   volume_str = map(volume_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
-    displayMode = 0;
-    showCurrentParameterPage("MIDI VOLUME", String(volume_str));
+    displayMode = 1;
+    showCurrentParameterPage("18 TOTAL VOLUME", String(volume_str));
     startParameterDisplay();
   }
   sendCustomSysEx((midiOutCh - 1), 0x19, volume);
@@ -2743,10 +2752,9 @@ FLASHMEM void updatevolume(bool announce) {
 
 FLASHMEM void updatetime1(bool announce) {
   lastStepParam = 0xFF;
-  time1_str = map(time1_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("ENV1 T1", String(time1_str));
+    flashToneScale("B1 ENV1 T1", P_time1);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2758,10 +2766,9 @@ FLASHMEM void updatetime1(bool announce) {
 
 FLASHMEM void updatelevel1(bool announce) {
   lastStepParam = 0xFF;
-  level1_str = map(level1_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("ENV1 L1", String(level1_str));
+    flashToneScale("B2 ENV1 L1", P_level1);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2776,7 +2783,7 @@ FLASHMEM void updatetime2(bool announce) {
   time2_str = map(time2_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("ENV1 T2", String(time2_str));
+    flashToneScale("B3 ENV1 T2", P_time2);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2788,10 +2795,9 @@ FLASHMEM void updatetime2(bool announce) {
 
 FLASHMEM void updatelevel2(bool announce) {
   lastStepParam = 0xFF;
-  level2_str = map(level2_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("ENV1 L2", String(level2_str));
+    flashToneScale("B4 ENV1 L2", P_level2);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2803,10 +2809,9 @@ FLASHMEM void updatelevel2(bool announce) {
 
 FLASHMEM void updatetime3(bool announce) {
   lastStepParam = 0xFF;
-  time3_str = map(time3_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("ENV1 T3", String(time3_str));
+    flashToneScale("B5 ENV1 T3", P_time3);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2818,10 +2823,9 @@ FLASHMEM void updatetime3(bool announce) {
 
 FLASHMEM void updatelevel3(bool announce) {
   lastStepParam = 0xFF;
-  level3_str = map(level3_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("ENV1 L3", String(level3_str));
+    flashToneScale("B6 ENV1 L3", P_level3);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2833,10 +2837,9 @@ FLASHMEM void updatelevel3(bool announce) {
 
 FLASHMEM void updatetime4(bool announce) {
   lastStepParam = 0xFF;
-  time4_str = map(time4_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("ENV1 T4", String(time4_str));
+    flashToneScale("B7 ENV1 T4", P_time4);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2859,7 +2862,9 @@ FLASHMEM void updateenv5stage_mode(bool announce) {
   if (announce && !suppressParamAnnounce) {
     if (firstTouch || changed) {
       displayMode = 0;
-      showCurrentParameterPage("ENV1 KEY FOLLOW.", env5stageModeStepToLabel(newStep));
+      showCurrentTonePage("B8 ENV1 KEY",
+                          env5stageModeStepToLabel(upperData[P_env5stage_mode]),
+                          env5stageModeStepToLabel(lowerData[P_env5stage_mode]));
       startParameterDisplay();
     }
   }
@@ -2876,10 +2881,9 @@ FLASHMEM void updateenv5stage_mode(bool announce) {
 
 FLASHMEM void updateenv2_time1(bool announce) {
   lastStepParam = 0xFF;
-  env2_time1_str = map(env2_time1_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("ENV2 T1", String(env2_time1_str));
+    flashToneScale("C1 ENV2 T1", P_env2_time1);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2891,10 +2895,9 @@ FLASHMEM void updateenv2_time1(bool announce) {
 
 FLASHMEM void updateenv2_level1(bool announce) {
   lastStepParam = 0xFF;
-  env2_level1_str = map(env2_level1_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("ENV2 L1", String(env2_level1_str));
+    flashToneScale("C2 ENV2 L1", P_env2_level1);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2906,10 +2909,9 @@ FLASHMEM void updateenv2_level1(bool announce) {
 
 FLASHMEM void updateenv2_time2(bool announce) {
   lastStepParam = 0xFF;
-  env2_time2_str = map(env2_time2_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("ENV2 T2", String(env2_time2_str));
+    flashToneScale("C3 ENV2 T2", P_env2_time2);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2921,10 +2923,9 @@ FLASHMEM void updateenv2_time2(bool announce) {
 
 FLASHMEM void updateenv2_level2(bool announce) {
   lastStepParam = 0xFF;
-  env2_level2_str = map(env2_level2_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("ENV2 L2", String(env2_level2_str));
+    flashToneScale("C4 ENV2 L2", P_env2_level2);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2936,10 +2937,9 @@ FLASHMEM void updateenv2_level2(bool announce) {
 
 FLASHMEM void updateenv2_time3(bool announce) {
   lastStepParam = 0xFF;
-  env2_time3_str = map(env2_time3_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("ENV2 T3", String(env2_time3_str));
+    flashToneScale("C5 ENV2 T3", P_env2_time3);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2951,10 +2951,9 @@ FLASHMEM void updateenv2_time3(bool announce) {
 
 FLASHMEM void updateenv2_level3(bool announce) {
   lastStepParam = 0xFF;
-  env2_level3_str = map(env2_level3_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("ENV2 L3", String(env2_level3_str));
+    flashToneScale("C6 ENV2 L3", P_env2_level3);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2966,10 +2965,9 @@ FLASHMEM void updateenv2_level3(bool announce) {
 
 FLASHMEM void updateenv2_time4(bool announce) {
   lastStepParam = 0xFF;
-  env2_time4_str = map(env2_time4_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("ENV2 T4", String(env2_time4_str));
+    flashToneScale("C7 ENV2 T4", P_env2_time4);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -2992,7 +2990,9 @@ FLASHMEM void updateenv2_env5stage_mode(bool announce) {
   if (announce && !suppressParamAnnounce) {
     if (firstTouch || changed) {
       displayMode = 0;
-      showCurrentParameterPage("ENV2 KEY FOLLOW.", env5stageModeStepToLabel(newStep));
+      showCurrentTonePage("C8 ENV2 KEY",
+                          env5stageModeStepToLabel(upperData[P_env2_5stage_mode]),
+                          env5stageModeStepToLabel(lowerData[P_env2_5stage_mode]));
       startParameterDisplay();
     }
   }
@@ -3009,10 +3009,9 @@ FLASHMEM void updateenv2_env5stage_mode(bool announce) {
 
 FLASHMEM void updateattack(bool announce) {
   lastStepParam = 0xFF;
-  attack_str = map(attack_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("ENV3 ATTACK", String(attack_str));
+    flashToneScale("D1 ENV3 ATT", P_attack);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -3024,10 +3023,9 @@ FLASHMEM void updateattack(bool announce) {
 
 FLASHMEM void updatedecay(bool announce) {
   lastStepParam = 0xFF;
-  decay_str = map(decay_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("ENV3 DECAY", String(decay_str));
+    flashToneScale("D2 ENV3 DECY", P_decay);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -3039,10 +3037,9 @@ FLASHMEM void updatedecay(bool announce) {
 
 FLASHMEM void updatesustain(bool announce) {
   lastStepParam = 0xFF;
-  sustain_str = map(sustain_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("ENV3 SUSTAIN", String(sustain_str));
+    flashToneScale("D3 ENV3 SUST", P_sustain);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -3054,10 +3051,9 @@ FLASHMEM void updatesustain(bool announce) {
 
 FLASHMEM void updaterelease(bool announce) {
   lastStepParam = 0xFF;
-  release_str = map(release_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("ENV3 RELEASE", String(release_str));
+    flashToneScale("D4 ENV3 REL", P_release);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -3080,7 +3076,9 @@ FLASHMEM void updateadsr_mode(bool announce) {
   if (announce && !suppressParamAnnounce) {
     if (firstTouch || changed) {
       displayMode = 0;
-      showCurrentParameterPage("ENV3 KEY FOLLOW.", env5stageModeStepToLabel(newStep));
+            showCurrentTonePage("D5 ENV2 KEY",
+                          env5stageModeStepToLabel(upperData[P_adsr_mode]),
+                          env5stageModeStepToLabel(lowerData[P_adsr_mode]));
       startParameterDisplay();
     }
   }
@@ -3097,10 +3095,9 @@ FLASHMEM void updateadsr_mode(bool announce) {
 
 FLASHMEM void updateenv4_attack(bool announce) {
   lastStepParam = 0xFF;
-  env4_attack_str = map(env4_attack_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("ENV4 ATTACK", String(env4_attack_str));
+    flashToneScale("E1 ENV4 ATT", P_env4_attack);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -3112,10 +3109,9 @@ FLASHMEM void updateenv4_attack(bool announce) {
 
 FLASHMEM void updateenv4_decay(bool announce) {
   lastStepParam = 0xFF;
-  env4_decay_str = map(env4_decay_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("ENV4 DECAY", String(env4_decay_str));
+    flashToneScale("E2 ENV4 DECY", P_env4_decay);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -3127,10 +3123,9 @@ FLASHMEM void updateenv4_decay(bool announce) {
 
 FLASHMEM void updateenv4_sustain(bool announce) {
   lastStepParam = 0xFF;
-  env4_sustain_str = map(env4_sustain_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("ENV4 SUSTAIN", String(env4_sustain_str));
+    flashToneScale("E3 ENV4 SUST", P_env4_sustain);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -3142,10 +3137,9 @@ FLASHMEM void updateenv4_sustain(bool announce) {
 
 FLASHMEM void updateenv4_release(bool announce) {
   lastStepParam = 0xFF;
-  env4_release_str = map(env4_release_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
-    showCurrentParameterPage("ENV3 RELEASE", String(env4_release_str));
+    flashToneScale("E4 ENV3 REL", P_env4_release);
     startParameterDisplay();
   }
   if (upperSW) {
@@ -3168,7 +3162,9 @@ FLASHMEM void updateenv4_adsr_mode(bool announce) {
   if (announce && !suppressParamAnnounce) {
     if (firstTouch || changed) {
       displayMode = 0;
-      showCurrentParameterPage("ENV4 KEY FOLLOW.", env5stageModeStepToLabel(newStep));
+                  showCurrentTonePage("E5 ENV2 KEY",
+                          env5stageModeStepToLabel(upperData[P_env4_adsr_mode]),
+                          env5stageModeStepToLabel(lowerData[P_env4_adsr_mode]));
       startParameterDisplay();
     }
   }
@@ -3200,7 +3196,7 @@ FLASHMEM void updatedualdetune(bool announce) {
 
   if (announce && !suppressParamAnnounce) {
     displayMode = 1;
-    showCurrentParameterPage("DUAL DETUNE", String(toneFinePtrs[ui]));
+    showCurrentParameterPage("12 DUAL DETUNE", String(toneFinePtrs[ui]));
     startParameterDisplay();
   }
 
@@ -3214,7 +3210,11 @@ FLASHMEM void updateunisonDetune(bool announce) {
 
   if (announce && !suppressParamAnnounce) {
     displayMode = 1;
-    showCurrentParameterPage("UNISON DET", String(toneFinePtrs[ui]));
+    if (upperSW) {
+      showCurrentParameterPage("34 UPPER UNISON DETUNE", String(toneFinePtrs[ui]));
+    } else {
+      showCurrentParameterPage("44 LOWER UNISON DETUNE", String(toneFinePtrs[ui]));
+    }
     startParameterDisplay();
   }
   if (upperSW) {
@@ -3246,12 +3246,12 @@ FLASHMEM void updateoctave_send(bool announce) {
     // Build "-24 Semitones", "0 Semitones", "+7 Semitones", etc.
     String label;
     if (shift == 0) {
-      label = "0 Semitones";
+      label = "00";
     } else {
-      label = String(shift > 0 ? "+" : "") + String(shift) + " Semitones";
+      label = String(shift > 0 ? "+" : "") + String(shift);
     }
 
-    showCurrentParameterPage(upperSW ? "UPPER SHIFT" : "LOWER SHIFT", label);
+    showCurrentParameterPage(upperSW ? "32 UP CHROMATIC SHIFT" : "42 LO CHROMATIC SHIFT", label);
     startParameterDisplay();
 
     upperChromatic = encodeChromaticShift(upperChromaticSW);
@@ -3355,7 +3355,7 @@ FLASHMEM void updatekeyMode(bool announce) {
 FLASHMEM void updatedual_button(bool announce) {
   if (announce && !suppressParamAnnounce) {
     displayMode = 1;
-    //showCurrentParameterPage("KEY MODE", "DUAL");
+    //showCurrentParameterPage("17 KEY  MODE", "DUAL");
     //startParameterDisplay();
   }
   mcp8.digitalWrite(KEY_DUAL_RED, HIGH);
@@ -3645,16 +3645,16 @@ FLASHMEM void updatebend_enable_button(bool announce) {
     displayMode = 1;
     switch (bend_enable) {
       case 0:
-        showCurrentParameterPage("BEND ENABLE", "OFF");
+        showCurrentParameterPage("38 & 48 BENDER", "OFF");
         break;
       case 1:
-        showCurrentParameterPage("BEND ENABLE", "LOWER");
+        showCurrentParameterPage("48 LOWER BENDER", "ON");
         break;
       case 2:
-        showCurrentParameterPage("BEND ENABLE", "UPPER");
+        showCurrentParameterPage("38 UPPER BENDER", "ON");
         break;
       case 3:
-        showCurrentParameterPage("BEND ENABLE", "BOTH");
+        showCurrentParameterPage("38 & 48 BENDER", "ON");
         break;
     }
     startParameterDisplay();
@@ -3691,11 +3691,11 @@ FLASHMEM void updateafter_vib_enable_button(bool announce) {
     displayMode = 1;
     switch (at_vib_sw) {
       case 0:
-        showCurrentParameterPage("AT VIB", "OFF");
+        showCurrentParameterPage("21 AFTER TOUCH VIB", "OFF");
         break;
       case 1:
         at_vib_str = map(at_vib, 0, 127, 0, 99);
-        showCurrentParameterPage("AT VIB", at_vib_str);
+        showCurrentParameterPage("21 AFTER TOUCH VIB", at_vib_str);
         break;
     }
     startParameterDisplay();
@@ -3718,11 +3718,11 @@ FLASHMEM void updateafter_bri_enable_button(bool announce) {
     displayMode = 1;
     switch (at_bri_sw) {
       case 0:
-        showCurrentParameterPage("AT BRI", "OFF");
+        showCurrentParameterPage("22 AFTER TOUCH BRI", "OFF");
         break;
       case 1:
         at_bri_str = map(at_bri, 0, 127, 0, 99);
-        showCurrentParameterPage("AT BRI", at_bri_str);
+        showCurrentParameterPage("22 AFTER TOUCH BRI", at_bri_str);
         break;
     }
     startParameterDisplay();
@@ -3744,11 +3744,11 @@ FLASHMEM void updateafter_vol_enable_button(bool announce) {
     displayMode = 1;
     switch (at_vol_sw) {
       case 0:
-        showCurrentParameterPage("AT VOL", "OFF");
+        showCurrentParameterPage("23 AFTER TOUCH VOL", "OFF");
         break;
       case 1:
         at_vol_str = map(at_vol, 0, 127, 0, 99);
-        showCurrentParameterPage("AT VOL", at_vol_str);
+        showCurrentParameterPage("23 AFTER TOUCH VOL", at_vol_str);
         break;
     }
     startParameterDisplay();
@@ -3767,1310 +3767,346 @@ FLASHMEM void updateafter_vol_enable_button(bool announce) {
 
 FLASHMEM void updatelfo1_sync(bool announce) {
   lastStepParam = 0xFF;
+  const uint8_t stored = upperSW ? upperData[P_lfo1_sync] : lowerData[P_lfo1_sync];
+
+  // --- Display ---
   if (announce && !suppressParamAnnounce) {
-    displayMode = 0;
-    switch (lfo1_sync) {
-      case 0:
-        showCurrentParameterPage("LFO1 SYNC", "OFF");
-        break;
-      case 32:
-        showCurrentParameterPage("LFO1 SYNC", "ON");
-        break;
-      case 64:
-        showCurrentParameterPage("LFO1 SYNC", "KEY");
-        break;
-    }
+    displayMode = DM_TONE_FLASH;
+    flashToneStep("95 LFO1 SYNC", P_lfo1_sync, toneSyncValues, 0x20, 2);
     startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_lfo1_sync]) {
-      case 0:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x3F, 0x00);
-        mcp1.digitalWrite(LFO1_SYNC_RED, LOW);
-        mcp1.digitalWrite(LFO1_SYNC_GREEN, LOW);
-        break;
 
-      case 32:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x3F, 0x20);
-        mcp1.digitalWrite(LFO1_SYNC_RED, HIGH);
-        mcp1.digitalWrite(LFO1_SYNC_GREEN, LOW);
-        break;
+  // --- SYX send ---
+  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+  sendToneSysEx(prefix, (midiOutCh - 1), 0x3F, stored);
 
-      case 64:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x3F, 0x40);
-        mcp1.digitalWrite(LFO1_SYNC_RED, LOW);
-        mcp1.digitalWrite(LFO1_SYNC_GREEN, HIGH);
-        break;
-    }
-  } else {
-    switch (lowerData[P_lfo1_sync]) {
-      case 0:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x3F, 0x00);
-        mcp1.digitalWrite(LFO1_SYNC_RED, LOW);
-        mcp1.digitalWrite(LFO1_SYNC_GREEN, LOW);
-        break;
-
-      case 32:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x3F, 0x20);
-        mcp1.digitalWrite(LFO1_SYNC_RED, HIGH);
-        mcp1.digitalWrite(LFO1_SYNC_GREEN, LOW);
-        break;
-
-      case 64:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x3F, 0x40);
-        mcp1.digitalWrite(LFO1_SYNC_RED, LOW);
-        mcp1.digitalWrite(LFO1_SYNC_GREEN, HIGH);
-        break;
-    }
-  }
+  // --- LED update ---
+  bool red   = (stored == 0x20);   // ON  -> red
+  bool green = (stored == 0x40);   // KEY -> green
+  mcp1.digitalWrite(LFO1_SYNC_RED,   red   ? HIGH : LOW);
+  mcp1.digitalWrite(LFO1_SYNC_GREEN, green ? HIGH : LOW);
 }
 
 FLASHMEM void updatelfo2_sync(bool announce) {
   lastStepParam = 0xFF;
+  const uint8_t stored = upperSW ? upperData[P_lfo2_sync] : lowerData[P_lfo2_sync];
+
+  // --- Display ---
   if (announce && !suppressParamAnnounce) {
-    displayMode = 0;
-    switch (lfo2_sync) {
-      case 0:
-        showCurrentParameterPage("LFO2 SYNC", "OFF");
-        break;
-      case 32:
-        showCurrentParameterPage("LFO2 SYNC", "ON");
-        break;
-      case 64:
-        showCurrentParameterPage("LFO2 SYNC", "KEY");
-        break;
-    }
+    displayMode = DM_TONE_FLASH;
+    flashToneStep("A5 LFO2 SYNC", P_lfo2_sync, toneSyncValues, 0x20, 2);
     startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_lfo2_sync]) {
-      case 0:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x44, 0x00);
-        mcp2.digitalWrite(LFO2_SYNC_RED, LOW);
-        mcp2.digitalWrite(LFO2_SYNC_GREEN, LOW);
-        break;
 
-      case 32:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x44, 0x20);
-        mcp2.digitalWrite(LFO2_SYNC_RED, HIGH);
-        mcp2.digitalWrite(LFO2_SYNC_GREEN, LOW);
-        break;
+  // --- SYX send ---
+  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+  sendToneSysEx(prefix, (midiOutCh - 1), 0x44, stored);
 
-      case 64:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x44, 0x40);
-        mcp2.digitalWrite(LFO2_SYNC_RED, LOW);
-        mcp2.digitalWrite(LFO2_SYNC_GREEN, HIGH);
-        break;
-    }
-  } else {
-    switch (lowerData[P_lfo2_sync]) {
-      case 0:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x44, 0x00);
-        mcp2.digitalWrite(LFO2_SYNC_RED, LOW);
-        mcp2.digitalWrite(LFO2_SYNC_GREEN, LOW);
-        break;
-
-      case 32:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x44, 0x20);
-        mcp2.digitalWrite(LFO2_SYNC_RED, HIGH);
-        mcp2.digitalWrite(LFO2_SYNC_GREEN, LOW);
-        break;
-
-      case 64:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x44, 0x40);
-        mcp2.digitalWrite(LFO2_SYNC_RED, LOW);
-        mcp2.digitalWrite(LFO2_SYNC_GREEN, HIGH);
-        break;
-    }
-  }
+  // --- LED update ---
+  bool red   = (stored == 0x20);   // ON  -> red
+  bool green = (stored == 0x40);   // KEY -> green
+  mcp2.digitalWrite(LFO2_SYNC_RED,   red   ? HIGH : LOW);
+  mcp2.digitalWrite(LFO2_SYNC_GREEN, green ? HIGH : LOW);
 }
 
 FLASHMEM void updatedco1_PWM_dyn(bool announce) {
   lastStepParam = 0xFF;
+  const uint8_t stored = upperSW ? upperData[P_dco1_PWM_dyn] : lowerData[P_dco1_PWM_dyn];
 
+  // --- Display ---
   if (announce && !suppressParamAnnounce) {
-    displayMode = 0;
-    switch (dco1_PWM_dyn) {
-      case 0:
-        showCurrentParameterPage("DCO1 PWM", "OFF");
-        break;
-      case 32:
-        showCurrentParameterPage("DCO1 PWM", "DYN1");
-        break;
-      case 64:
-        showCurrentParameterPage("DCO1 PWM", "DYN2");
-        break;
-      case 96:
-        showCurrentParameterPage("DCO1 PWM", "DYN3");
-        break;
-    }
+    displayMode = DM_TONE_FLASH;
+    flashToneStep("45 PWM1 DYNA", P_dco1_PWM_dyn, toneDynValues, 0x20, 3);
     startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_dco1_PWM_dyn]) {
-      case 0:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x23, 0x00);
-        mcp1.digitalWrite(DCO1_PWM_DYN_RED, LOW);
-        mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, LOW);
-        break;
-      case 32:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x23, 0x20);
-        mcp1.digitalWrite(DCO1_PWM_DYN_RED, HIGH);
-        mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, LOW);
-        break;
-      case 64:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x23, 0x40);
-        mcp1.digitalWrite(DCO1_PWM_DYN_RED, LOW);
-        mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x23, 0x60);
-        mcp1.digitalWrite(DCO1_PWM_DYN_RED, HIGH);
-        mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, HIGH);
-        break;
-    }
-  } else {
-    switch (lowerData[P_dco1_PWM_dyn]) {
-      case 0:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x23, 0x00);
-        mcp1.digitalWrite(DCO1_PWM_DYN_RED, LOW);
-        mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, LOW);
-        break;
-      case 32:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x23, 0x20);
-        mcp1.digitalWrite(DCO1_PWM_DYN_RED, HIGH);
-        mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, LOW);
-        break;
-      case 64:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x23, 0x40);
-        mcp1.digitalWrite(DCO1_PWM_DYN_RED, LOW);
-        mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x23, 0x60);
-        mcp1.digitalWrite(DCO1_PWM_DYN_RED, HIGH);
-        mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, HIGH);
-        break;
-    }
-  }
+
+  // --- SYX send ---
+  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+  sendToneSysEx(prefix, (midiOutCh - 1), 0x23, stored);
+
+  // --- LED update (binary-coded dual LED) ---
+  int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
+  mcp1.digitalWrite(DCO1_PWM_DYN_RED,   (state & 1) ? HIGH : LOW);
+  mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, (state & 2) ? HIGH : LOW);
 }
 
 FLASHMEM void updatedco2_PWM_dyn(bool announce) {
   lastStepParam = 0xFF;
+  const uint8_t stored = upperSW ? upperData[P_dco2_PWM_dyn] : lowerData[P_dco2_PWM_dyn];
 
+  // --- Display ---
   if (announce && !suppressParamAnnounce) {
-    displayMode = 0;
-    switch (dco2_PWM_dyn) {
-      case 0:
-        showCurrentParameterPage("DCO2 PWM", "OFF");
-        break;
-      case 32:
-        showCurrentParameterPage("DCO2 PWM", "DYN1");
-        break;
-      case 64:
-        showCurrentParameterPage("DCO2 PWM", "DYN2");
-        break;
-      case 96:
-        showCurrentParameterPage("DCO2 PWM", "DYN3");
-        break;
-    }
+    displayMode = DM_TONE_FLASH;
+    flashToneStep("55 PWM2 DYNA", P_dco2_PWM_dyn, toneDynValues, 0x20, 3);
     startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_dco2_PWM_dyn]) {
-      case 0:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x29, 0x00);
-        mcp2.digitalWrite(DCO2_PWM_DYN_RED, LOW);
-        mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, LOW);
-        break;
-      case 32:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x29, 0x20);
-        mcp2.digitalWrite(DCO2_PWM_DYN_RED, HIGH);
-        mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, LOW);
-        break;
-      case 64:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x29, 0x40);
-        mcp2.digitalWrite(DCO2_PWM_DYN_RED, LOW);
-        mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x29, 0x60);
-        mcp2.digitalWrite(DCO2_PWM_DYN_RED, HIGH);
-        mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, HIGH);
-        break;
-    }
-  } else {
-    switch (lowerData[P_dco2_PWM_dyn]) {
-      case 0:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x29, 0x00);
-        mcp2.digitalWrite(DCO2_PWM_DYN_RED, LOW);
-        mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, LOW);
-        break;
-      case 32:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x29, 0x20);
-        mcp2.digitalWrite(DCO2_PWM_DYN_RED, HIGH);
-        mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, LOW);
-        break;
-      case 64:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x29, 0x40);
-        mcp2.digitalWrite(DCO2_PWM_DYN_RED, LOW);
-        mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x29, 0x60);
-        mcp2.digitalWrite(DCO2_PWM_DYN_RED, HIGH);
-        mcp2.digitalWrite(DCO2_PWM_DYN_GREEN, HIGH);
-        break;
-    }
-  }
+
+  // --- SYX send ---
+  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+  sendToneSysEx(prefix, (midiOutCh - 1), 0x29, stored);
+
+  // --- LED update (binary-coded dual LED) ---
+  int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
+  mcp2.digitalWrite(DCO1_PWM_DYN_RED,   (state & 1) ? HIGH : LOW);
+  mcp2.digitalWrite(DCO1_PWM_DYN_GREEN, (state & 2) ? HIGH : LOW);
 }
 
 FLASHMEM void updatedco1_PWM_env_source(bool announce) {
   lastStepParam = 0xFF;
+  const uint8_t stored = upperSW ? upperData[P_dco1_PWM_env_source] : lowerData[P_dco1_PWM_env_source];
 
+  // --- Display ---
   if (announce && !suppressParamAnnounce) {
-    displayMode = 0;
-    switch (dco1_PWM_env_source) {
-      case 0:
-        showCurrentParameterPage("DCO1 PWM", "ENV1-");
-        break;
-      case 16:
-        showCurrentParameterPage("DCO1 PWM", "ENV1+");
-        break;
-      case 32:
-        showCurrentParameterPage("DCO1 PWM", "ENV2-");
-        break;
-      case 48:
-        showCurrentParameterPage("DCO1 PWM", "ENV2+");
-        break;
-      case 64:
-        showCurrentParameterPage("DCO1 PWM", "ENV3-");
-        break;
-      case 80:
-        showCurrentParameterPage("DCO1 PWM", "ENV3+");
-        break;
-      case 96:
-        showCurrentParameterPage("DCO1 PWM", "ENV4-");
-        break;
-      case 112:
-        showCurrentParameterPage("DCO1 PWM", "ENV4+");
-        break;
-    }
+    displayMode = DM_TONE_FLASH;
+    flashToneStep("46 PWM1 MODE", P_dco1_PWM_env_source, toneEnvValues, 0x10, 7);
     startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_dco1_PWM_env_source]) {
-      case 0:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x24, 0x00);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
-        mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
-        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
-        break;
-      case 16:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x24, 0x10);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
-        mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
-        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
-        break;
-      case 32:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x24, 0x20);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
-        mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
-        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
-        break;
-      case 48:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x24, 0x30);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
-        mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
-        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
-        break;
-      case 64:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x24, 0x40);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
-        mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
-        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
-        break;
-      case 80:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x24, 0x50);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
-        mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
-        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x24, 0x60);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
-        mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
-        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
-        break;
-      case 112:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x24, 0x70);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
-        mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
-        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
-        break;
-    }
-  } else {
-    switch (lowerData[P_dco1_PWM_env_source]) {
-      case 0:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x24, 0x00);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
-        mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
-        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
-        break;
-      case 16:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x24, 0x10);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
-        mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
-        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
-        break;
-      case 32:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x24, 0x20);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
-        mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
-        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
-        break;
-      case 48:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x24, 0x30);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, LOW);
-        mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
-        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
-        break;
-      case 64:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x24, 0x40);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
-        mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
-        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
-        break;
-      case 80:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x24, 0x50);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, LOW);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
-        mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
-        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x24, 0x60);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
-        mcp1.digitalWrite(DCO1_ENV_POL_RED, HIGH);
-        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, LOW);
-        break;
-      case 112:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x24, 0x70);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, HIGH);
-        mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, HIGH);
-        mcp1.digitalWrite(DCO1_ENV_POL_RED, LOW);
-        mcp1.digitalWrite(DCO1_ENV_POL_GREEN, HIGH);
-        break;
-    }
-  }
+
+  // --- SYX send ---
+  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+  sendToneSysEx(prefix, (midiOutCh - 1), 0x24, stored);
+
+  // --- LED update ---
+  int state = unpackStep(stored, 0x10, 7);        // 0..7
+  int env   = (state >> 1) & 3;                   // 0..3 (ENV1..ENV4)
+  bool pos  =  state & 1;                         // 1 = positive polarity
+
+  // SOURCE: binary-coded (env 0..3 -> bits on red/green)
+  mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED,   (env & 1) ? HIGH : LOW);
+  mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, (env & 2) ? HIGH : LOW);
+
+  // POLARITY: exactly one on at a time
+  mcp1.digitalWrite(DCO1_ENV_POL_RED,   pos ? LOW  : HIGH);
+  mcp1.digitalWrite(DCO1_ENV_POL_GREEN, pos ? HIGH : LOW);
 }
 
 FLASHMEM void updatedco2_PWM_env_source(bool announce) {
   lastStepParam = 0xFF;
+  const uint8_t stored = upperSW ? upperData[P_dco2_PWM_env_source] : lowerData[P_dco2_PWM_env_source];
 
+  // --- Display ---
   if (announce && !suppressParamAnnounce) {
-    displayMode = 0;
-    switch (dco2_PWM_env_source) {
-      case 0:
-        showCurrentParameterPage("DCO2 PWM", "ENV1-");
-        break;
-      case 16:
-        showCurrentParameterPage("DCO2 PWM", "ENV1+");
-        break;
-      case 32:
-        showCurrentParameterPage("DCO2 PWM", "ENV2-");
-        break;
-      case 48:
-        showCurrentParameterPage("DCO2 PWM", "ENV2+");
-        break;
-      case 64:
-        showCurrentParameterPage("DCO2 PWM", "ENV3-");
-        break;
-      case 80:
-        showCurrentParameterPage("DCO2 PWM", "ENV3+");
-        break;
-      case 96:
-        showCurrentParameterPage("DCO2 PWM", "ENV4-");
-        break;
-      case 112:
-        showCurrentParameterPage("DCO2 PWM", "ENV4+");
-        break;
-    }
+    displayMode = DM_TONE_FLASH;
+    flashToneStep("56 PWM2 MODE", P_dco2_PWM_env_source, toneEnvValues, 0x10, 7);
     startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_dco2_PWM_env_source]) {
-      case 0:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x2A, 0x00);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
-        mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
-        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
-        break;
-      case 16:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x2A, 0x10);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
-        mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
-        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
-        break;
-      case 32:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x2A, 0x20);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
-        mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
-        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
-        break;
-      case 48:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x2A, 0x30);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
-        mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
-        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
-        break;
-      case 64:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x2A, 0x40);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
-        mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
-        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
-        break;
-      case 80:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x2A, 0x50);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
-        mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
-        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x2A, 0x60);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
-        mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
-        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
-        break;
-      case 112:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x2A, 0x70);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
-        mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
-        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
-        break;
-    }
-  } else {
-    switch (lowerData[P_dco2_PWM_env_source]) {
-      case 0:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x2A, 0x00);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
-        mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
-        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
-        break;
-      case 16:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x2A, 0x10);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
-        mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
-        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
-        break;
-      case 32:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x2A, 0x20);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
-        mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
-        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
-        break;
-      case 48:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x2A, 0x30);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, LOW);
-        mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
-        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
-        break;
-      case 64:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x2A, 0x40);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
-        mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
-        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
-        break;
-      case 80:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x2A, 0x50);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, LOW);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
-        mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
-        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x2A, 0x60);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
-        mcp2.digitalWrite(DCO2_ENV_POL_RED, HIGH);
-        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, LOW);
-        break;
-      case 112:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x2A, 0x70);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, HIGH);
-        mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, HIGH);
-        mcp2.digitalWrite(DCO2_ENV_POL_RED, LOW);
-        mcp2.digitalWrite(DCO2_ENV_POL_GREEN, HIGH);
-        break;
-    }
-  }
+
+  // --- SYX send ---
+  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+  sendToneSysEx(prefix, (midiOutCh - 1), 0x2A, stored);
+
+  // --- LED update ---
+  int state = unpackStep(stored, 0x10, 7);        // 0..7
+  int env   = (state >> 1) & 3;                   // 0..3 (ENV1..ENV4)
+  bool pos  =  state & 1;                         // 1 = positive polarity
+
+  // SOURCE: binary-coded (env 0..3 -> bits on red/green)
+  mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED,   (env & 1) ? HIGH : LOW);
+  mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, (env & 2) ? HIGH : LOW);
+
+  // POLARITY: exactly one on at a time
+  mcp2.digitalWrite(DCO2_ENV_POL_RED,   pos ? LOW  : HIGH);
+  mcp2.digitalWrite(DCO2_ENV_POL_GREEN, pos ? HIGH : LOW);
 }
 
 FLASHMEM void updatedco1_PWM_lfo_source(bool announce) {
   lastStepParam = 0xFF;
+  const uint8_t stored = upperSW ? upperData[P_dco1_PWM_lfo_source] : lowerData[P_dco1_PWM_lfo_source];
 
+  // --- Display ---
   if (announce && !suppressParamAnnounce) {
-    displayMode = 0;
-    switch (dco1_PWM_lfo_source) {
-      case 0:
-        showCurrentParameterPage("DCO1 PWM", "LFO1-");
-        break;
-      case 32:
-        showCurrentParameterPage("DCO1 PWM", "LFO1+");
-        break;
-      case 64:
-        showCurrentParameterPage("DCO1 PWM", "LFO2-");
-        break;
-      case 96:
-        showCurrentParameterPage("DCO1 PWM", "LFO2+");
-        break;
-    }
+    displayMode = DM_TONE_FLASH;
+    flashToneStep("44 PWM1 LFO", P_dco1_PWM_lfo_source, toneDcoLFOValues, 0x20, 3);
     startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_dco1_PWM_lfo_source]) {
-      case 0:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x22, 0x00);
-        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, LOW);
-        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, LOW);
-        break;
-      case 32:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x22, 0x20);
-        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, LOW);
-        break;
-      case 64:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x22, 0x40);
-        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, LOW);
-        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x22, 0x60);
-        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, HIGH);
-        break;
-    }
-  } else {
-    switch (lowerData[P_dco1_PWM_lfo_source]) {
-      case 0:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x22, 0x00);
-        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, LOW);
-        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, LOW);
-        break;
-      case 32:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x22, 0x20);
-        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, LOW);
-        break;
-      case 64:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x22, 0x40);
-        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, LOW);
-        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x22, 0x60);
-        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, HIGH);
-        break;
-    }
-  }
+
+  // --- SYX send ---
+  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+  sendToneSysEx(prefix, (midiOutCh - 1), 0x22, stored);
+
+  // --- LED update (binary-coded dual LED) ---
+  int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
+  mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED,   (state & 1) ? HIGH : LOW);
+  mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, (state & 2) ? HIGH : LOW);
 }
 
 FLASHMEM void updatedco2_PWM_lfo_source(bool announce) {
   lastStepParam = 0xFF;
+  const uint8_t stored = upperSW ? upperData[P_dco2_PWM_lfo_source] : lowerData[P_dco2_PWM_lfo_source];
 
+  // --- Display ---
   if (announce && !suppressParamAnnounce) {
-    displayMode = 0;
-    switch (dco2_PWM_lfo_source) {
-      case 0:
-        showCurrentParameterPage("DCO2 PWM", "LFO1-");
-        break;
-      case 32:
-        showCurrentParameterPage("DCO2 PWM", "LFO1+");
-        break;
-      case 64:
-        showCurrentParameterPage("DCO2 PWM", "LFO2-");
-        break;
-      case 96:
-        showCurrentParameterPage("DCO2 PWM", "LFO2+");
-        break;
-    }
+    displayMode = DM_TONE_FLASH;
+    flashToneStep("54 PWM2 LFO", P_dco2_PWM_lfo_source, toneDcoLFOValues, 0x20, 3);
     startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_dco2_PWM_lfo_source]) {
-      case 0:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x28, 0x00);
-        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, LOW);
-        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, LOW);
-        break;
-      case 32:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x28, 0x20);
-        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, HIGH);
-        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, LOW);
-        break;
-      case 64:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x28, 0x40);
-        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, LOW);
-        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x28, 0x60);
-        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, HIGH);
-        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, HIGH);
-        break;
-    }
-  } else {
-    switch (lowerData[P_dco2_PWM_lfo_source]) {
-      case 0:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x28, 0x00);
-        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, LOW);
-        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, LOW);
-        break;
-      case 32:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x28, 0x20);
-        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, HIGH);
-        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, LOW);
-        break;
-      case 64:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x28, 0x40);
-        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, LOW);
-        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x28, 0x60);
-        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, HIGH);
-        mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, HIGH);
-        break;
-    }
-  }
+
+  // --- SYX send ---
+  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+  sendToneSysEx(prefix, (midiOutCh - 1), 0x28, stored);
+
+  // --- LED update (binary-coded dual LED) ---
+  int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
+  mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED,   (state & 1) ? HIGH : LOW);
+  mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, (state & 2) ? HIGH : LOW);
 }
 
 FLASHMEM void updatedco1_pitch_dyn(bool announce) {
   lastStepParam = 0xFF;
+  const uint8_t stored = upperSW ? upperData[P_dco1_pitch_dyn] : lowerData[P_dco1_pitch_dyn];
+
+  // --- Display ---
   if (announce && !suppressParamAnnounce) {
-    displayMode = 0;
-    switch (dco1_pitch_dyn) {
-      case 0:
-        showCurrentParameterPage("DCO1 PITCH", "OFF");
-        break;
-      case 32:
-        showCurrentParameterPage("DCO1 PITCH", "DYN1");
-        break;
-      case 64:
-        showCurrentParameterPage("DCO1 PITCH", "DYN2");
-        break;
-      case 96:
-        showCurrentParameterPage("DCO1 PITCH", "DYN3");
-        break;
-    }
+    displayMode = DM_TONE_FLASH;
+    flashToneStep("17 DCO1 DYNA", P_dco1_pitch_dyn, toneDynValues, 0x20, 3);
     startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_dco1_pitch_dyn]) {
-      case 0:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x11, 0x00);
-        mcp4.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
-        break;
-      case 32:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x11, 0x20);
-        mcp4.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
-        break;
-      case 64:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x11, 0x40);
-        mcp4.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x11, 0x60);
-        mcp4.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
-        break;
-    }
-  } else {
-    switch (lowerData[P_dco1_pitch_dyn]) {
-      case 0:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x11, 0x00);
-        mcp4.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
-        break;
-      case 32:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x11, 0x20);
-        mcp4.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
-        break;
-      case 64:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x11, 0x40);
-        mcp4.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x11, 0x60);
-        mcp4.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
-        break;
-    }
-  }
+
+  // --- SYX send ---
+  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+  sendToneSysEx(prefix, (midiOutCh - 1), 0x11, stored);
+
+  // --- LED update (binary-coded dual LED) ---
+  int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
+  mcp4.digitalWrite(DCO1_PITCH_DYN_RED,   (state & 1) ? HIGH : LOW);
+  mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, (state & 2) ? HIGH : LOW);
 }
 
 FLASHMEM void updatedco2_pitch_dyn(bool announce) {
   lastStepParam = 0xFF;
+  const uint8_t stored = upperSW ? upperData[P_dco2_pitch_dyn] : lowerData[P_dco2_pitch_dyn];
+
+  // --- Display ---
   if (announce && !suppressParamAnnounce) {
-    displayMode = 0;
-    switch (dco2_pitch_dyn) {
-      case 0:
-        showCurrentParameterPage("DCO2 PITCH", "OFF");
-        break;
-      case 32:
-        showCurrentParameterPage("DCO2 PITCH", "DYN1");
-        break;
-      case 64:
-        showCurrentParameterPage("DCO2 PITCH", "DYN2");
-        break;
-      case 96:
-        showCurrentParameterPage("DCO2 PITCH", "DYN3");
-        break;
-    }
+    displayMode = DM_TONE_FLASH;
+    flashToneStep("27 DCO2 DYNA", P_dco2_pitch_dyn, toneDynValues, 0x20, 3);
     startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_dco2_pitch_dyn]) {
-      case 0:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x19, 0x00);
-        mcp3.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
-        mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
-        break;
-      case 32:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x19, 0x20);
-        mcp3.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
-        mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
-        break;
-      case 64:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x19, 0x40);
-        mcp3.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
-        mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x19, 0x60);
-        mcp3.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
-        mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
-        break;
-    }
-  } else {
-    switch (lowerData[P_dco2_pitch_dyn]) {
-      case 0:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x19, 0x00);
-        mcp3.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
-        mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
-        break;
-      case 32:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x19, 0x20);
-        mcp3.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
-        mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, LOW);
-        break;
-      case 64:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x19, 0x40);
-        mcp3.digitalWrite(DCO1_PITCH_DYN_RED, LOW);
-        mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x19, 0x60);
-        mcp3.digitalWrite(DCO1_PITCH_DYN_RED, HIGH);
-        mcp3.digitalWrite(DCO1_PITCH_DYN_GREEN, HIGH);
-        break;
-    }
-  }
+
+  // --- SYX send ---
+  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+  sendToneSysEx(prefix, (midiOutCh - 1), 0x19, stored);
+
+  // --- LED update (binary-coded dual LED) ---
+  int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
+  mcp3.digitalWrite(DCO2_PITCH_DYN_RED,   (state & 1) ? HIGH : LOW);
+  mcp3.digitalWrite(DCO2_PITCH_DYN_GREEN, (state & 2) ? HIGH : LOW);
 }
 
 FLASHMEM void updatedco1_pitch_lfo_source(bool announce) {
   lastStepParam = 0xFF;
+  const uint8_t stored = upperSW ? upperData[P_dco1_pitch_lfo_source] : lowerData[P_dco1_pitch_lfo_source];
+
+  // --- Display ---
   if (announce && !suppressParamAnnounce) {
-    displayMode = 0;
-    switch (dco1_pitch_lfo_source) {
-      case 0:
-        showCurrentParameterPage("DCO1 PITCH", "LFO1-");
-        break;
-      case 32:
-        showCurrentParameterPage("DCO1 PITCH", "LFO1+");
-        break;
-      case 64:
-        showCurrentParameterPage("DCO1 PITCH", "LFO2-");
-        break;
-      case 96:
-        showCurrentParameterPage("DCO1 PITCH", "LFO2+");
-        break;
-    }
+    displayMode = DM_TONE_FLASH;
+    flashToneStep("15 DCO1 LFO", P_dco1_pitch_lfo_source, toneDcoLFOValues, 0x20, 3);
     startParameterDisplay();
   }
 
-  if (upperSW) {
-    switch (upperData[P_dco1_pitch_lfo_source]) {
-      case 0:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x0F, 0x00);
-        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, LOW);
-        break;
-      case 32:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x0F, 0x20);
-        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, LOW);
-        break;
-      case 64:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x0F, 0x40);
-        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x0F, 0x60);
-        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, HIGH);
-        break;
-    }
-  } else {
-    switch (lowerData[P_dco1_pitch_lfo_source]) {
-      case 0:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x0F, 0x00);
-        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, LOW);
-        break;
-      case 32:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x0F, 0x20);
-        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, LOW);
-        break;
-      case 64:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x0F, 0x40);
-        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x0F, 0x60);
-        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, HIGH);
-        break;
-    }
-  }
+  // --- SYX send ---
+  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+  sendToneSysEx(prefix, (midiOutCh - 1), 0x0F, stored);
+
+  // --- LED update (binary-coded dual LED) ---
+  int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
+  mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED,   (state & 1) ? HIGH : LOW);
+  mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, (state & 2) ? HIGH : LOW);
 }
 
 FLASHMEM void updatedco2_pitch_lfo_source(bool announce) {
   lastStepParam = 0xFF;
+  const uint8_t stored = upperSW ? upperData[P_dco2_pitch_lfo_source] : lowerData[P_dco2_pitch_lfo_source];
+
+  // --- Display ---
   if (announce && !suppressParamAnnounce) {
-    displayMode = 0;
-    switch (dco2_pitch_lfo_source) {
-      case 0:
-        showCurrentParameterPage("DCO2 PITCH", "LFO1-");
-        break;
-      case 32:
-        showCurrentParameterPage("DCO2 PITCH", "LFO1+");
-        break;
-      case 64:
-        showCurrentParameterPage("DCO2 PITCH", "LFO2-");
-        break;
-      case 96:
-        showCurrentParameterPage("DCO2 PITCH", "LFO2+");
-        break;
-    }
+    displayMode = DM_TONE_FLASH;
+    flashToneStep("25 DCO2 LFO", P_dco2_pitch_lfo_source, toneDcoLFOValues, 0x20, 3);
     startParameterDisplay();
   }
 
-  if (upperSW) {
-    switch (upperData[P_dco2_pitch_lfo_source]) {
-      case 0:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x17, 0x00);
-        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, LOW);
-        break;
-      case 32:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x17, 0x20);
-        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, LOW);
-        break;
-      case 64:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x17, 0x40);
-        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x17, 0x60);
-        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, HIGH);
-        break;
-    }
-  } else {
-    switch (lowerData[P_dco2_pitch_lfo_source]) {
-      case 0:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x17, 0x00);
-        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, LOW);
-        break;
-      case 32:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x17, 0x20);
-        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, LOW);
-        break;
-      case 64:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x17, 0x40);
-        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x17, 0x60);
-        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, HIGH);
-        break;
-    }
-  }
+  // --- SYX send ---
+  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+  sendToneSysEx(prefix, (midiOutCh - 1), 0x17, stored);
+
+  // --- LED update (binary-coded dual LED) ---
+  int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
+  mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED,   (state & 1) ? HIGH : LOW);
+  mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, (state & 2) ? HIGH : LOW);
 }
 
 FLASHMEM void updatedco1_pitch_env_source(bool announce) {
   lastStepParam = 0xFF;
+  const uint8_t stored = upperSW ? upperData[P_dco1_pitch_env_source] : lowerData[P_dco1_pitch_env_source];
+
+  // --- Display ---
   if (announce && !suppressParamAnnounce) {
-    displayMode = 0;
-    switch (dco1_pitch_env_source) {
-      case 0:
-        showCurrentParameterPage("DCO1 PITCH", "ENV1-");
-        break;
-      case 16:
-        showCurrentParameterPage("DCO1 PITCH", "ENV1+");
-        break;
-      case 32:
-        showCurrentParameterPage("DCO1 PITCH", "ENV2-");
-        break;
-      case 48:
-        showCurrentParameterPage("DCO1 PITCH", "ENV2+");
-        break;
-      case 64:
-        showCurrentParameterPage("DCO1 PITCH", "ENV3-");
-        break;
-      case 80:
-        showCurrentParameterPage("DCO1 PITCH", "ENV3+");
-        break;
-      case 96:
-        showCurrentParameterPage("DCO1 PITCH", "ENV4-");
-        break;
-      case 112:
-        showCurrentParameterPage("DCO1 PITCH", "ENV4+");
-        break;
-    }
+    displayMode = DM_TONE_FLASH;
+    flashToneStep("18 DCO1 MODE", P_dco1_pitch_env_source, toneEnvValues, 0x10, 7);
     startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_dco1_pitch_env_source]) {
-      case 0:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x12, 0x00);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
-        break;
-      case 16:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x12, 0x10);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
-        break;
-      case 32:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x12, 0x20);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
-        break;
-      case 48:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x12, 0x30);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
-        break;
-      case 64:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x12, 0x40);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
-        break;
-      case 80:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x12, 0x50);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x12, 0x60);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
-        break;
-      case 112:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x12, 0x70);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
-        break;
-    }
-  } else {
-    switch (lowerData[P_dco1_pitch_env_source]) {
-      case 0:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x12, 0x00);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
-        break;
-      case 16:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x12, 0x10);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
-        break;
-      case 32:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x12, 0x20);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
-        break;
-      case 48:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x12, 0x30);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
-        break;
-      case 64:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x12, 0x40);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
-        break;
-      case 80:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x12, 0x50);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x12, 0x60);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, LOW);
-        break;
-      case 112:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x12, 0x70);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, HIGH);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, LOW);
-        mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, HIGH);
-        break;
-    }
-  }
+
+  // --- SYX send ---
+  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+  sendToneSysEx(prefix, (midiOutCh - 1), 0x12, stored);
+
+  // --- LED update ---
+  int state = unpackStep(stored, 0x10, 7);        // 0..7
+  int env   = (state >> 1) & 3;                   // 0..3 (ENV1..ENV4)
+  bool pos  =  state & 1;                         // 1 = positive polarity
+
+  // SOURCE: binary-coded (env 0..3 -> bits on red/green)
+  mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED,   (env & 1) ? HIGH : LOW);
+  mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, (env & 2) ? HIGH : LOW);
+
+  // POLARITY: exactly one on at a time
+  mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED,   pos ? LOW  : HIGH);
+  mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, pos ? HIGH : LOW);
 }
 
 FLASHMEM void updatedco2_pitch_env_source(bool announce) {
   lastStepParam = 0xFF;
+  const uint8_t stored = upperSW ? upperData[P_dco2_pitch_env_source] : lowerData[P_dco2_pitch_env_source];
+
+  // --- Display ---
   if (announce && !suppressParamAnnounce) {
-    displayMode = 0;
-    switch (dco2_pitch_env_source) {
-      case 0:
-        showCurrentParameterPage("DCO2 PITCH", "ENV1-");
-        break;
-      case 16:
-        showCurrentParameterPage("DCO2 PITCH", "ENV1+");
-        break;
-      case 32:
-        showCurrentParameterPage("DCO2 PITCH", "ENV2-");
-        break;
-      case 48:
-        showCurrentParameterPage("DCO2 PITCH", "ENV2+");
-        break;
-      case 64:
-        showCurrentParameterPage("DCO2 PITCH", "ENV3-");
-        break;
-      case 80:
-        showCurrentParameterPage("DCO2 PITCH", "ENV3+");
-        break;
-      case 96:
-        showCurrentParameterPage("DCO2 PITCH", "ENV4-");
-        break;
-      case 112:
-        showCurrentParameterPage("DCO2 PITCH", "ENV4+");
-        break;
-    }
+    displayMode = DM_TONE_FLASH;
+    flashToneStep("28 DCO2 MODE", P_dco2_pitch_env_source, toneEnvValues, 0x10, 7);
     startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_dco2_pitch_env_source]) {
-      case 0:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x1A, 0x00);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
-        break;
-      case 16:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x1A, 0x10);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
-        break;
-      case 32:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x1A, 0x20);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
-        break;
-      case 48:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x1A, 0x30);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
-        break;
-      case 64:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x1A, 0x40);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
-        break;
-      case 80:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x1A, 0x50);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x1A, 0x60);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
-        break;
-      case 112:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x1A, 0x70);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
-        break;
-    }
-  } else {
-    switch (lowerData[P_dco2_pitch_env_source]) {
-      case 0:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x1A, 0x00);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
-        break;
-      case 16:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x1A, 0x10);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
-        break;
-      case 32:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x1A, 0x20);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
-        break;
-      case 48:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x1A, 0x30);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
-        break;
-      case 64:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x1A, 0x40);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
-        break;
-      case 80:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x1A, 0x50);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x1A, 0x60);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, LOW);
-        break;
-      case 112:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x1A, 0x70);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, HIGH);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, LOW);
-        mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, HIGH);
-        break;
-    }
-  }
+
+  // --- SYX send ---
+  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+  sendToneSysEx(prefix, (midiOutCh - 1), 0x1A, stored);
+
+  // --- LED update ---
+  int state = unpackStep(stored, 0x10, 7);        // 0..7
+  int env   = (state >> 1) & 3;                   // 0..3 (ENV1..ENV4)
+  bool pos  =  state & 1;                         // 1 = positive polarity
+
+  // SOURCE: binary-coded (env 0..3 -> bits on red/green)
+  mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED,   (env & 1) ? HIGH : LOW);
+  mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, (env & 2) ? HIGH : LOW);
+
+  // POLARITY: exactly one on at a time
+  mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED,   pos ? LOW  : HIGH);
+  mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, pos ? HIGH : LOW);
 }
 
 FLASHMEM void updateeditMode(bool announce) {
   if (announce && !suppressParamAnnounce) {
-    displayMode = 2;
-    switch (editMode) {
-      case 0:
-        showCurrentParameterPage("EDITING", "LOWER TONE");
-        break;
-      case 1:
-        showCurrentParameterPage("EDITING", "UPPER TONE");
-        break;
-      case 2:
-        showCurrentParameterPage("EDITING", "BOTH TONES");
-        break;
-    }
+    // displayMode = 2;
+    // switch (editMode) {
+    //   case 0:
+    //     showCurrentParameterPage("EDITING", "LOWER TONE");
+    //     break;
+    //   case 1:
+    //     showCurrentParameterPage("EDITING", "UPPER TONE");
+    //     break;
+    //   case 2:
+    //     showCurrentParameterPage("EDITING", "BOTH TONES");
+    //     break;
+    // }
     //startParameterDisplay();
   }
   switch (editMode) {
@@ -5097,646 +4133,176 @@ FLASHMEM void updateeditMode(bool announce) {
                      currentTonePart);
     updateScreen();
   }
+
+  if (state == PARAMETER && displayMode == DM_TONE_FLASH) {
+    renderToneFlashPage();
+    startParameterDisplay();  // reset timeout so user can see the change
+  }
+
 }
 
 FLASHMEM void updatedco_mix_env_source(bool announce) {
   lastStepParam = 0xFF;
+  const uint8_t stored = upperSW ? upperData[P_dco_mix_env_source] : lowerData[P_dco_mix_env_source];
+
+  // --- Display ---
   if (announce && !suppressParamAnnounce) {
-    displayMode = 0;
-    switch (dco_mix_env_source) {
-      case 0:
-        showCurrentParameterPage("DCO MIX", "ENV1-");
-        break;
-      case 16:
-        showCurrentParameterPage("DCO MIX", "ENV1+");
-        break;
-      case 32:
-        showCurrentParameterPage("DCO MIX", "ENV2-");
-        break;
-      case 48:
-        showCurrentParameterPage("DCO MIX", "ENV2+");
-        break;
-      case 64:
-        showCurrentParameterPage("DCO MIX", "ENV3-");
-        break;
-      case 80:
-        showCurrentParameterPage("DCO MIX", "ENV3+");
-        break;
-      case 96:
-        showCurrentParameterPage("DCO MIX", "ENV4-");
-        break;
-      case 112:
-        showCurrentParameterPage("DCO MIX", "ENV4+");
-        break;
-    }
+    displayMode = DM_TONE_FLASH;
+    flashToneStep("65 MIX MODE", P_dco_mix_env_source, toneEnvValues, 0x10, 7);
     startParameterDisplay();
   }
 
-  if (upperSW) {
-    switch (upperData[P_dco_mix_env_source]) {
-      case 0:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x2F, 0x00);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
-        break;
-      case 16:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x2F, 0x10);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
-        break;
-      case 32:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x2F, 0x20);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
-        break;
-      case 48:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x2F, 0x30);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
-        break;
-      case 64:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x2F, 0x40);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
-        break;
-      case 80:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x2F, 0x50);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x2F, 0x60);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
-        break;
-      case 112:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x2F, 0x70);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
-        break;
-    }
-  } else {
-    switch (lowerData[P_dco_mix_env_source]) {
-      case 0:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x2F, 0x00);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
-        break;
-      case 16:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x2F, 0x10);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
-        break;
-      case 32:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x2F, 0x20);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
-        break;
-      case 40:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x2F, 0x30);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, LOW);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
-        break;
-      case 64:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x2F, 0x40);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
-        break;
-      case 80:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x2F, 0x50);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, LOW);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x2F, 0x60);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, HIGH);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, LOW);
-        break;
-      case 112:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x2F, 0x70);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, HIGH);
-        mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, HIGH);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, LOW);
-        mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, HIGH);
-        break;
-    }
-  }
+  // --- SYX send ---
+  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+  sendToneSysEx(prefix, (midiOutCh - 1), 0x2F, stored);
+
+  // --- LED update ---
+  int state = unpackStep(stored, 0x10, 7);        // 0..7
+  int env   = (state >> 1) & 3;                   // 0..3 (ENV1..ENV4)
+  bool pos  =  state & 1;                         // 1 = positive polarity
+
+  // SOURCE: binary-coded (env 0..3 -> bits on red/green)
+  mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED,   (env & 1) ? HIGH : LOW);
+  mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, (env & 2) ? HIGH : LOW);
+
+  // POLARITY: exactly one on at a time
+  mcp5.digitalWrite(DCO_MIX_ENV_POL_RED,   pos ? LOW  : HIGH);
+  mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, pos ? HIGH : LOW);
 }
 
 FLASHMEM void updatedco_mix_dyn(bool announce) {
   lastStepParam = 0xFF;
+  const uint8_t stored = upperSW ? upperData[P_dco_mix_dyn] : lowerData[P_dco_mix_dyn];
 
+  // --- Display ---
   if (announce && !suppressParamAnnounce) {
-    displayMode = 0;
-    switch (dco_mix_dyn) {
-      case 0:
-        showCurrentParameterPage("DCO MIX", "OFF");
-        break;
-      case 32:
-        showCurrentParameterPage("DCO MIX", "DYN1");
-        break;
-      case 64:
-        showCurrentParameterPage("DCO MIX", "DYN2");
-        break;
-      case 96:
-        showCurrentParameterPage("DCO MIX", "DYN3");
-        break;
-    }
+    displayMode = DM_TONE_FLASH;
+    flashToneStep("64 MIX DYNA", P_dco_mix_dyn, toneDynValues, 0x20, 3);
     startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_dco_mix_dyn]) {
-      case 0:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x2E, 0x00);
-        mcp5.digitalWrite(DCO_MIX_DYN_RED, LOW);
-        mcp5.digitalWrite(DCO_MIX_DYN_GREEN, LOW);
-        break;
-      case 32:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x2E, 0x20);
-        mcp5.digitalWrite(DCO_MIX_DYN_RED, HIGH);
-        mcp5.digitalWrite(DCO_MIX_DYN_GREEN, LOW);
-        break;
-      case 64:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x2E, 0x40);
-        mcp5.digitalWrite(DCO_MIX_DYN_RED, LOW);
-        mcp5.digitalWrite(DCO_MIX_DYN_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x2E, 0x60);
-        mcp5.digitalWrite(DCO_MIX_DYN_RED, HIGH);
-        mcp5.digitalWrite(DCO_MIX_DYN_GREEN, HIGH);
-        break;
-    }
-  } else {
-    switch (lowerData[P_dco_mix_dyn]) {
-      case 0:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x2E, 0x00);
-        mcp5.digitalWrite(DCO_MIX_DYN_RED, LOW);
-        mcp5.digitalWrite(DCO_MIX_DYN_GREEN, LOW);
-        break;
-      case 32:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x2E, 0x20);
-        mcp5.digitalWrite(DCO_MIX_DYN_RED, HIGH);
-        mcp5.digitalWrite(DCO_MIX_DYN_GREEN, LOW);
-        break;
-      case 64:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x2E, 0x40);
-        mcp5.digitalWrite(DCO_MIX_DYN_RED, LOW);
-        mcp5.digitalWrite(DCO_MIX_DYN_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x2E, 0x60);
-        mcp5.digitalWrite(DCO_MIX_DYN_RED, HIGH);
-        mcp5.digitalWrite(DCO_MIX_DYN_GREEN, HIGH);
-        break;
-    }
-  }
+
+  // --- SYX send ---
+  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+  sendToneSysEx(prefix, (midiOutCh - 1), 0x2E, stored);
+
+  // --- LED update (binary-coded dual LED) ---
+  int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
+  mcp5.digitalWrite(DCO_MIX_DYN_RED,   (state & 1) ? HIGH : LOW);
+  mcp5.digitalWrite(DCO_MIX_DYN_GREEN, (state & 2) ? HIGH : LOW);
 }
 
 FLASHMEM void updatevcf_env_source(bool announce) {
   lastStepParam = 0xFF;
+  const uint8_t stored = upperSW ? upperData[P_vcf_env_source] : lowerData[P_vcf_env_source];
+
+  // --- Display ---
   if (announce && !suppressParamAnnounce) {
-    displayMode = 0;
-    switch (vcf_env_source) {
-      case 0:
-        showCurrentParameterPage("VCF EG", "ENV1-");
-        break;
-      case 16:
-        showCurrentParameterPage("VCF EG", "ENV1+");
-        break;
-      case 32:
-        showCurrentParameterPage("VCF EG", "ENV2-");
-        break;
-      case 48:
-        showCurrentParameterPage("VCF EG", "ENV2+");
-        break;
-      case 64:
-        showCurrentParameterPage("VCF EG", "ENV3-");
-        break;
-      case 80:
-        showCurrentParameterPage("VCF EG", "ENV3+");
-        break;
-      case 96:
-        showCurrentParameterPage("VCF EG", "ENV4-");
-        break;
-      case 112:
-        showCurrentParameterPage("VCF EG", "ENV4+");
-        break;
-    }
+    displayMode = DM_TONE_FLASH;
+    flashToneStep("78 VCF MODE", P_vcf_env_source, toneEnvValues, 0x10, 7);
     startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_vcf_env_source]) {
-      case 0:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x37, 0x00);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
-        mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
-        mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
-        break;
-      case 16:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x37, 0x10);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
-        mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
-        mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
-        break;
-      case 32:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x37, 0x20);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
-        mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
-        mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
-        break;
-      case 48:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x37, 0x30);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
-        mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
-        mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
-        break;
-      case 64:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x37, 0x40);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
-        mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
-        mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
-        break;
-      case 80:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x37, 0x50);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
-        mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
-        mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x37, 0x60);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
-        mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
-        mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
-        break;
-      case 112:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x37, 0x70);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
-        mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
-        mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
-        break;
-    }
-  } else {
-    switch (lowerData[P_vcf_env_source]) {
-      case 0:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x37, 0x00);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
-        mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
-        mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
-        break;
-      case 16:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x37, 0x10);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
-        mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
-        mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
-        break;
-      case 32:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x37, 0x20);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
-        mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
-        mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
-        break;
-      case 48:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x37, 0x30);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, LOW);
-        mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
-        mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
-        break;
-      case 64:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x37, 0x40);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
-        mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
-        mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
-        break;
-      case 80:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x37, 0x50);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, LOW);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
-        mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
-        mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x37, 0x60);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
-        mcp5.digitalWrite(VCF_ENV_POL_RED, HIGH);
-        mcp5.digitalWrite(VCF_ENV_POL_GREEN, LOW);
-        break;
-      case 112:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x37, 0x70);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_RED, HIGH);
-        mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, HIGH);
-        mcp5.digitalWrite(VCF_ENV_POL_RED, LOW);
-        mcp5.digitalWrite(VCF_ENV_POL_GREEN, HIGH);
-        break;
-    }
-  }
+
+  // --- SYX send ---
+  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+  sendToneSysEx(prefix, (midiOutCh - 1), 0x37, stored);
+
+  // --- LED update ---
+  int state = unpackStep(stored, 0x10, 7);        // 0..7
+  int env   = (state >> 1) & 3;                   // 0..3 (ENV1..ENV4)
+  bool pos  =  state & 1;                         // 1 = positive polarity
+
+  // SOURCE: binary-coded (env 0..3 -> bits on red/green)
+  mcp5.digitalWrite(VCF_ENV_SOURCE_RED,   (env & 1) ? HIGH : LOW);
+  mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, (env & 2) ? HIGH : LOW);
+
+  // POLARITY: exactly one on at a time
+  mcp5.digitalWrite(VCF_ENV_POL_RED,   pos ? LOW  : HIGH);
+  mcp5.digitalWrite(VCF_ENV_POL_GREEN, pos ? HIGH : LOW);
 }
 
 FLASHMEM void updatevcf_dyn(bool announce) {
   lastStepParam = 0xFF;
+  const uint8_t stored = upperSW ? upperData[P_vcf_dyn] : lowerData[P_vcf_dyn];
+
+  // --- Display ---
   if (announce && !suppressParamAnnounce) {
-    displayMode = 0;
-    switch (vcf_dyn) {
-      case 0:
-        showCurrentParameterPage("VCF ENV", "OFF");
-        break;
-      case 32:
-        showCurrentParameterPage("VCF ENV", "DYN1");
-        break;
-      case 64:
-        showCurrentParameterPage("VCF ENV", "DYN2");
-        break;
-      case 96:
-        showCurrentParameterPage("VCF ENV", "DYN3");
-        break;
-    }
+    displayMode = DM_TONE_FLASH;
+    flashToneStep("77 VCF DYNA", P_vcf_dyn, toneDynValues, 0x20, 3);
     startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_vcf_dyn]) {
-      case 0:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x36, 0x00);
-        mcp6.digitalWrite(VCF_DYN_RED, LOW);
-        mcp6.digitalWrite(VCF_DYN_GREEN, LOW);
-        break;
-      case 32:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x36, 0x20);
-        mcp6.digitalWrite(VCF_DYN_RED, HIGH);
-        mcp6.digitalWrite(VCF_DYN_GREEN, LOW);
-        break;
-      case 64:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x36, 0x40);
-        mcp6.digitalWrite(VCF_DYN_RED, LOW);
-        mcp6.digitalWrite(VCF_DYN_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x36, 0x60);
-        mcp6.digitalWrite(VCF_DYN_RED, HIGH);
-        mcp6.digitalWrite(VCF_DYN_GREEN, HIGH);
-        break;
-    }
-  } else {
-    switch (lowerData[P_vcf_dyn]) {
-      case 0:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x36, 0x00);
-        mcp6.digitalWrite(VCF_DYN_RED, LOW);
-        mcp6.digitalWrite(VCF_DYN_GREEN, LOW);
-        break;
-      case 32:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x36, 0x20);
-        mcp6.digitalWrite(VCF_DYN_RED, HIGH);
-        mcp6.digitalWrite(VCF_DYN_GREEN, LOW);
-        break;
-      case 64:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x36, 0x40);
-        mcp6.digitalWrite(VCF_DYN_RED, LOW);
-        mcp6.digitalWrite(VCF_DYN_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x36, 0x60);
-        mcp6.digitalWrite(VCF_DYN_RED, HIGH);
-        mcp6.digitalWrite(VCF_DYN_GREEN, HIGH);
-        break;
-    }
-  }
+
+  // --- SYX send ---
+  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+  sendToneSysEx(prefix, (midiOutCh - 1), 0x36, stored);
+
+  // --- LED update (binary-coded dual LED) ---
+  int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
+  mcp6.digitalWrite(VCF_DYN_RED,   (state & 1) ? HIGH : LOW);
+  mcp6.digitalWrite(VCF_DYN_GREEN, (state & 2) ? HIGH : LOW);
 }
 
 FLASHMEM void updatevca_env_source(bool announce) {
   lastStepParam = 0xFF;
+  const uint8_t stored = upperSW ? upperData[P_vca_env_source] : lowerData[P_vca_env_source];
+
+  // --- Display ---
   if (announce && !suppressParamAnnounce) {
-    displayMode = 0;
-    switch (vca_env_source) {
-      case 0:
-        showCurrentParameterPage("VCA EG", "ENV1");
-        break;
-      case 32:
-        showCurrentParameterPage("VCA EG", "ENV2");
-        break;
-      case 64:
-        showCurrentParameterPage("VCA EG", "ENV3");
-        break;
-      case 96:
-        showCurrentParameterPage("VCA EG", "ENV4");
-        break;
-    }
+    displayMode = DM_TONE_FLASH;
+    flashToneStep("82 VCA MODE", P_vca_env_source, toneVcaEnvValues, 0x20, 3);
     startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_vca_env_source]) {
-      case 0:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x39, 0x00);
-        mcp6.digitalWrite(VCA_ENV_SOURCE_RED, LOW);
-        mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, LOW);
-        break;
-      case 32:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x39, 0x20);
-        mcp6.digitalWrite(VCA_ENV_SOURCE_RED, HIGH);
-        mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, LOW);
-        break;
-      case 64:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x39, 0x40);
-        mcp6.digitalWrite(VCA_ENV_SOURCE_RED, LOW);
-        mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x39, 0x60);
-        mcp6.digitalWrite(VCA_ENV_SOURCE_RED, HIGH);
-        mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, HIGH);
-        break;
-    }
-  } else {
-    switch (lowerData[P_vca_env_source]) {
-      case 0:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x39, 0x00);
-        mcp6.digitalWrite(VCA_ENV_SOURCE_RED, LOW);
-        mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, LOW);
-        break;
-      case 32:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x39, 0x20);
-        mcp6.digitalWrite(VCA_ENV_SOURCE_RED, HIGH);
-        mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, LOW);
-        break;
-      case 64:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x39, 0x40);
-        mcp6.digitalWrite(VCA_ENV_SOURCE_RED, LOW);
-        mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x39, 0x60);
-        mcp6.digitalWrite(VCA_ENV_SOURCE_RED, HIGH);
-        mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, HIGH);
-        break;
-    }
-  }
+
+  // --- SYX send ---
+  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+  sendToneSysEx(prefix, (midiOutCh - 1), 0x39, stored);
+
+  // --- LED update (binary-coded dual LED) ---
+  int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
+  mcp6.digitalWrite(VCA_ENV_SOURCE_RED,   (state & 1) ? HIGH : LOW);
+  mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, (state & 2) ? HIGH : LOW);
 }
 
 FLASHMEM void updatevca_dyn(bool announce) {
+  lastStepParam = 0xFF;
+  const uint8_t stored = upperSW ? upperData[P_vca_dyn] : lowerData[P_vca_dyn];
+
+  // --- Display ---
   if (announce && !suppressParamAnnounce) {
-    displayMode = 0;
-    switch (vca_dyn) {
-      case 0:
-        showCurrentParameterPage("VCA ENV", "OFF");
-        break;
-      case 32:
-        showCurrentParameterPage("VCA ENV", "DYN1");
-        break;
-      case 64:
-        showCurrentParameterPage("VCA ENV", "DYN2");
-        break;
-      case 96:
-        showCurrentParameterPage("VCA ENV", "DYN3");
-        break;
-    }
+    displayMode = DM_TONE_FLASH;
+    flashToneStep("83 VCA DYNA", P_vca_dyn, toneDynValues, 0x20, 3);
     startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_vca_dyn]) {
-      case 0:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x3A, 0x00);
-        mcp6.digitalWrite(VCA_DYN_RED, LOW);
-        mcp6.digitalWrite(VCA_DYN_GREEN, LOW);
-        break;
-      case 32:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x3A, 0x20);
-        mcp6.digitalWrite(VCA_DYN_RED, HIGH);
-        mcp6.digitalWrite(VCA_DYN_GREEN, LOW);
-        break;
-      case 64:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x3A, 0x40);
-        mcp6.digitalWrite(VCA_DYN_RED, LOW);
-        mcp6.digitalWrite(VCA_DYN_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x3A, 0x60);
-        mcp6.digitalWrite(VCA_DYN_RED, HIGH);
-        mcp6.digitalWrite(VCA_DYN_GREEN, HIGH);
-        break;
-    }
-  } else {
-    switch (lowerData[P_vca_dyn]) {
-      case 0:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x3A, 0x00);
-        mcp6.digitalWrite(VCA_DYN_RED, LOW);
-        mcp6.digitalWrite(VCA_DYN_GREEN, LOW);
-        break;
-      case 32:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x3A, 0x20);
-        mcp6.digitalWrite(VCA_DYN_RED, HIGH);
-        mcp6.digitalWrite(VCA_DYN_GREEN, LOW);
-        break;
-      case 64:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x3A, 0x40);
-        mcp6.digitalWrite(VCA_DYN_RED, LOW);
-        mcp6.digitalWrite(VCA_DYN_GREEN, HIGH);
-        break;
-      case 96:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x3A, 0x60);
-        mcp6.digitalWrite(VCA_DYN_RED, HIGH);
-        mcp6.digitalWrite(VCA_DYN_GREEN, HIGH);
-        break;
-    }
-  }
+
+  // --- SYX send ---
+  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+  sendToneSysEx(prefix, (midiOutCh - 1), 0x3A, stored);
+
+  // --- LED update (binary-coded dual LED) ---
+  int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
+  mcp6.digitalWrite(VCA_DYN_RED,   (state & 1) ? HIGH : LOW);
+  mcp6.digitalWrite(VCA_DYN_GREEN, (state & 2) ? HIGH : LOW);
 }
 
 FLASHMEM void updatechorus(bool announce) {
   lastStepParam = 0xFF;
+  const uint8_t stored = upperSW ? upperData[P_chorus] : lowerData[P_chorus];
 
+  // --- Display ---
   if (announce && !suppressParamAnnounce) {
-    displayMode = 0;
-    switch (chorus) {
-      case 0:
-        showCurrentParameterPage("CHORUS", "OFF");
-        break;
-      case 32:
-        showCurrentParameterPage("CHORUS", "1");
-        break;
-      case 64:
-        showCurrentParameterPage("CHORUS", "2");
-        break;
-    }
+    displayMode = DM_TONE_FLASH;
+    flashToneStep("34 CHORUS", P_chorus, ChorusValues, 0x20, 2);
     startParameterDisplay();
   }
-  if (upperSW) {
-    switch (upperData[P_chorus]) {
-      case 0:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x1E, 0x00);
-        mcp6.digitalWrite(CHORUS_SELECT_RED, LOW);
-        mcp6.digitalWrite(CHORUS_SELECT_GREEN, LOW);
-        break;
-      case 32:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x1E, 0x20);
-        mcp6.digitalWrite(CHORUS_SELECT_RED, HIGH);
-        mcp6.digitalWrite(CHORUS_SELECT_GREEN, LOW);
-        break;
-      case 64:
-        sendToneSysEx(kBoardUpperPrefix, (midiOutCh - 1), 0x1E, 0x40);
-        mcp6.digitalWrite(CHORUS_SELECT_RED, LOW);
-        mcp6.digitalWrite(CHORUS_SELECT_GREEN, HIGH);
-        break;
-    }
-  } else {
-    switch (lowerData[P_chorus]) {
-      case 0:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x1E, 0x00);
-        mcp6.digitalWrite(CHORUS_SELECT_RED, LOW);
-        mcp6.digitalWrite(CHORUS_SELECT_GREEN, LOW);
-        break;
-      case 32:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x1E, 0x20);
-        mcp6.digitalWrite(CHORUS_SELECT_RED, HIGH);
-        mcp6.digitalWrite(CHORUS_SELECT_GREEN, LOW);
-        break;
-      case 64:
-        sendToneSysEx(kBoardLowerPrefix, (midiOutCh - 1), 0x1E, 0x40);
-        mcp6.digitalWrite(CHORUS_SELECT_RED, LOW);
-        mcp6.digitalWrite(CHORUS_SELECT_GREEN, HIGH);
-        break;
-    }
-  }
+
+  // --- SYX send ---
+  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+  sendToneSysEx(prefix, (midiOutCh - 1), 0x1E, stored);
+
+  // --- LED update ---
+  bool red   = (stored == 0x20);   // ON  -> red
+  bool green = (stored == 0x40);   // KEY -> green
+  mcp6.digitalWrite(CHORUS_SELECT_RED,   red   ? HIGH : LOW);
+  mcp6.digitalWrite(CHORUS_SELECT_GREEN, green ? HIGH : LOW);
 }
 
 FLASHMEM void updateportamento_sw(bool announce) {
@@ -5744,16 +4310,16 @@ FLASHMEM void updateportamento_sw(bool announce) {
     displayMode = 1;
     switch (portamento_sw) {
       case 0:
-        showCurrentParameterPage("PORTAMENTO", "OFF");
+        showCurrentParameterPage("37 & 47 PORTAMENTO", "OFF");
         break;
       case 1:
-        showCurrentParameterPage("PORTAMENTO", "LOWER");
+        showCurrentParameterPage("47 LOWER PORTAMENTO", "ON");
         break;
       case 2:
-        showCurrentParameterPage("PORTAMENTO", "UPPER");
+        showCurrentParameterPage("37 UPPER PORTAMENTO", "ON");
         break;
       case 3:
-        showCurrentParameterPage("PORTAMENTO", "BOTH");
+        showCurrentParameterPage("37 & 47 PORTAMENTO", "ON");
         break;
     }
     startParameterDisplay();
@@ -8578,7 +7144,6 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case NAME_BUTTON:
       if (!released) {
-
       }
       break;
 

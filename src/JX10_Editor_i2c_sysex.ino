@@ -1822,8 +1822,8 @@ void myControlChange(byte channel, byte control, int value) {
           break;
 
         case 2:
-          upperPortamento_SW = 0;
-          lowerPortamento_SW = 1;
+          upperPortamento_SW = 1;
+          lowerPortamento_SW = 0;
           break;
 
         case 3:
@@ -1911,6 +1911,14 @@ FLASHMEM void updatemod_lfo(bool announce) {
   }
 }
 
+FLASHMEM void updateuppermod_lfo(bool announce) {
+  sendCustomSysEx((midiOutCh - 1), 0x22, upperLFOModDepth);
+}
+
+FLASHMEM void updatelowermod_lfo(bool announce) {
+  sendCustomSysEx((midiOutCh - 1), 0x2B, lowerLFOModDepth);
+}
+
 FLASHMEM void updatebend_range(bool announce) {
 
   const uint8_t newStep = static_cast<uint8_t>(map(bend_range, 0, 127, 0, 4));
@@ -1950,6 +1958,31 @@ FLASHMEM void updatechase(bool announce) {
   // chase time
   sendCustomSysEx((midiOutCh - 1), 0x31, chaseTime);
   // chase play
+  sendCustomSysEx((midiOutCh - 1), 0x32, chasePlay);
+  switch (chasePlay) {
+    case 0:
+      mcp10.digitalWrite(CHASE_LED_RED, LOW);
+      break;
+
+    case 1:
+      mcp10.digitalWrite(CHASE_LED_RED, HIGH);
+      break;
+  }
+}
+
+FLASHMEM void updatechaseLevel(bool announce) {
+  sendCustomSysEx((midiOutCh - 1), 0x2F, chaseLevel);
+}
+
+FLASHMEM void updatechaseMode(bool announce) {
+  sendCustomSysEx((midiOutCh - 1), 0x30, chaseMode);
+}
+
+FLASHMEM void updatechaseTime(bool announce) {
+  sendCustomSysEx((midiOutCh - 1), 0x31, chaseTime);
+}
+
+FLASHMEM void updatechasePlay(bool announce) {
   sendCustomSysEx((midiOutCh - 1), 0x32, chasePlay);
   switch (chasePlay) {
     case 0:
@@ -3139,6 +3172,14 @@ FLASHMEM void updateunisonDetune(bool announce) {
   }
 }
 
+FLASHMEM void updateupperunisonDetune(bool announce) {
+  sendCustomSysEx((midiOutCh - 1), 0x20, upperUnisonDetune);
+}
+
+FLASHMEM void updatelowerunisonDetune(bool announce) {
+  sendCustomSysEx((midiOutCh - 1), 0x29, lowerUnisonDetune);
+}
+
 // // Buttons
 
 // Encode a signed semitone shift (-24..+24) to the MKS-70 byte value.
@@ -3169,8 +3210,8 @@ FLASHMEM void updateoctave_send(bool announce) {
     showCurrentParameterPage(upperSW ? "32 UP CHROMATIC SHIFT" : "42 LO CHROMATIC SHIFT", label);
     startParameterDisplay();
 
-    upperChromatic = encodeChromaticShift(upperChromaticSW);
-    lowerChromatic = encodeChromaticShift(lowerChromaticSW);
+  upperChromatic = encodeChromaticShift(upperChromaticSW);
+  lowerChromatic = encodeChromaticShift(lowerChromaticSW);
   }
 
   switch (keyMode) {
@@ -3187,20 +3228,31 @@ FLASHMEM void updateoctave_send(bool announce) {
 
     case 1:
       sendCustomSysEx((midiOutCh - 1), 0x1E, upperChromatic);
-      sendCustomSysEx((midiOutCh - 1), 0x27, lowerChromatic);
       break;
 
     case 2:
-      sendCustomSysEx((midiOutCh - 1), 0x1E, lowerChromatic);
-      sendCustomSysEx((midiOutCh - 1), 0x27, upperChromatic);
+      sendCustomSysEx((midiOutCh - 1), 0x27, lowerChromatic);
       break;
   }
 }
 
-FLASHMEM void updatesplitPoints(bool announce) {
+FLASHMEM void updateupperchromaticshift() {
+  //upperChromatic = encodeChromaticShift(upperChromatic);
+  sendCustomSysEx((midiOutCh - 1), 0x1E, upperChromatic);
+}
+
+FLASHMEM void updatelowerchromaticshift() {
+  //lowerChromatic = encodeChromaticShift(lowerChromatic);
+  sendCustomSysEx((midiOutCh - 1), 0x27, lowerChromatic);
+}
+
+FLASHMEM void updateuppersplitPoints(bool announce) {
   // upper
   sendCustomSysEx((midiOutCh - 1), 0x14, upperSplitPoint);
 
+}
+
+FLASHMEM void updatelowersplitPoints(bool announce) {
   // lower
   sendCustomSysEx((midiOutCh - 1), 0x15, lowerSplitPoint);
 }
@@ -3300,7 +3352,6 @@ FLASHMEM void updatedual_button(bool announce) {
   allNotesOff();
   sendCustomSysEx((midiOutCh - 1), 0x18, 0x00);
   sendCustomSysEx((midiOutCh - 1), 0x33, 0x00);
-  updatedualdetune(0);
 }
 
 FLASHMEM void updatesplit_button(bool announce) {
@@ -3325,16 +3376,15 @@ FLASHMEM void updatesplit_button(bool announce) {
   allNotesOff();
   sendCustomSysEx((midiOutCh - 1), 0x18, 0x01);
   sendCustomSysEx((midiOutCh - 1), 0x33, 0x00);
-  updatedualdetune(0);
 }
 
 FLASHMEM void updatesingle_button(bool announce) {
   if (announce && !suppressParamAnnounce) {
     displayMode = 1;
     if (!single_button) {
-      //showCurrentParameterPage("KEY MODE", "SINGLE LOWER");
+      //showCurrentParameterPage("KEY MODE", "LO WHOLE");
     } else {
-      //showCurrentParameterPage("KEY MODE", "SINGLE UPPER");
+      //showCurrentParameterPage("KEY MODE", "UP WHOLE");
     }
     //startParameterDisplay();
   }
@@ -3368,7 +3418,6 @@ FLASHMEM void updatesingle_button(bool announce) {
     sendCustomSysEx((midiOutCh - 1), 0x18, 0x03);
     sendCustomSysEx((midiOutCh - 1), 0x33, 0x00);
   }
-  updatedualdetune(0);
 }
 
 FLASHMEM void updatespecial_button(bool announce) {
@@ -3418,7 +3467,6 @@ FLASHMEM void updatespecial_button(bool announce) {
     sendCustomSysEx((midiOutCh - 1), 0x18, 0x00);
     sendCustomSysEx((midiOutCh - 1), 0x33, 0x02);
   }
-  updatedualdetune(0);
 }
 
 // Assigner buttons
@@ -4218,6 +4266,30 @@ FLASHMEM void updatechorus(bool announce) {
   bool green = (stored == 0x40);   // KEY -> green
   mcp6.digitalWrite(CHORUS_SELECT_RED,   red   ? HIGH : LOW);
   mcp6.digitalWrite(CHORUS_SELECT_GREEN, green ? HIGH : LOW);
+}
+
+FLASHMEM void updateupperHold() {
+  switch (holdManualUpper) {
+    case 0:
+      sendCustomSysEx((midiOutCh - 1), 0x21, 0x00);
+      break;
+
+    case 1:
+      sendCustomSysEx((midiOutCh - 1), 0x21, 0x7F);
+    break;
+  }
+}
+
+FLASHMEM void updatelowerHold() {
+  switch (holdManualLower) {
+    case 0:
+      sendCustomSysEx((midiOutCh - 1), 0x2A, 0x00);
+      break;
+
+    case 1:
+      sendCustomSysEx((midiOutCh - 1), 0x2A, 0x7F);
+    break;
+  }
 }
 
 FLASHMEM void updateportamento_sw(bool announce) {
@@ -6325,7 +6397,8 @@ void updatePerformanceData() {
   updatekeyMode(0);
   updateassignMode(0);
   updateoctave_send(0);
-  updatesplitPoints(0);
+  updateuppersplitPoints(0);
+  updatelowersplitPoints(0);
   updateat_vib(0);
   updateat_bri(0);
   updateat_vol(0);

@@ -161,7 +161,7 @@ static const char *patchBendRangeValues[] = { "2", "3", "4", "7", "12", "\0" };
 // Table per MKS-70 spec. Adjust labels if your conversion table differs.
 // ─────────────────────────────────────────────
 static const char *patchKeyModeValues[] = {
-  "DUAL", "WHOLE-U", "WHOLE-L", "SPLIT", "X-FADE", "T-VOICE", "\0"
+  "DUAL", "UP WHOLE", "LO WHOLE", "SPLIT", "T-VOICE", "X-FADE", "\0"
 };
 
 // ─────────────────────────────────────────────
@@ -267,6 +267,36 @@ int idxChaseMode();
 int idxChaseTime();
 int idxChasePlay();
 
+void updatekeyMode(bool announce);
+void updateassignMode(bool announce);
+void updateupperchromaticshift();
+void updatelowerchromaticshift();
+void updateuppersplitPoints(bool announce);
+void updatelowersplitPoints(bool announce);
+void updateat_vib(bool announce);
+void updateat_bri(bool announce);
+void updateat_vol(bool announce);
+void updatebalance(bool announce);
+void updatevolume(bool announce);
+void updateportamento(bool announce);
+void updatedualdetune(bool announce);
+void updateupperunisonDetune(bool announce);
+void updatelowerunisonDetune(bool announce);
+void updatebend_enable_button(bool announce);
+void updatebend_range(bool announce);
+void updateuppermod_lfo(bool announce);
+void updatelowermod_lfo(bool announce);
+void updateupperHold();
+void updatelowerHold();
+void updateafter_vib_enable_button(bool announce);
+void updateafter_bri_enable_button(bool announce);
+void updateafter_vol_enable_button(bool announce);
+void updateportamento_sw(bool announce);
+void updatechaseLevel(bool announce);
+void updatechaseMode(bool announce);
+void updatechaseTime(bool announce);
+void updatechasePlay(bool announce);
+
 // ============================================================================
 // Handlers — each writes to the live global, then yields so main.ino
 // can send to hardware.  The TODO comments mark the exact spot.
@@ -275,13 +305,13 @@ int idxChasePlay();
 // -------- 12H U/L Balance --------
 void patchBalance(int index, const char *value) {
   balance = packScaleP(index, 100);
-  // TODO: send balance to voice boards (you already have a balance-send path)
+  updatebalance(0);
 }
 int idxBalance() { return unpackScaleP(balance, 100); }
 
 void patchDualDetune(int index, const char *value) {
   dualdetune = packSplitDetune(index);
-  // TODO: send dual detune
+  updatedualdetune(0);
 }
 int idxDualDetune() { return unpackSplitDetune(dualdetune); }
 
@@ -291,7 +321,7 @@ void patchUpperSplitPoint(int index, const char *value) {
   // MKS-70 splits are stored in a single splitPoint byte in your code.
   // If you need upper/lower split separately, add a second variable.
   upperSplitPoint = (byte)index;
-  // TODO: send split point
+  updateuppersplitPoints(0);
 }
 int idxUpperSplitPoint() { return upperSplitPoint & 0x7F; }
 
@@ -299,36 +329,33 @@ int idxUpperSplitPoint() { return upperSplitPoint & 0x7F; }
 void patchLowerSplitPoint(int index, const char *value) {
   lowerSplitPoint = (byte)index;  // placeholder — rename/rewire if you have a
                              // dedicated lower-split variable
-  // TODO: send lower split point
+  updatelowersplitPoints(0);
 }
 int idxLowerSplitPoint() { return lowerSplitPoint & 0x7F; }
 
 // -------- 16H Portamento Time --------
 void patchPortamentoTime(int index, const char *value) {
   portamento = packScaleP(index, 100);
-  // TODO: send portamento time
+  updateportamento(0);
 }
 int idxPortamentoTime() { return unpackScaleP(portamento, 100); }
 
 // -------- 17H Bend Range (+ 34H 12-semi flag) --------
 void patchBendRange(int index, const char *value) {
-  // index 0..3 → steps stored 0x00/0x20/0x40/0x60, 12-semi flag = 0
-  // index 4    → 12 semitones: store raw 0x60 but also set 12-semi flag
-  bend_range = index;
-  // TODO: send bend range (including the 34H flag byte when index == 4)
+  static const uint8_t bendRangeStored[5] = { 0, 32, 64, 96, 127 };
+  if (index < 0) index = 0;
+  if (index > 4) index = 4;
+  bend_range = bendRangeStored[index];
+  updatebend_range(0);
 }
 int idxBendRange() {
-  // If you store bend_range as the menu-index (0..4) already, this is
-  // a direct passthrough.  If you store the hex value, convert here.
-  if (bend_range >= 0 && bend_range <= 4) return bend_range;
-  return 0;
+  return map(bend_range, 0, 127, 0, 4);
 }
 
 // -------- 18H Key mode aa --------
 void patchKeyModeAA(int index, const char *value) {
   keyMode = index;
-  // TODO: send key mode + trigger the mode-change plumbing you already have
-  //       (voice reallocation, LED updates, etc.)
+  updatekeyMode(0);
 }
 int idxKeyModeAA() {
   if (keyMode < 0) return 0;
@@ -348,28 +375,28 @@ int idxKeyModeBB() { return keyModeBB & 0x07; }
 // -------- 19H Total Volume --------
 void patchVolume(int index, const char *value) {
   volume = packScaleP(index, 100);
-  // TODO: send volume (use the packed byte, which is 0..0x7F)
+  updatevolume(0);
 }
 int idxVolume() { return unpackScaleP(volume, 100); }
 
 // -------- 1AH Aftertouch Vibrato --------
 void patchAftertouchVib(int index, const char *value) {
   at_vib = packScaleP(index, 100);
-  // TODO: send
+  updateat_vib(0);
 }
 int idxAftertouchVib() { return unpackScaleP(at_vib, 100); }
 
 // -------- 1BH Aftertouch Brilliance --------
 void patchAftertouchLPF(int index, const char *value) {
   at_bri = packScaleP(index, 100);
-  // TODO: send
+  updateat_bri(0);
 }
 int idxAftertouchLPF() { return unpackScaleP(at_bri, 100); }
 
 // -------- 1CH Aftertouch Volume --------
 void patchAftertouchVol(int index, const char *value) {
   at_vol = packScaleP(index, 100);
-  // TODO: send
+  updateat_vol(0);
 }
 int idxAftertouchVol() { return unpackScaleP(at_vol, 100); }
 
@@ -392,10 +419,9 @@ int idxUpperToneNumber() {
 
 // -------- 1EH Upper Chromatic Shift --------
 void patchUpperShift(int index, const char *value) {
-  uint8_t raw = shiftIndexToRaw(index);
+  upperChromatic = shiftIndexToRaw(index);
   // You likely have upperTranspose / upperShift somewhere — wire into it:
-  (void)raw;
-  // TODO: store raw and send
+  updateupperchromaticshift();
 }
 int idxUpperShift() {
   // Read from your upper-shift variable. Placeholder = 0 (= -24 shifted to 24).
@@ -405,42 +431,42 @@ int idxUpperShift() {
 // -------- 1FH Upper Key Assign --------
 void patchUpperAssign(int index, const char *value) {
   upperAssign = patchKeyAssignRaw[index];
-  // TODO: trigger voice-allocator reset if needed
+  updateassignMode(0);
 }
 int idxUpperAssign() { return assignRawToIndex((uint8_t)upperAssign); }
 
 // -------- 20H Upper Unison Detune --------
 void patchUpperUnisonDet(int index, const char *value) {
   upperUnisonDetune = packSplitDetune(index);
-  // TODO: send
+  updateupperunisonDetune(0);
 }
 int idxUpperUnisonDet() { return unpackSplitDetune(upperUnisonDetune); }
 
 // -------- 21H Upper Hold --------
 void patchUpperHold(int index, const char *value) {
   holdManualUpper = (index == 1);
-  // TODO: call your existing hold-toggle routine
+  updateupperHold();
 }
 int idxUpperHold() { return holdManualUpper ? 1 : 0; }
 
 // -------- 22H Upper LFO mod depth --------
 void patchUpperLFOMod(int index, const char *value) {
   upperLFOModDepth = packScaleP(index, 100);
-  // TODO: send
+  updateuppermod_lfo(0);
 }
 int idxUpperLFOMod() { return unpackScaleP(upperLFOModDepth, 100); }
 
 // -------- 23H Upper Portamento ON/OFF --------
 void patchUpperPortamento(int index, const char *value) {
   upperPortamento_SW = index;
-  // TODO: send
+  updateportamento_sw(0);
 }
 int idxUpperPortamento() { return upperPortamento_SW ? 1 : 0; }
 
 // -------- 24H Upper Bender --------
 void patchUpperBender(int index, const char *value) {
   upperbend_enable_SW = index;
-  // TODO: send
+  updatebend_enable_button(0);
 }
 int idxUpperBender() { return upperbend_enable_SW ? 1 : 0; }
 
@@ -458,45 +484,44 @@ int idxLowerToneNumber() {
 }
 
 void patchLowerShift(int index, const char *value) {
-  uint8_t raw = shiftIndexToRaw(index);
-  (void)raw;
-  // TODO: wire into lower-shift variable + send
+  lowerChromatic = shiftIndexToRaw(index);
+  updatelowerchromaticshift();
 }
 int idxLowerShift() { return 24; }  // placeholder
 
 void patchLowerAssign(int index, const char *value) {
   lowerAssign = patchKeyAssignRaw[index];
-  // TODO: voice-allocator reset
+  updateassignMode(0);
 }
 int idxLowerAssign() { return assignRawToIndex((uint8_t)lowerAssign); }
 
 void patchLowerUnisonDet(int index, const char *value) {
   lowerUnisonDetune = packSplitDetune(index);
-  // TODO: send
+  updatelowerunisonDetune(0);
 }
 int idxLowerUnisonDet() { return unpackSplitDetune(lowerUnisonDetune); }
 
 void patchLowerHold(int index, const char *value) {
   holdManualLower = (index == 1);
-  // TODO: call your hold-toggle routine
+  updatelowerHold();
 }
 int idxLowerHold() { return holdManualLower ? 1 : 0; }
 
 void patchLowerLFOMod(int index, const char *value) {
   lowerLFOModDepth = packScaleP(index, 100);
-  // TODO: send
+  updatelowermod_lfo(0);
 }
 int idxLowerLFOMod() { return unpackScaleP(lowerLFOModDepth, 100); }
 
 void patchLowerPortamento(int index, const char *value) {
   lowerPortamento_SW = index;
-  // TODO: send
+  updateportamento_sw(0);
 }
 int idxLowerPortamento() { return lowerPortamento_SW ? 1 : 0; }
 
 void patchLowerBender(int index, const char *value) {
   lowerbend_enable_SW = index;
-  // TODO: send
+  updatebend_enable_button(0);
 }
 int idxLowerBender() { return lowerbend_enable_SW ? 1 : 0; }
 
@@ -506,13 +531,13 @@ int idxLowerBender() { return lowerbend_enable_SW ? 1 : 0; }
 
 void patchChaseLevel(int index, const char *value) {
   chaseLevel = packScaleP(index, 100);
-  // TODO: send
+  updatechaseLevel(0);
 }
 int idxChaseLevel() { return unpackScaleP(chaseLevel, 100); }
 
 void patchChaseMode(int index, const char *value) {
   chaseMode = index;
-  // TODO: send
+  updatechaseMode(0);
 }
 int idxChaseMode() {
   if (chaseMode < 0) return 0;
@@ -522,13 +547,13 @@ int idxChaseMode() {
 
 void patchChaseTime(int index, const char *value) {
   chaseTime = packScaleP(index, 100);
-  // TODO: send
+  updatechaseTime(0);
 }
 int idxChaseTime() { return unpackScaleP(chaseTime, 100); }
 
 void patchChasePlay(int index, const char *value) {
   chasePlay = index;
-  // TODO: send
+  updatechasePlay(0);
 }
 int idxChasePlay() { return chasePlay ? 1 : 0; }
 

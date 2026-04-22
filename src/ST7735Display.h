@@ -49,7 +49,7 @@ boolean MIDIClkSignal = false;
 int Patchnumber = 0;
 unsigned long timeout = 0;
 
-char buf[7];  // 6 chars + null terminator
+char buf[7];  // 8 chars + null terminator
 
 static void renderToneFlashPage();              // displayMode 0
 static void renderPatchFlashPage();             // displayMode 1  
@@ -269,7 +269,7 @@ void renderPatchEditPage() {
   if (optionName.length() > 27) optionName = optionName.substring(0, 27);
   lcd.print(optionName);
 
-  lcd.setCursor(34, 1);
+  lcd.setCursor(32, 1);
   String valueStr = String(currentPatchValue);
   if (valueStr.length() > 27) valueStr = valueStr.substring(0, 27);
 
@@ -284,7 +284,7 @@ void renderToneEditPage() {
   drawBankSlotHeader();
 
   // upper section of screen
-  
+
   lcd.setCursor(5, 0);
   lcd.print(upperSW ? "UPPER  PARAMETER" : "LOWER  PARAMETER");
   lcd.setCursor(27, 0);

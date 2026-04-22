@@ -89,6 +89,65 @@ static inline int unpackScaleCentred(int stored, int N, int deadHalf) {
   return ((v * (N - 1)) + 63) / 127;
 }
 
+// ---- DCO TUNE codec (26 UI positions, measured from real JX) ---------------
+// UI 0..12   -> "-12".."-00"    (stored 0x00..0x3F)
+// UI 13..25  -> "+00".."+12"    (stored 0x40..0x7F)
+// Most bands are 4 stored units wide; ±7, ±12 and the deadzone halves are 8.
+
+struct ToneTuneBand { uint8_t ui; uint8_t lo; uint8_t hi; };
+static const ToneTuneBand toneTuneBands[26] = {
+  {  0, 0x00, 0x07 },  //  -12
+  {  1, 0x08, 0x0B },  //  -11
+  {  2, 0x0C, 0x0F },  //  -10
+  {  3, 0x10, 0x13 },  //   -9
+  {  4, 0x14, 0x17 },  //   -8
+  {  5, 0x18, 0x1F },  //   -7
+  {  6, 0x20, 0x23 },  //   -6
+  {  7, 0x24, 0x27 },  //   -5
+  {  8, 0x28, 0x2B },  //   -4
+  {  9, 0x2C, 0x2F },  //   -3
+  { 10, 0x30, 0x33 },  //   -2
+  { 11, 0x34, 0x37 },  //   -1
+  { 12, 0x38, 0x3F },  //  -00
+  { 13, 0x40, 0x47 },  //  +00
+  { 14, 0x48, 0x4B },  //   +1
+  { 15, 0x4C, 0x4F },  //   +2
+  { 16, 0x50, 0x53 },  //   +3
+  { 17, 0x54, 0x57 },  //   +4
+  { 18, 0x58, 0x5B },  //   +5
+  { 19, 0x5C, 0x5F },  //   +6
+  { 20, 0x60, 0x67 },  //   +7
+  { 21, 0x68, 0x6B },  //   +8
+  { 22, 0x6C, 0x6F },  //   +9
+  { 23, 0x70, 0x73 },  //  +10
+  { 24, 0x74, 0x77 },  //  +11
+  { 25, 0x78, 0x7F },  //  +12
+};
+
+// Representative byte to send per UI position (midpoint of each band).
+static const uint8_t toneTuneReps[26] = {
+  0x03, 0x09, 0x0D, 0x11, 0x15, 0x1B, 0x21, 0x25,
+  0x29, 0x2D, 0x31, 0x35, 0x3B, 0x43, 0x49, 0x4D,
+  0x51, 0x55, 0x59, 0x5D, 0x63, 0x69, 0x6D, 0x71,
+  0x75, 0x7B,
+};
+
+static inline int packSplitTune(int idx) {
+  if (idx < 0)  idx = 0;
+  if (idx > 25) idx = 25;
+  return toneTuneReps[idx];
+}
+
+static inline int unpackSplitTune(int stored) {
+  int v = stored & 0x7F;
+  for (int i = 0; i < 26; i++) {
+    if (v >= toneTuneBands[i].lo && v <= toneTuneBands[i].hi) {
+      return toneTuneBands[i].ui;
+    }
+  }
+  return 13;  // unreachable (full coverage); fallback to +00
+}
+
 // ---- Split codec for DCO2 FTUN (102 positions with -00 / +00) --------------
 // UI 0..50   (-50..-00) -> stored 0x00..0x3F  (linear on 64 values)
 // UI 51..101 (+00..+50) -> stored 0x40..0x7F  (linear on 64 values)
@@ -141,15 +200,27 @@ static void buildTone100Labels() {
 }
 
 // ---- "-12..+12" display for DCO coarse tune (25 UI positions) ----
-static char toneTuneLabels[25][5];
-static const char *toneTunePtrs[26];
+static char toneTuneLabels[26][5];
+static const char *toneTunePtrs[27];
 
 static void buildToneTuneLabels() {
-  for (int i = 0; i < 25; i++) {
-    snprintf(toneTuneLabels[i], 5, "%+d", i - 12);
+  for (int i = 0; i < 12; i++) {
+    // negative side: -12 at i=0, -01 at i=11
+    snprintf(toneTuneLabels[i], 5, "-%02d", 12 - i);
     toneTunePtrs[i] = toneTuneLabels[i];
   }
-  toneTunePtrs[25] = "\0";
+  // Both centre positions display as "00" — the codec still keeps them
+  // as distinct UI positions (stored 0x3F vs 0x40), but the label is unsigned.
+  snprintf(toneTuneLabels[12], 5, " 00");
+  snprintf(toneTuneLabels[13], 5, " 00");
+  toneTunePtrs[12] = toneTuneLabels[12];
+  toneTunePtrs[13] = toneTuneLabels[13];
+  for (int i = 14; i < 26; i++) {
+    // positive side: +01 at i=14, +12 at i=25
+    snprintf(toneTuneLabels[i], 5, "+%02d", i - 13);
+    toneTunePtrs[i] = toneTuneLabels[i];
+  }
+  toneTunePtrs[26] = "\0";
 }
 
 // ---- "-50..-00, +00..+50" display for DCO2 fine tune (102 UI positions) ----
@@ -215,10 +286,9 @@ void toneDco1Wave(int index, const char *value) {                     // b3=$41
 int idxToneDco1Wave() { return toneRead(P_dco1_wave); }
 
 void toneDco1Tune(int index, const char *value) {                     // b3=$0B
-  toneWrite(P_dco1_tune, packScaleN(index, 25));
+  toneWrite(P_dco1_tune, packSplitTune(index));
 }
-// Deadzone 0x36..0x47 => deadHalf = 10 (0x40-10=0x36, 0x40+10=0x4A; covers 0x36..0x49)
-int idxToneDco1Tune() { return unpackScaleCentred(toneRead(P_dco1_tune), 25, 10); }
+int idxToneDco1Tune() { return unpackSplitTune(toneRead(P_dco1_tune)); }
 
 void toneDco1LFO(int index, const char *value) {                      // b3=$0C
   toneWrite(P_dco1_pitch_lfo, packScaleN(index, 100));
@@ -257,9 +327,9 @@ void toneDco2Wave(int index, const char *value) {                     // b3=$43
 int idxToneDco2Wave() { return toneRead(P_dco2_wave); }
 
 void toneDco2Tune(int index, const char *value) {                     // b3=$0E
-  toneWrite(P_dco2_tune, packScaleN(index, 25));
+  toneWrite(P_dco2_tune, packSplitTune(index));
 }
-int idxToneDco2Tune() { return unpackScaleCentred(toneRead(P_dco2_tune), 25, 10); }
+int idxToneDco2Tune() { return unpackSplitTune(toneRead(P_dco2_tune)); }
 
 void toneDco2LFO(int index, const char *value) {                      // b3=$10
   toneWrite(P_dco2_pitch_lfo, packScaleN(index, 100));
@@ -580,7 +650,7 @@ void setUpTone() {
   tonemenu::append({ "11 DCO1 RANG",   toneDcoRangeValues,  4, toneDco1Range,  idxToneDco1Range  });
   tonemenu::append({ "12 DCO1 WF",     toneDcoWaveValues,   4, toneDco1Wave,   idxToneDco1Wave   });
   tonemenu::append({ "13 DCO1 TUNE",   toneTunePtrs,       25, toneDco1Tune,   idxToneDco1Tune   });
-  tonemenu::append({ "14 DCO1 LFO",    tone100Ptrs,       100, toneDco1LFO,    idxToneDco1LFO    });
+  tonemenu::append({ "13 DCO1 TUNE",   toneTunePtrs,       26, toneDco1Tune,   idxToneDco1Tune   });
   tonemenu::append({ "15 DCO1 LFO",    toneDcoLFOValues,    4, toneDco1LFOSrc, idxToneDco1LFOSrc });
   tonemenu::append({ "16 DCO1 ENV",    tone100Ptrs,       100, toneDco1Env,    idxToneDco1Env    });
   tonemenu::append({ "17 DCO1 DYNA",   toneDynValues,       4, toneDco1Dyn,    idxToneDco1Dyn    });
@@ -588,7 +658,7 @@ void setUpTone() {
 
   tonemenu::append({ "21 DCO2 RANG",   toneDcoRangeValues,  4, toneDco2Range,  idxToneDco2Range  });
   tonemenu::append({ "22 DCO2 WF",     toneDcoWaveValues,   4, toneDco2Wave,   idxToneDco2Wave   });
-  tonemenu::append({ "23 DCO2 TUNE",   toneTunePtrs,       25, toneDco2Tune,   idxToneDco2Tune   });
+  tonemenu::append({ "23 DCO2 TUNE",   toneTunePtrs,       26, toneDco2Tune,   idxToneDco2Tune   });
   tonemenu::append({ "24 DCO2 LFO",    tone100Ptrs,       100, toneDco2LFO,    idxToneDco2LFO    });
   tonemenu::append({ "25 DCO2 LFO",    toneDcoLFOValues,    4, toneDco2LFOSrc, idxToneDco2LFOSrc });
   tonemenu::append({ "26 DCO2 ENV",    tone100Ptrs,       100, toneDco2Env,    idxToneDco2Env    });

@@ -426,7 +426,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_lfo1_wave] = lowerData[P_lfo1_wave];
         }
       }
-      lfo1_wave_str = upperSW ? upperData[P_lfo1_wave] : lowerData[P_lfo1_wave];
       updatelfo1_wave(1);
       break;
 
@@ -472,7 +471,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_lfo1_lfo2] = lowerData[P_lfo1_lfo2];
         }
       }
-      lfo1_lfo2_str = value;
       updatelfo1_lfo2(1);
       break;
 
@@ -488,7 +486,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_dco1_PW] = lowerData[P_dco1_PW];
         }
       }
-      dco1_PW_str = value;
       updatedco1_PW(1);
       break;
 
@@ -504,7 +501,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_dco1_PWM_env] = lowerData[P_dco1_PWM_env];
         }
       }
-      dco1_PWM_env_str = value;
       updatedco1_PWM_env(1);
       break;
 
@@ -520,7 +516,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_dco1_PWM_lfo] = lowerData[P_dco1_PWM_lfo];
         }
       }
-      dco1_PWM_lfo_str = value;
       updatedco1_PWM_lfo(1);
       break;
 
@@ -536,7 +531,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_dco1_pitch_env] = lowerData[P_dco1_pitch_env];
         }
       }
-      dco1_pitch_env_str = value;
       updatedco1_pitch_env(1);
       break;
 
@@ -552,7 +546,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_dco1_pitch_lfo] = lowerData[P_dco1_pitch_lfo];
         }
       }
-      dco1_pitch_lfo_str = value;
       updatedco1_pitch_lfo(1);
       break;
 
@@ -564,7 +557,6 @@ void myControlChange(byte channel, byte control, int value) {
         lowerData[P_dco1_wave] = map(value, 0, 127, 0, 3);
         if (keyMode == 2) upperData[P_dco1_wave] = lowerData[P_dco1_wave];
       }
-      dco1_wave_str = upperSW ? upperData[P_dco1_wave] : lowerData[P_dco1_wave];
       updatedco1_wave(1);
       break;
 
@@ -576,7 +568,6 @@ void myControlChange(byte channel, byte control, int value) {
         lowerData[P_dco1_range] = map(value, 0, 127, 0, 3);
         if (keyMode == 2) upperData[P_dco1_range] = lowerData[P_dco1_range];
       }
-      dco1_range_str = upperSW ? upperData[P_dco1_range] : lowerData[P_dco1_range];
       updatedco1_range(1);
       break;
 
@@ -592,7 +583,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_dco1_tune] = lowerData[P_dco1_tune];
         }
       }
-      dco1_tune_str = value;
       updatedco1_tune(1);
       break;
 
@@ -604,7 +594,6 @@ void myControlChange(byte channel, byte control, int value) {
         lowerData[P_dco1_mode] = map(value, 0, 127, 0, 3);
         if (keyMode == 2) upperData[P_dco1_mode] = lowerData[P_dco1_mode];
       }
-      dco1_mode_str = upperSW ? upperData[P_dco1_mode] : lowerData[P_dco1_mode];
       updatedco1_xmod(1);
       break;
 
@@ -620,7 +609,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_lfo2_wave] = lowerData[P_lfo2_wave];
         }
       }
-      lfo2_wave_str = upperSW ? upperData[P_lfo2_wave] : lowerData[P_lfo2_wave];
       updatelfo2_wave(1);
       break;
 
@@ -636,7 +624,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_lfo2_rate] = lowerData[P_lfo2_rate];
         }
       }
-      lfo2_rate_str = value;
       updatelfo2_rate(1);
       break;
 
@@ -652,7 +639,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_lfo2_delay] = lowerData[P_lfo2_delay];
         }
       }
-      lfo2_delay_str = value;
       updatelfo2_delay(1);
       break;
 
@@ -668,7 +654,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_lfo2_lfo1] = lowerData[P_lfo2_lfo1];
         }
       }
-      lfo2_lfo1_str = value;
       updatelfo2_lfo1(1);
       break;
 
@@ -684,7 +669,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_dco2_PW] = lowerData[P_dco2_PW];
         }
       }
-      dco2_PW_str = value;
       updatedco2_PW(1);
       break;
 
@@ -700,7 +684,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_dco2_PWM_env] = lowerData[P_dco2_PWM_env];
         }
       }
-      dco2_PWM_env_str = value;
       updatedco2_PWM_env(1);
       break;
 
@@ -716,7 +699,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_dco2_PWM_lfo] = lowerData[P_dco2_PWM_lfo];
         }
       }
-      dco2_PWM_lfo_str = value;
       updatedco2_PWM_lfo(1);
       break;
 
@@ -732,7 +714,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_dco2_pitch_env] = lowerData[P_dco2_pitch_env];
         }
       }
-      dco2_pitch_env_str = value;
       updatedco2_pitch_env(1);
       break;
 
@@ -748,7 +729,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_dco2_pitch_lfo] = lowerData[P_dco2_pitch_lfo];
         }
       }
-      dco2_pitch_lfo_str = value;
       updatedco2_pitch_lfo(1);
       break;
 
@@ -760,7 +740,6 @@ void myControlChange(byte channel, byte control, int value) {
         lowerData[P_dco2_wave] = map(value, 0, 127, 0, 3);
         if (keyMode == 2) upperData[P_dco2_wave] = lowerData[P_dco2_wave];
       }
-      dco2_wave_str = upperSW ? upperData[P_dco2_wave] : lowerData[P_dco2_wave];
       updatedco2_wave(1);
       break;
 
@@ -772,7 +751,6 @@ void myControlChange(byte channel, byte control, int value) {
         lowerData[P_dco2_range] = map(value, 0, 127, 0, 3);
         if (keyMode == 2) upperData[P_dco2_range] = lowerData[P_dco2_range];
       }
-      dco2_range_str = upperSW ? upperData[P_dco2_range] : lowerData[P_dco2_range];
       updatedco2_range(1);
       break;
 
@@ -788,7 +766,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_dco2_tune] = lowerData[P_dco2_tune];
         }
       }
-      dco2_tune_str = value;
       updatedco2_tune(1);
       break;
 
@@ -804,7 +781,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_dco2_fine] = lowerData[P_dco2_fine];
         }
       }
-      dco2_fine_str = value;
       updatedco2_fine(1);
       break;
 
@@ -820,7 +796,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_dco1_level] = lowerData[P_dco1_level];
         }
       }
-      dco1_level_str = value;
       updatedco1_level(1);
       break;
 
@@ -836,7 +811,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_dco2_level] = lowerData[P_dco2_level];
         }
       }
-      dco2_level_str = value;
       updatedco2_level(1);
       break;
 
@@ -852,7 +826,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_dco2_mod] = lowerData[P_dco2_mod];
         }
       }
-      dco2_mod_str = value;
       updatedco2_mod(1);
       break;
 
@@ -868,7 +841,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_vcf_hpf] = lowerData[P_vcf_hpf];
         }
       }
-      vcf_hpf_str = value;
       updatevcf_hpf(1);
       break;
 
@@ -884,7 +856,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_vcf_cutoff] = lowerData[P_vcf_cutoff];
         }
       }
-      vcf_cutoff_str = value;
       updatevcf_cutoff(1);
       break;
 
@@ -900,7 +871,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_vcf_res] = lowerData[P_vcf_res];
         }
       }
-      vcf_res_str = value;
       updatevcf_res(1);
       break;
 
@@ -916,7 +886,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_vcf_kb] = lowerData[P_vcf_kb];
         }
       }
-      vcf_kb_str = value;
       updatevcf_kb(1);
       break;
 
@@ -932,7 +901,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_vcf_env] = lowerData[P_vcf_env];
         }
       }
-      vcf_env_str = value;
       updatevcf_env(1);
       break;
 
@@ -948,7 +916,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_vcf_lfo1] = lowerData[P_vcf_lfo1];
         }
       }
-      vcf_lfo1_str = value;
       updatevcf_lfo1(1);
       break;
 
@@ -964,7 +931,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_vcf_lfo2] = lowerData[P_vcf_lfo2];
         }
       }
-      vcf_lfo2_str = value;
       updatevcf_lfo2(1);
       break;
 
@@ -980,7 +946,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_vca_mod] = lowerData[P_vca_mod];
         }
       }
-      vca_mod_str = value;
       updatevca_mod(1);
       break;
 
@@ -1032,7 +997,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_time1] = lowerData[P_time1];
         }
       }
-      time1_str = value;
       updatetime1(1);
       break;
 
@@ -1048,7 +1012,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_level1] = lowerData[P_level1];
         }
       }
-      level1_str = value;
       updatelevel1(1);
       break;
 
@@ -1064,7 +1027,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_time2] = lowerData[P_time2];
         }
       }
-      time2_str = value;
       updatetime2(1);
       break;
 
@@ -1080,7 +1042,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_level2] = lowerData[P_level2];
         }
       }
-      level2_str = value;
       updatelevel2(1);
       break;
 
@@ -1096,7 +1057,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_time3] = lowerData[P_time3];
         }
       }
-      time3_str = value;
       updatetime3(1);
       break;
 
@@ -1112,7 +1072,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_level3] = lowerData[P_level3];
         }
       }
-      level3_str = value;
       updatelevel3(1);
       break;
 
@@ -1128,7 +1087,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_time4] = lowerData[P_time4];
         }
       }
-      time4_str = value;
       updatetime4(1);
       break;
 
@@ -1144,7 +1102,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_env5stage_mode] = lowerData[P_env5stage_mode];
         }
       }
-      env5stage_mode_str = upperSW ? upperData[P_env5stage_mode] : lowerData[P_env5stage_mode];
       updateenv5stage_mode(1);
       break;
 
@@ -1160,7 +1117,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_env2_time1] = lowerData[P_env2_time1];
         }
       }
-      env2_time1_str = value;
       updateenv2_time1(1);
       break;
 
@@ -1176,7 +1132,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_env2_level1] = lowerData[P_env2_level1];
         }
       }
-      env2_level1_str = value;
       updateenv2_level1(1);
       break;
 
@@ -1192,7 +1147,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_env2_time2] = lowerData[P_env2_time2];
         }
       }
-      env2_time2_str = value;
       updateenv2_time2(1);
       break;
 
@@ -1208,7 +1162,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_env2_level2] = lowerData[P_env2_level2];
         }
       }
-      env2_level2_str = value;
       updateenv2_level2(1);
       break;
 
@@ -1224,7 +1177,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_env2_time3] = lowerData[P_env2_time3];
         }
       }
-      env2_time3_str = value;
       updateenv2_time3(1);
       break;
 
@@ -1240,7 +1192,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_env2_level3] = lowerData[P_env2_level3];
         }
       }
-      env2_level3_str = value;
       updateenv2_level3(1);
       break;
 
@@ -1256,7 +1207,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_env2_time4] = lowerData[P_env2_time4];
         }
       }
-      env2_time4_str = value;
       updateenv2_time4(1);
       break;
 
@@ -1272,7 +1222,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_env2_5stage_mode] = lowerData[P_env2_5stage_mode];
         }
       }
-      env2_5stage_mode_str = upperSW ? upperData[P_env2_5stage_mode] : lowerData[P_env2_5stage_mode];
       updateenv2_env5stage_mode(1);
       break;
 
@@ -1288,7 +1237,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_attack] = lowerData[P_attack];
         }
       }
-      attack_str = value;
       updateattack(1);
       break;
 
@@ -1304,7 +1252,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_decay] = lowerData[P_decay];
         }
       }
-      decay_str = value;
       updatedecay(1);
       break;
 
@@ -1320,7 +1267,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_sustain] = lowerData[P_sustain];
         }
       }
-      sustain_str = value;
       updatesustain(1);
       break;
 
@@ -1336,7 +1282,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_release] = lowerData[P_release];
         }
       }
-      release_str = value;
       updaterelease(1);
       break;
 
@@ -1352,7 +1297,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_adsr_mode] = lowerData[P_adsr_mode];
         }
       }
-      adsr_mode_str = upperSW ? upperData[P_adsr_mode] : lowerData[P_adsr_mode];
       updateadsr_mode(1);
       break;
 
@@ -1368,7 +1312,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_env4_attack] = lowerData[P_env4_attack];
         }
       }
-      env4_attack_str = value;
       updateenv4_attack(1);
       break;
 
@@ -1384,7 +1327,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_env4_decay] = lowerData[P_env4_decay];
         }
       }
-      env4_decay_str = value;
       updateenv4_decay(1);
       break;
 
@@ -1400,7 +1342,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_env4_sustain] = lowerData[P_env4_sustain];
         }
       }
-      env4_sustain_str = value;
       updateenv4_sustain(1);
       break;
 
@@ -1416,7 +1357,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_env4_release] = lowerData[P_env4_release];
         }
       }
-      env4_release_str = value;
       updateenv4_release(1);
       break;
 
@@ -1432,7 +1372,6 @@ void myControlChange(byte channel, byte control, int value) {
           upperData[P_env4_adsr_mode] = lowerData[P_env4_adsr_mode];
         }
       }
-      env4_adsr_mode_str = upperSW ? upperData[P_env4_adsr_mode] : lowerData[P_env4_adsr_mode];
       updateenv4_adsr_mode(1);
       break;
 
@@ -1448,6 +1387,7 @@ void myControlChange(byte channel, byte control, int value) {
       } else {
         lowerUnisonDetune = value;
       }
+      unisondetune_str = value;
       updateunisonDetune(1);
       break;
 
@@ -1928,7 +1868,6 @@ FLASHMEM void updatelfo1_wave(bool announce) {
   const bool firstTouch = (lastStepParam != CClfo1_wave);
   if (firstTouch) lastStepParam = CClfo1_wave;
 
-  lfo1_wave_str = newStep;
 
   if (announce && !suppressParamAnnounce) {
     if (firstTouch || changed) {
@@ -1954,7 +1893,6 @@ FLASHMEM void updatemod_lfo(bool announce) {
   const uint8_t displayVal = (uint8_t)map(
     upperSW ? upperLFOModDepth : lowerLFOModDepth,
     0, 127, 0, 99);
-  mod_lfo_str = displayVal;
 
   if (announce && !suppressParamAnnounce) {
     displayMode = 1;
@@ -2053,7 +1991,6 @@ FLASHMEM void updatelfo1_delay(bool announce) {
 }
 
 FLASHMEM void updatelfo1_lfo2(bool announce) {
-  lfo1_lfo2_str = map(lfo1_lfo2_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
     flashToneScale("94 LFO1 LFO", P_lfo1_lfo2);
@@ -2144,8 +2081,6 @@ FLASHMEM void updatedco1_wave(bool announce) {
   const bool firstTouch = (lastStepParam != CCdco1_wave);
   if (firstTouch) lastStepParam = CCdco1_wave;
 
-  dco1_wave_str = newStep;
-
   if (announce && !suppressParamAnnounce) {
     if (firstTouch || changed) {
       displayMode = DM_TONE_FLASH;
@@ -2171,8 +2106,6 @@ FLASHMEM void updatedco1_range(bool announce) {
   const bool firstTouch = (lastStepParam != CCdco1_range);
   if (firstTouch) lastStepParam = CCdco1_range;
 
-  dco1_range_str = newStep;
-
   if (announce && !suppressParamAnnounce) {
     if (firstTouch || changed) {
       displayMode = DM_TONE_FLASH;
@@ -2195,13 +2128,11 @@ FLASHMEM void updatedco1_range(bool announce) {
 
 FLASHMEM void updatedco1_tune(bool announce) {
   lastStepParam = 0xFF;
-
   const int activeStored = upperSW ? upperData[P_dco1_tune] : lowerData[P_dco1_tune];
-  dco1_tune_str = unpackScaleCentred(activeStored, 25, 10);
 
   if (announce && !suppressParamAnnounce) {
-    int upperIdx = unpackScaleCentred(upperData[P_dco1_tune], 25, 10);
-    int lowerIdx = unpackScaleCentred(lowerData[P_dco1_tune], 25, 10);
+    int upperIdx = unpackSplitTune(upperData[P_dco1_tune]);
+    int lowerIdx = unpackSplitTune(lowerData[P_dco1_tune]);
     displayMode = DM_TONE_FLASH;
     showCurrentTonePage("13 DCO1 TUNE",
                         toneTunePtrs[upperIdx],
@@ -2221,7 +2152,6 @@ FLASHMEM void updatedco1_xmod(bool announce) {
   const bool firstTouch = (lastStepParam != CCdco1_xmod);
   if (firstTouch) lastStepParam = CCdco1_xmod;
 
-  dco1_mode_str = newStep;
 
   if (announce && !suppressParamAnnounce) {
     if (firstTouch || changed) {
@@ -2251,7 +2181,6 @@ FLASHMEM void updatelfo2_wave(bool announce) {
   const bool firstTouch = (lastStepParam != CClfo2_wave);
   if (firstTouch) lastStepParam = CClfo2_wave;
 
-  lfo2_wave_str = newStep;
 
   if (announce && !suppressParamAnnounce) {
     if (firstTouch || changed) {
@@ -2393,7 +2322,6 @@ FLASHMEM void updatedco2_wave(bool announce) {
   const bool firstTouch = (lastStepParam != CCdco2_wave);
   if (firstTouch) lastStepParam = CCdco2_wave;
 
-  dco2_wave_str = newStep;
 
   if (announce && !suppressParamAnnounce) {
     if (firstTouch || changed) {
@@ -2423,7 +2351,6 @@ FLASHMEM void updatedco2_range(bool announce) {
   const bool firstTouch = (lastStepParam != CCdco2_range);
   if (firstTouch) lastStepParam = CCdco2_range;
 
-  dco2_range_str = newStep;
 
   if (announce && !suppressParamAnnounce) {
     if (firstTouch || changed) {
@@ -2447,13 +2374,11 @@ FLASHMEM void updatedco2_range(bool announce) {
 
 FLASHMEM void updatedco2_tune(bool announce) {
   lastStepParam = 0xFF;
-
   const int activeStored = upperSW ? upperData[P_dco2_tune] : lowerData[P_dco2_tune];
-  dco2_tune_str = unpackScaleCentred(activeStored, 25, 10);
 
   if (announce && !suppressParamAnnounce) {
-    int upperIdx = unpackScaleCentred(upperData[P_dco2_tune], 25, 10);
-    int lowerIdx = unpackScaleCentred(lowerData[P_dco2_tune], 25, 10);
+    int upperIdx = unpackSplitTune(upperData[P_dco2_tune]);
+    int lowerIdx = unpackSplitTune(lowerData[P_dco2_tune]);
     displayMode = DM_TONE_FLASH;
     showCurrentTonePage("23 DCO2 TUNE",
                         toneTunePtrs[upperIdx],
@@ -2480,7 +2405,6 @@ FLASHMEM void updatedco2_fine(bool announce) {
   lastStepParam = 0xFF;
 
   const int activeStored = upperSW ? upperData[P_dco2_fine] : lowerData[P_dco2_fine];
-  dco2_fine_str = unpackSplitFine(activeStored);
 
   if (announce && !suppressParamAnnounce) {
     int upperIdx = unpackSplitFine(upperData[P_dco2_fine]);
@@ -2546,7 +2470,6 @@ FLASHMEM void updatevcf_hpf(bool announce) {
   const bool firstTouch = (lastStepParam != CCvcf_hpf);
   if (firstTouch) lastStepParam = CCvcf_hpf;
 
-  vcf_hpf_str = newStep;
 
   if (announce && !suppressParamAnnounce) {
     if (firstTouch || changed) {
@@ -2654,7 +2577,6 @@ FLASHMEM void updatevcf_lfo2(bool announce) {
 
 FLASHMEM void updateat_vib(bool announce) {
   lastStepParam = 0xFF;
-  at_vib_str = map(at_vib_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 1;
     showCurrentParameterPage("21 AFTER TOUCH VIB", String(at_vib_str));
@@ -2666,7 +2588,6 @@ FLASHMEM void updateat_vib(bool announce) {
 
 FLASHMEM void updateat_bri(bool announce) {
   lastStepParam = 0xFF;
-  at_bri_str = map(at_bri_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 1;
     showCurrentParameterPage("22 AFTER TOUCH BRI", String(at_bri_str));
@@ -2678,7 +2599,6 @@ FLASHMEM void updateat_bri(bool announce) {
 
 FLASHMEM void updateat_vol(bool announce) {
   lastStepParam = 0xFF;
-  at_vol_str = map(at_vol_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 1;
     showCurrentParameterPage("23 AFTER TOUCH VOL", String(at_vol_str));
@@ -2780,7 +2700,6 @@ FLASHMEM void updatelevel1(bool announce) {
 
 FLASHMEM void updatetime2(bool announce) {
   lastStepParam = 0xFF;
-  time2_str = map(time2_str, 0, 127, 0, 99);
   if (announce && !suppressParamAnnounce) {
     displayMode = 0;
     flashToneScale("B3 ENV1 T2", P_time2);
@@ -2857,7 +2776,6 @@ FLASHMEM void updateenv5stage_mode(bool announce) {
   const bool firstTouch = (lastStepParam != CC5stage_mode);
   if (firstTouch) lastStepParam = CC5stage_mode;
 
-  env5stage_mode_str = newStep;
 
   if (announce && !suppressParamAnnounce) {
     if (firstTouch || changed) {
@@ -2985,7 +2903,6 @@ FLASHMEM void updateenv2_env5stage_mode(bool announce) {
   const bool firstTouch = (lastStepParam != CC25stage_mode);
   if (firstTouch) lastStepParam = CC25stage_mode;
 
-  env2_5stage_mode_str = newStep;
 
   if (announce && !suppressParamAnnounce) {
     if (firstTouch || changed) {
@@ -3071,7 +2988,6 @@ FLASHMEM void updateadsr_mode(bool announce) {
   const bool firstTouch = (lastStepParam != CCadsr_mode);
   if (firstTouch) lastStepParam = CCadsr_mode;
 
-  adsr_mode_str = newStep;
 
   if (announce && !suppressParamAnnounce) {
     if (firstTouch || changed) {
@@ -3157,7 +3073,6 @@ FLASHMEM void updateenv4_adsr_mode(bool announce) {
   const bool firstTouch = (lastStepParam != CC4adsr_mode);
   if (firstTouch) lastStepParam = CC4adsr_mode;
 
-  env4_adsr_mode_str = newStep;
 
   if (announce && !suppressParamAnnounce) {
     if (firstTouch || changed) {

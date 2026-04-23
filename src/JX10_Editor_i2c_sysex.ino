@@ -1477,17 +1477,17 @@ void myControlChange(byte channel, byte control, int value) {
       updatespecial_button(1);
       break;
 
-    // case CCpoly_button:
-    //   updatepoly_button(1);
-    //   break;
+      // case CCpoly_button:
+      //   updatepoly_button(1);
+      //   break;
 
-    // case CCmono_button:
-    //   updatemono_button(1);
-    //   break;
+      // case CCmono_button:
+      //   updatemono_button(1);
+      //   break;
 
-    // case CCunison_button:
-    //   updateunison_button(1);
-    //   break;
+      // case CCunison_button:
+      //   updateunison_button(1);
+      //   break;
 
     case CClfo1_sync:
       if (upperSW) {
@@ -3025,7 +3025,7 @@ FLASHMEM void updateadsr_mode(bool announce) {
   if (announce && !suppressParamAnnounce) {
     if (firstTouch || changed) {
       displayMode = 0;
-            showCurrentTonePage("D5 ENV2 KEY",
+      showCurrentTonePage("D5 ENV2 KEY",
                           env5stageModeStepToLabel(upperData[P_adsr_mode]),
                           env5stageModeStepToLabel(lowerData[P_adsr_mode]));
       startParameterDisplay();
@@ -3110,7 +3110,7 @@ FLASHMEM void updateenv4_adsr_mode(bool announce) {
   if (announce && !suppressParamAnnounce) {
     if (firstTouch || changed) {
       displayMode = 0;
-                  showCurrentTonePage("E5 ENV2 KEY",
+      showCurrentTonePage("E5 ENV2 KEY",
                           env5stageModeStepToLabel(upperData[P_env4_adsr_mode]),
                           env5stageModeStepToLabel(lowerData[P_env4_adsr_mode]));
       startParameterDisplay();
@@ -3210,29 +3210,109 @@ FLASHMEM void updateoctave_send(bool announce) {
     showCurrentParameterPage(upperSW ? "32 UP CHROMATIC SHIFT" : "42 LO CHROMATIC SHIFT", label);
     startParameterDisplay();
 
-  upperChromatic = encodeChromaticShift(upperChromaticSW);
-  lowerChromatic = encodeChromaticShift(lowerChromaticSW);
+    upperChromatic = encodeChromaticShift(upperChromaticSW);
+    lowerChromatic = encodeChromaticShift(lowerChromaticSW);
   }
 
-  switch (keyMode) {
-    case 0:
-    case 3:
-    case 4:
-    case 5:
-      if (upperSW) {
+  if (!switchLEDS) {
+    switch (keyMode) {
+      case 0:
+      case 3:
+      case 4:
+      case 5:
+        if (upperSW) {
+          sendCustomSysEx((midiOutCh - 1), 0x1E, upperChromatic);
+        } else {
+          sendCustomSysEx((midiOutCh - 1), 0x27, lowerChromatic);
+        }
+        break;
+
+      case 1:
         sendCustomSysEx((midiOutCh - 1), 0x1E, upperChromatic);
-      } else {
+        break;
+
+      case 2:
         sendCustomSysEx((midiOutCh - 1), 0x27, lowerChromatic);
-      }
-      break;
+        break;
+    }
+  }
 
-    case 1:
-      sendCustomSysEx((midiOutCh - 1), 0x1E, upperChromatic);
-      break;
+  if (upperSW) {
+    switch (upperChromatic) {
 
-    case 2:
-      sendCustomSysEx((midiOutCh - 1), 0x27, lowerChromatic);
-      break;
+      case 0:
+        mcp7.digitalWrite(OCTAVE_UP_RED, LOW);
+        mcp7.digitalWrite(OCTAVE_UP_GREEN, LOW);
+        mcp7.digitalWrite(OCTAVE_DOWN_RED, LOW);
+        mcp7.digitalWrite(OCTAVE_DOWN_GREEN, LOW);
+        break;
+
+      case 1 ... 12:
+        mcp7.digitalWrite(OCTAVE_UP_RED, HIGH);
+        mcp7.digitalWrite(OCTAVE_UP_GREEN, LOW);
+        mcp7.digitalWrite(OCTAVE_DOWN_RED, LOW);
+        mcp7.digitalWrite(OCTAVE_DOWN_GREEN, LOW);
+        break;
+
+      case 13 ... 24:
+        mcp7.digitalWrite(OCTAVE_UP_RED, LOW);
+        mcp7.digitalWrite(OCTAVE_UP_GREEN, HIGH);
+        mcp7.digitalWrite(OCTAVE_DOWN_RED, LOW);
+        mcp7.digitalWrite(OCTAVE_DOWN_GREEN, LOW);
+        break;
+
+      case 116 ... 127:
+        mcp7.digitalWrite(OCTAVE_UP_RED, LOW);
+        mcp7.digitalWrite(OCTAVE_UP_GREEN, LOW);
+        mcp7.digitalWrite(OCTAVE_DOWN_RED, LOW);
+        mcp7.digitalWrite(OCTAVE_DOWN_GREEN, HIGH);
+        break;
+
+      case 103 ... 115:
+        mcp7.digitalWrite(OCTAVE_UP_RED, LOW);
+        mcp7.digitalWrite(OCTAVE_UP_GREEN, LOW);
+        mcp7.digitalWrite(OCTAVE_DOWN_RED, HIGH);
+        mcp7.digitalWrite(OCTAVE_DOWN_GREEN, LOW);
+        break;
+    }
+  } else {
+    switch (lowerChromatic) {
+
+      case 0:
+        mcp7.digitalWrite(OCTAVE_UP_RED, LOW);
+        mcp7.digitalWrite(OCTAVE_UP_GREEN, LOW);
+        mcp7.digitalWrite(OCTAVE_DOWN_RED, LOW);
+        mcp7.digitalWrite(OCTAVE_DOWN_GREEN, LOW);
+        break;
+
+      case 1 ... 12:
+        mcp7.digitalWrite(OCTAVE_UP_RED, HIGH);
+        mcp7.digitalWrite(OCTAVE_UP_GREEN, LOW);
+        mcp7.digitalWrite(OCTAVE_DOWN_RED, LOW);
+        mcp7.digitalWrite(OCTAVE_DOWN_GREEN, LOW);
+        break;
+
+      case 13 ... 24:
+        mcp7.digitalWrite(OCTAVE_UP_RED, LOW);
+        mcp7.digitalWrite(OCTAVE_UP_GREEN, HIGH);
+        mcp7.digitalWrite(OCTAVE_DOWN_RED, LOW);
+        mcp7.digitalWrite(OCTAVE_DOWN_GREEN, LOW);
+        break;
+
+      case 116 ... 127:
+        mcp7.digitalWrite(OCTAVE_UP_RED, LOW);
+        mcp7.digitalWrite(OCTAVE_UP_GREEN, LOW);
+        mcp7.digitalWrite(OCTAVE_DOWN_RED, LOW);
+        mcp7.digitalWrite(OCTAVE_DOWN_GREEN, HIGH);
+        break;
+
+      case 103 ... 115:
+        mcp7.digitalWrite(OCTAVE_UP_RED, LOW);
+        mcp7.digitalWrite(OCTAVE_UP_GREEN, LOW);
+        mcp7.digitalWrite(OCTAVE_DOWN_RED, HIGH);
+        mcp7.digitalWrite(OCTAVE_DOWN_GREEN, LOW);
+        break;
+    }
   }
 }
 
@@ -3249,7 +3329,6 @@ FLASHMEM void updatelowerchromaticshift() {
 FLASHMEM void updateuppersplitPoints(bool announce) {
   // upper
   sendCustomSysEx((midiOutCh - 1), 0x14, upperSplitPoint);
-
 }
 
 FLASHMEM void updatelowersplitPoints(bool announce) {
@@ -3260,7 +3339,6 @@ FLASHMEM void updatelowersplitPoints(bool announce) {
 // Keymode buttons
 
 FLASHMEM void updateassignMode(bool announce) {
-
 }
 
 FLASHMEM void updatekeyMode(bool announce) {
@@ -3418,24 +3496,33 @@ FLASHMEM void updatespecial_button(bool announce) {
 // Assigner buttons
 
 FLASHMEM void updateAssignLeds() {
-  int active  = upperSW ? upperAssign : lowerAssign;
-  int cat     = assignCat(active);
+  int active = upperSW ? upperAssign : lowerAssign;
+  int cat = assignCat(active);
   int variant = assignVariant(active);
 
   // Clear all six LEDs
-  mcp8.digitalWrite(ASSIGN_POLY_RED,   LOW);
+  mcp8.digitalWrite(ASSIGN_POLY_RED, LOW);
   mcp8.digitalWrite(ASSIGN_POLY_GREEN, LOW);
-  mcp8.digitalWrite(ASSIGN_UNI_RED,    LOW);
-  mcp8.digitalWrite(ASSIGN_UNI_GREEN,  LOW);
-  mcp8.digitalWrite(ASSIGN_MONO_RED,   LOW);
+  mcp8.digitalWrite(ASSIGN_UNI_RED, LOW);
+  mcp8.digitalWrite(ASSIGN_UNI_GREEN, LOW);
+  mcp8.digitalWrite(ASSIGN_MONO_RED, LOW);
   mcp8.digitalWrite(ASSIGN_MONO_GREEN, LOW);
 
   // Light active category's LED: RED for variant 1, GREEN for variant 2
   uint8_t redPin, greenPin;
   switch (cat) {
-    case CAT_POLY: redPin = ASSIGN_POLY_RED; greenPin = ASSIGN_POLY_GREEN; break;
-    case CAT_UNI:  redPin = ASSIGN_UNI_RED;  greenPin = ASSIGN_UNI_GREEN;  break;
-    case CAT_MONO: redPin = ASSIGN_MONO_RED; greenPin = ASSIGN_MONO_GREEN; break;
+    case CAT_POLY:
+      redPin = ASSIGN_POLY_RED;
+      greenPin = ASSIGN_POLY_GREEN;
+      break;
+    case CAT_UNI:
+      redPin = ASSIGN_UNI_RED;
+      greenPin = ASSIGN_UNI_GREEN;
+      break;
+    case CAT_MONO:
+      redPin = ASSIGN_MONO_RED;
+      greenPin = ASSIGN_MONO_GREEN;
+      break;
     default: return;
   }
   mcp8.digitalWrite(variant == 0 ? redPin : greenPin, HIGH);
@@ -3443,14 +3530,14 @@ FLASHMEM void updateAssignLeds() {
 
 FLASHMEM void sendAssignSysEx() {
   uint8_t addr = upperSW ? 0x1F : 0x28;
-  uint8_t val  = upperSW ? (uint8_t)upperAssign : (uint8_t)lowerAssign;
+  uint8_t val = upperSW ? (uint8_t)upperAssign : (uint8_t)lowerAssign;
   sendCustomSysEx((midiOutCh - 1), addr, val);
 }
 
 FLASHMEM void announceAssign() {
   if (suppressParamAnnounce) return;
   int active = upperSW ? upperAssign : lowerAssign;
-  displayMode = DM_PATCH_FLASH;      // or 1 if enum not added
+  displayMode = DM_PATCH_FLASH;  // or 1 if enum not added
   showCurrentParameterPage("ASSIGN MODE", assignLabels[active]);
   startParameterDisplay();
 }
@@ -3606,7 +3693,7 @@ FLASHMEM void updatelfo1_sync(bool announce) {
     flashToneStep("95 LFO1 SYNC", P_lfo1_sync, toneSyncValues, 0x20, 2);
     startParameterDisplay();
   }
-   
+
   // --- SYX send ---
   if (!switchLEDS) {
     uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
@@ -3614,9 +3701,9 @@ FLASHMEM void updatelfo1_sync(bool announce) {
   }
 
   // --- LED update ---
-  bool red   = (stored == 0x20);   // ON  -> red
-  bool green = (stored == 0x40);   // KEY -> green
-  mcp1.digitalWrite(LFO1_SYNC_RED,   red   ? HIGH : LOW);
+  bool red = (stored == 0x20);    // ON  -> red
+  bool green = (stored == 0x40);  // KEY -> green
+  mcp1.digitalWrite(LFO1_SYNC_RED, red ? HIGH : LOW);
   mcp1.digitalWrite(LFO1_SYNC_GREEN, green ? HIGH : LOW);
 }
 
@@ -3638,9 +3725,9 @@ FLASHMEM void updatelfo2_sync(bool announce) {
   }
 
   // --- LED update ---
-  bool red   = (stored == 0x20);   // ON  -> red
-  bool green = (stored == 0x40);   // KEY -> green
-  mcp2.digitalWrite(LFO2_SYNC_RED,   red   ? HIGH : LOW);
+  bool red = (stored == 0x20);    // ON  -> red
+  bool green = (stored == 0x40);  // KEY -> green
+  mcp2.digitalWrite(LFO2_SYNC_RED, red ? HIGH : LOW);
   mcp2.digitalWrite(LFO2_SYNC_GREEN, green ? HIGH : LOW);
 }
 
@@ -3662,8 +3749,8 @@ FLASHMEM void updatedco1_PWM_dyn(bool announce) {
   }
 
   // --- LED update (binary-coded dual LED) ---
-  int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
-  mcp1.digitalWrite(DCO1_PWM_DYN_RED,   (state & 1) ? HIGH : LOW);
+  int state = unpackStep(stored, 0x20, 3);  // 0/1/2/3
+  mcp1.digitalWrite(DCO1_PWM_DYN_RED, (state & 1) ? HIGH : LOW);
   mcp1.digitalWrite(DCO1_PWM_DYN_GREEN, (state & 2) ? HIGH : LOW);
 }
 
@@ -3685,8 +3772,8 @@ FLASHMEM void updatedco2_PWM_dyn(bool announce) {
   }
 
   // --- LED update (binary-coded dual LED) ---
-  int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
-  mcp2.digitalWrite(DCO1_PWM_DYN_RED,   (state & 1) ? HIGH : LOW);
+  int state = unpackStep(stored, 0x20, 3);  // 0/1/2/3
+  mcp2.digitalWrite(DCO1_PWM_DYN_RED, (state & 1) ? HIGH : LOW);
   mcp2.digitalWrite(DCO1_PWM_DYN_GREEN, (state & 2) ? HIGH : LOW);
 }
 
@@ -3708,16 +3795,16 @@ FLASHMEM void updatedco1_PWM_env_source(bool announce) {
   }
 
   // --- LED update ---
-  int state = unpackStep(stored, 0x10, 7);        // 0..7
-  int env   = (state >> 1) & 3;                   // 0..3 (ENV1..ENV4)
-  bool pos  =  state & 1;                         // 1 = positive polarity
+  int state = unpackStep(stored, 0x10, 7);  // 0..7
+  int env = (state >> 1) & 3;               // 0..3 (ENV1..ENV4)
+  bool pos = state & 1;                     // 1 = positive polarity
 
   // SOURCE: binary-coded (env 0..3 -> bits on red/green)
-  mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED,   (env & 1) ? HIGH : LOW);
+  mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_RED, (env & 1) ? HIGH : LOW);
   mcp1.digitalWrite(DCO1_PWM_ENV_SOURCE_GREEN, (env & 2) ? HIGH : LOW);
 
   // POLARITY: exactly one on at a time
-  mcp1.digitalWrite(DCO1_ENV_POL_RED,   pos ? LOW  : HIGH);
+  mcp1.digitalWrite(DCO1_ENV_POL_RED, pos ? LOW : HIGH);
   mcp1.digitalWrite(DCO1_ENV_POL_GREEN, pos ? HIGH : LOW);
 }
 
@@ -3739,16 +3826,16 @@ FLASHMEM void updatedco2_PWM_env_source(bool announce) {
   }
 
   // --- LED update ---
-  int state = unpackStep(stored, 0x10, 7);        // 0..7
-  int env   = (state >> 1) & 3;                   // 0..3 (ENV1..ENV4)
-  bool pos  =  state & 1;                         // 1 = positive polarity
+  int state = unpackStep(stored, 0x10, 7);  // 0..7
+  int env = (state >> 1) & 3;               // 0..3 (ENV1..ENV4)
+  bool pos = state & 1;                     // 1 = positive polarity
 
   // SOURCE: binary-coded (env 0..3 -> bits on red/green)
-  mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED,   (env & 1) ? HIGH : LOW);
+  mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_RED, (env & 1) ? HIGH : LOW);
   mcp2.digitalWrite(DCO2_PWM_ENV_SOURCE_GREEN, (env & 2) ? HIGH : LOW);
 
   // POLARITY: exactly one on at a time
-  mcp2.digitalWrite(DCO2_ENV_POL_RED,   pos ? LOW  : HIGH);
+  mcp2.digitalWrite(DCO2_ENV_POL_RED, pos ? LOW : HIGH);
   mcp2.digitalWrite(DCO2_ENV_POL_GREEN, pos ? HIGH : LOW);
 }
 
@@ -3770,8 +3857,8 @@ FLASHMEM void updatedco1_PWM_lfo_source(bool announce) {
   }
 
   // --- LED update (binary-coded dual LED) ---
-  int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
-  mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED,   (state & 1) ? HIGH : LOW);
+  int state = unpackStep(stored, 0x20, 3);  // 0/1/2/3
+  mcp4.digitalWrite(DCO1_PWM_LFO_SEL_RED, (state & 1) ? HIGH : LOW);
   mcp4.digitalWrite(DCO1_PWM_LFO_SEL_GREEN, (state & 2) ? HIGH : LOW);
 }
 
@@ -3793,8 +3880,8 @@ FLASHMEM void updatedco2_PWM_lfo_source(bool announce) {
   }
 
   // --- LED update (binary-coded dual LED) ---
-  int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
-  mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED,   (state & 1) ? HIGH : LOW);
+  int state = unpackStep(stored, 0x20, 3);  // 0/1/2/3
+  mcp3.digitalWrite(DCO2_PWM_LFO_SEL_RED, (state & 1) ? HIGH : LOW);
   mcp3.digitalWrite(DCO2_PWM_LFO_SEL_GREEN, (state & 2) ? HIGH : LOW);
 }
 
@@ -3816,8 +3903,8 @@ FLASHMEM void updatedco1_pitch_dyn(bool announce) {
   }
 
   // --- LED update (binary-coded dual LED) ---
-  int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
-  mcp4.digitalWrite(DCO1_PITCH_DYN_RED,   (state & 1) ? HIGH : LOW);
+  int state = unpackStep(stored, 0x20, 3);  // 0/1/2/3
+  mcp4.digitalWrite(DCO1_PITCH_DYN_RED, (state & 1) ? HIGH : LOW);
   mcp4.digitalWrite(DCO1_PITCH_DYN_GREEN, (state & 2) ? HIGH : LOW);
 }
 
@@ -3839,8 +3926,8 @@ FLASHMEM void updatedco2_pitch_dyn(bool announce) {
   }
 
   // --- LED update (binary-coded dual LED) ---
-  int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
-  mcp3.digitalWrite(DCO2_PITCH_DYN_RED,   (state & 1) ? HIGH : LOW);
+  int state = unpackStep(stored, 0x20, 3);  // 0/1/2/3
+  mcp3.digitalWrite(DCO2_PITCH_DYN_RED, (state & 1) ? HIGH : LOW);
   mcp3.digitalWrite(DCO2_PITCH_DYN_GREEN, (state & 2) ? HIGH : LOW);
 }
 
@@ -3862,8 +3949,8 @@ FLASHMEM void updatedco1_pitch_lfo_source(bool announce) {
   }
 
   // --- LED update (binary-coded dual LED) ---
-  int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
-  mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED,   (state & 1) ? HIGH : LOW);
+  int state = unpackStep(stored, 0x20, 3);  // 0/1/2/3
+  mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_RED, (state & 1) ? HIGH : LOW);
   mcp4.digitalWrite(DCO1_PITCH_LFO_SEL_GREEN, (state & 2) ? HIGH : LOW);
 }
 
@@ -3885,8 +3972,8 @@ FLASHMEM void updatedco2_pitch_lfo_source(bool announce) {
   }
 
   // --- LED update (binary-coded dual LED) ---
-  int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
-  mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED,   (state & 1) ? HIGH : LOW);
+  int state = unpackStep(stored, 0x20, 3);  // 0/1/2/3
+  mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_RED, (state & 1) ? HIGH : LOW);
   mcp3.digitalWrite(DCO2_PITCH_LFO_SEL_GREEN, (state & 2) ? HIGH : LOW);
 }
 
@@ -3908,16 +3995,16 @@ FLASHMEM void updatedco1_pitch_env_source(bool announce) {
   }
 
   // --- LED update ---
-  int state = unpackStep(stored, 0x10, 7);        // 0..7
-  int env   = (state >> 1) & 3;                   // 0..3 (ENV1..ENV4)
-  bool pos  =  state & 1;                         // 1 = positive polarity
+  int state = unpackStep(stored, 0x10, 7);  // 0..7
+  int env = (state >> 1) & 3;               // 0..3 (ENV1..ENV4)
+  bool pos = state & 1;                     // 1 = positive polarity
 
   // SOURCE: binary-coded (env 0..3 -> bits on red/green)
-  mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED,   (env & 1) ? HIGH : LOW);
+  mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_RED, (env & 1) ? HIGH : LOW);
   mcp4.digitalWrite(DCO1_PITCH_ENV_SOURCE_GREEN, (env & 2) ? HIGH : LOW);
 
   // POLARITY: exactly one on at a time
-  mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED,   pos ? LOW  : HIGH);
+  mcp4.digitalWrite(DCO1_PITCH_ENV_POL_RED, pos ? LOW : HIGH);
   mcp4.digitalWrite(DCO1_PITCH_ENV_POL_GREEN, pos ? HIGH : LOW);
 }
 
@@ -3939,16 +4026,16 @@ FLASHMEM void updatedco2_pitch_env_source(bool announce) {
   }
 
   // --- LED update ---
-  int state = unpackStep(stored, 0x10, 7);        // 0..7
-  int env   = (state >> 1) & 3;                   // 0..3 (ENV1..ENV4)
-  bool pos  =  state & 1;                         // 1 = positive polarity
+  int state = unpackStep(stored, 0x10, 7);  // 0..7
+  int env = (state >> 1) & 3;               // 0..3 (ENV1..ENV4)
+  bool pos = state & 1;                     // 1 = positive polarity
 
   // SOURCE: binary-coded (env 0..3 -> bits on red/green)
-  mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED,   (env & 1) ? HIGH : LOW);
+  mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_RED, (env & 1) ? HIGH : LOW);
   mcp3.digitalWrite(DCO2_PITCH_ENV_SOURCE_GREEN, (env & 2) ? HIGH : LOW);
 
   // POLARITY: exactly one on at a time
-  mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED,   pos ? LOW  : HIGH);
+  mcp3.digitalWrite(DCO2_PITCH_ENV_POL_RED, pos ? LOW : HIGH);
   mcp3.digitalWrite(DCO2_PITCH_ENV_POL_GREEN, pos ? HIGH : LOW);
 }
 
@@ -3998,7 +4085,7 @@ FLASHMEM void updateeditMode(bool announce) {
     startParameterDisplay();  // reset timeout so user can see the change
   }
 
-  updateAssignLeds();   // Repaint for the newly-active tone
+  updateAssignLeds();  // Repaint for the newly-active tone
   switchLEDS = true;
   updateButtons();
   switchLEDS = false;
@@ -4022,16 +4109,16 @@ FLASHMEM void updatedco_mix_env_source(bool announce) {
   }
 
   // --- LED update ---
-  int state = unpackStep(stored, 0x10, 7);        // 0..7
-  int env   = (state >> 1) & 3;                   // 0..3 (ENV1..ENV4)
-  bool pos  =  state & 1;                         // 1 = positive polarity
+  int state = unpackStep(stored, 0x10, 7);  // 0..7
+  int env = (state >> 1) & 3;               // 0..3 (ENV1..ENV4)
+  bool pos = state & 1;                     // 1 = positive polarity
 
   // SOURCE: binary-coded (env 0..3 -> bits on red/green)
-  mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED,   (env & 1) ? HIGH : LOW);
+  mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_RED, (env & 1) ? HIGH : LOW);
   mcp5.digitalWrite(DCO_MIX_ENV_SOURCE_GREEN, (env & 2) ? HIGH : LOW);
 
   // POLARITY: exactly one on at a time
-  mcp5.digitalWrite(DCO_MIX_ENV_POL_RED,   pos ? LOW  : HIGH);
+  mcp5.digitalWrite(DCO_MIX_ENV_POL_RED, pos ? LOW : HIGH);
   mcp5.digitalWrite(DCO_MIX_ENV_POL_GREEN, pos ? HIGH : LOW);
 }
 
@@ -4053,8 +4140,8 @@ FLASHMEM void updatedco_mix_dyn(bool announce) {
   }
 
   // --- LED update (binary-coded dual LED) ---
-  int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
-  mcp5.digitalWrite(DCO_MIX_DYN_RED,   (state & 1) ? HIGH : LOW);
+  int state = unpackStep(stored, 0x20, 3);  // 0/1/2/3
+  mcp5.digitalWrite(DCO_MIX_DYN_RED, (state & 1) ? HIGH : LOW);
   mcp5.digitalWrite(DCO_MIX_DYN_GREEN, (state & 2) ? HIGH : LOW);
 }
 
@@ -4076,16 +4163,16 @@ FLASHMEM void updatevcf_env_source(bool announce) {
   }
 
   // --- LED update ---
-  int state = unpackStep(stored, 0x10, 7);        // 0..7
-  int env   = (state >> 1) & 3;                   // 0..3 (ENV1..ENV4)
-  bool pos  =  state & 1;                         // 1 = positive polarity
+  int state = unpackStep(stored, 0x10, 7);  // 0..7
+  int env = (state >> 1) & 3;               // 0..3 (ENV1..ENV4)
+  bool pos = state & 1;                     // 1 = positive polarity
 
   // SOURCE: binary-coded (env 0..3 -> bits on red/green)
-  mcp5.digitalWrite(VCF_ENV_SOURCE_RED,   (env & 1) ? HIGH : LOW);
+  mcp5.digitalWrite(VCF_ENV_SOURCE_RED, (env & 1) ? HIGH : LOW);
   mcp5.digitalWrite(VCF_ENV_SOURCE_GREEN, (env & 2) ? HIGH : LOW);
 
   // POLARITY: exactly one on at a time
-  mcp5.digitalWrite(VCF_ENV_POL_RED,   pos ? LOW  : HIGH);
+  mcp5.digitalWrite(VCF_ENV_POL_RED, pos ? LOW : HIGH);
   mcp5.digitalWrite(VCF_ENV_POL_GREEN, pos ? HIGH : LOW);
 }
 
@@ -4107,8 +4194,8 @@ FLASHMEM void updatevcf_dyn(bool announce) {
   }
 
   // --- LED update (binary-coded dual LED) ---
-  int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
-  mcp6.digitalWrite(VCF_DYN_RED,   (state & 1) ? HIGH : LOW);
+  int state = unpackStep(stored, 0x20, 3);  // 0/1/2/3
+  mcp6.digitalWrite(VCF_DYN_RED, (state & 1) ? HIGH : LOW);
   mcp6.digitalWrite(VCF_DYN_GREEN, (state & 2) ? HIGH : LOW);
 }
 
@@ -4130,8 +4217,8 @@ FLASHMEM void updatevca_env_source(bool announce) {
   }
 
   // --- LED update (binary-coded dual LED) ---
-  int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
-  mcp6.digitalWrite(VCA_ENV_SOURCE_RED,   (state & 1) ? HIGH : LOW);
+  int state = unpackStep(stored, 0x20, 3);  // 0/1/2/3
+  mcp6.digitalWrite(VCA_ENV_SOURCE_RED, (state & 1) ? HIGH : LOW);
   mcp6.digitalWrite(VCA_ENV_SOURCE_GREEN, (state & 2) ? HIGH : LOW);
 }
 
@@ -4153,8 +4240,8 @@ FLASHMEM void updatevca_dyn(bool announce) {
   }
 
   // --- LED update (binary-coded dual LED) ---
-  int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
-  mcp6.digitalWrite(VCA_DYN_RED,   (state & 1) ? HIGH : LOW);
+  int state = unpackStep(stored, 0x20, 3);  // 0/1/2/3
+  mcp6.digitalWrite(VCA_DYN_RED, (state & 1) ? HIGH : LOW);
   mcp6.digitalWrite(VCA_DYN_GREEN, (state & 2) ? HIGH : LOW);
 }
 
@@ -4176,9 +4263,9 @@ FLASHMEM void updatechorus(bool announce) {
   }
 
   // --- LED update ---
-  bool red   = (stored == 0x20);   // ON  -> red
-  bool green = (stored == 0x40);   // KEY -> green
-  mcp6.digitalWrite(CHORUS_SELECT_RED,   red   ? HIGH : LOW);
+  bool red = (stored == 0x20);    // ON  -> red
+  bool green = (stored == 0x40);  // KEY -> green
+  mcp6.digitalWrite(CHORUS_SELECT_RED, red ? HIGH : LOW);
   mcp6.digitalWrite(CHORUS_SELECT_GREEN, green ? HIGH : LOW);
 }
 
@@ -4190,7 +4277,7 @@ FLASHMEM void updateupperHold() {
 
     case 1:
       sendCustomSysEx((midiOutCh - 1), 0x21, 0x7F);
-    break;
+      break;
   }
 }
 
@@ -4202,7 +4289,7 @@ FLASHMEM void updatelowerHold() {
 
     case 1:
       sendCustomSysEx((midiOutCh - 1), 0x2A, 0x7F);
-    break;
+      break;
   }
 }
 
@@ -6108,6 +6195,7 @@ void updateButtons() {
   updatevcf_env_source(0);  // 9D
   updatevca_env_source(0);  // AE
   updatevca_dyn(0);         // 9F
+  updateoctave_send(0);
   updateenv5stage(0);
   updateadsr(0);
 
@@ -6953,6 +7041,27 @@ void mainButtonChanged(Button *btn, bool released) {
 
   switch (btn->id) {
 
+    case NAME_BUTTON:
+      if (!released) {
+      }
+      break;
+
+    case PEDAL_BUTTON:
+      if (!released) {
+      }
+      break; 
+
+    case C1_BUTTON:
+      if (!released) {
+      }
+      break;
+
+    case C2_BUTTON:
+      if (!released) {
+      }
+      break; 
+
+
     case PATCH_BUTTON:
       if (!released) {
         if (state == PATCH_EDIT || state == PATCH_EDITVALUE) {
@@ -7063,11 +7172,6 @@ void mainButtonChanged(Button *btn, bool released) {
           default:
             break;
         }
-      }
-      break;
-
-    case NAME_BUTTON:
-      if (!released) {
       }
       break;
 
@@ -7516,17 +7620,17 @@ void mainButtonChanged(Button *btn, bool released) {
 
       // Asssigner Buttons
 
-    case ASSIGN_POLY_BUTTON: 
-      if (!released) pressAssign(CAT_POLY); 
-    break;
+    case ASSIGN_POLY_BUTTON:
+      if (!released) pressAssign(CAT_POLY);
+      break;
 
-    case ASSIGN_UNI_BUTTON:  
-      if (!released) pressAssign(CAT_UNI);  
-    break;
+    case ASSIGN_UNI_BUTTON:
+      if (!released) pressAssign(CAT_UNI);
+      break;
 
-    case ASSIGN_MONO_BUTTON: 
-      if (!released) pressAssign(CAT_MONO); 
-    break;
+    case ASSIGN_MONO_BUTTON:
+      if (!released) pressAssign(CAT_MONO);
+      break;
 
     case LFO1_SYNC_BUTTON:
       if (!released) {

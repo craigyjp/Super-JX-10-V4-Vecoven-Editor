@@ -1477,17 +1477,17 @@ void myControlChange(byte channel, byte control, int value) {
       updatespecial_button(1);
       break;
 
-    case CCpoly_button:
-      updatepoly_button(1);
-      break;
+    // case CCpoly_button:
+    //   updatepoly_button(1);
+    //   break;
 
-    case CCmono_button:
-      updatemono_button(1);
-      break;
+    // case CCmono_button:
+    //   updatemono_button(1);
+    //   break;
 
-    case CCunison_button:
-      updateunison_button(1);
-      break;
+    // case CCunison_button:
+    //   updateunison_button(1);
+    //   break;
 
     case CClfo1_sync:
       if (upperSW) {
@@ -3260,41 +3260,7 @@ FLASHMEM void updatelowersplitPoints(bool announce) {
 // Keymode buttons
 
 FLASHMEM void updateassignMode(bool announce) {
-  if (upperSW) {
-    switch (upperAssign) {
-      case 0:
-      case 1:
-        updatepoly_button(0);
-        break;
 
-      case 2:
-      case 3:
-        updateunison_button(0);
-        break;
-
-      case 4:
-      case 5:
-        updatemono_button(0);
-        break;
-    }
-  } else {
-    switch (lowerAssign) {
-      case 0:
-      case 1:
-        updatepoly_button(0);
-        break;
-
-      case 2:
-      case 3:
-        updateunison_button(0);
-        break;
-
-      case 4:
-      case 5:
-        updatemono_button(0);
-        break;
-    }
-  }
 }
 
 FLASHMEM void updatekeyMode(bool announce) {
@@ -3338,17 +3304,7 @@ FLASHMEM void updatedual_button(bool announce) {
     mcp10.digitalWrite(LOWER_SELECT, HIGH);
     mcp10.digitalWrite(UPPER_SELECT, LOW);
   }
-  if (upperSW) {
-    upperAssign = assignMode;
-    if (keyMode == 0 || keyMode == 1 || keyMode == 2 || keyMode == 4 || keyMode == 5) {
-      lowerAssign = upperAssign;
-    }
-  } else {
-    lowerAssign = assignMode;
-    if (keyMode == 0 || keyMode == 1 || keyMode == 2 || keyMode == 4 || keyMode == 5) {
-      upperAssign = lowerAssign;
-    }
-  }
+
   allNotesOff();
   sendCustomSysEx((midiOutCh - 1), 0x18, 0x00);
   sendCustomSysEx((midiOutCh - 1), 0x33, 0x00);
@@ -3448,17 +3404,7 @@ FLASHMEM void updatespecial_button(bool announce) {
     mcp10.digitalWrite(LOWER_SELECT, HIGH);
     mcp10.digitalWrite(UPPER_SELECT, LOW);
   }
-  if (upperSW) {
-    upperAssign = assignMode;
-    if (keyMode == 0 || keyMode == 1 || keyMode == 2 || keyMode == 4 || keyMode == 5) {
-      lowerAssign = upperAssign;
-    }
-  } else {
-    lowerAssign = assignMode;
-    if (keyMode == 0 || keyMode == 1 || keyMode == 2 || keyMode == 4 || keyMode == 5) {
-      upperAssign = lowerAssign;
-    }
-  }
+
   allNotesOff();
   if (keyMode == 5) {
     sendCustomSysEx((midiOutCh - 1), 0x18, 0x00);
@@ -3471,136 +3417,58 @@ FLASHMEM void updatespecial_button(bool announce) {
 
 // Assigner buttons
 
-FLASHMEM void updatepoly_button(bool announce) {
-  if (announce && !suppressParamAnnounce) {
-    displayMode = 1;
-    if (!poly_button) {
-      //showCurrentParameterPage("ASSIGN MODE", "POLY 1");
-    } else {
-      //showCurrentParameterPage("ASSIGN MODE", "POLY 2");
-    }
-    //startParameterDisplay();
-  }
-  if (upperSW) {
-    if (upperAssign == 0) {
-      mcp8.digitalWrite(ASSIGN_POLY_RED, HIGH);
-      mcp8.digitalWrite(ASSIGN_POLY_GREEN, LOW);
-    } else {
-      mcp8.digitalWrite(ASSIGN_POLY_RED, LOW);
-      mcp8.digitalWrite(ASSIGN_POLY_GREEN, HIGH);
-    }
-  } else {
-    if (lowerAssign == 0) {
-      mcp8.digitalWrite(ASSIGN_POLY_RED, HIGH);
-      mcp8.digitalWrite(ASSIGN_POLY_GREEN, LOW);
-    } else {
-      mcp8.digitalWrite(ASSIGN_POLY_RED, LOW);
-      mcp8.digitalWrite(ASSIGN_POLY_GREEN, HIGH);
-    }
-  }
-  mcp8.digitalWrite(ASSIGN_MONO_RED, LOW);
+FLASHMEM void updateAssignLeds() {
+  int active  = upperSW ? upperAssign : lowerAssign;
+  int cat     = assignCat(active);
+  int variant = assignVariant(active);
+
+  // Clear all six LEDs
+  mcp8.digitalWrite(ASSIGN_POLY_RED,   LOW);
+  mcp8.digitalWrite(ASSIGN_POLY_GREEN, LOW);
+  mcp8.digitalWrite(ASSIGN_UNI_RED,    LOW);
+  mcp8.digitalWrite(ASSIGN_UNI_GREEN,  LOW);
+  mcp8.digitalWrite(ASSIGN_MONO_RED,   LOW);
   mcp8.digitalWrite(ASSIGN_MONO_GREEN, LOW);
-  mcp8.digitalWrite(ASSIGN_UNI_RED, LOW);
-  mcp8.digitalWrite(ASSIGN_UNI_GREEN, LOW);
-  if (upperSW) {
-    upperAssign = assignMode;
-    if (keyMode == 0 || keyMode == 1 || keyMode == 2 || keyMode == 4 || keyMode == 5) {
-      lowerAssign = upperAssign;
-    }
-  } else {
-    lowerAssign = assignMode;
-    if (keyMode == 0 || keyMode == 1 || keyMode == 2 || keyMode == 4 || keyMode == 5) {
-      upperAssign = lowerAssign;
-    }
+
+  // Light active category's LED: RED for variant 1, GREEN for variant 2
+  uint8_t redPin, greenPin;
+  switch (cat) {
+    case CAT_POLY: redPin = ASSIGN_POLY_RED; greenPin = ASSIGN_POLY_GREEN; break;
+    case CAT_UNI:  redPin = ASSIGN_UNI_RED;  greenPin = ASSIGN_UNI_GREEN;  break;
+    case CAT_MONO: redPin = ASSIGN_MONO_RED; greenPin = ASSIGN_MONO_GREEN; break;
+    default: return;
   }
+  mcp8.digitalWrite(variant == 0 ? redPin : greenPin, HIGH);
 }
 
-FLASHMEM void updatemono_button(bool announce) {
-  if (announce && !suppressParamAnnounce) {
-    displayMode = 1;
-    if (!mono_button) {
-      //showCurrentParameterPage("ASSIGN MODE", "MONO 1");
-    } else {
-      //showCurrentParameterPage("ASSIGN MODE", "MONO 2");
-    }
-    //startParameterDisplay();
-  }
-  if (upperSW) {
-    if (upperAssign == 2) {
-      mcp8.digitalWrite(ASSIGN_MONO_RED, HIGH);
-      mcp8.digitalWrite(ASSIGN_MONO_GREEN, LOW);
-    } else {
-      mcp8.digitalWrite(ASSIGN_MONO_RED, LOW);
-      mcp8.digitalWrite(ASSIGN_MONO_GREEN, HIGH);
-    }
-  } else {
-    if (lowerAssign == 2) {
-      mcp8.digitalWrite(ASSIGN_MONO_RED, HIGH);
-      mcp8.digitalWrite(ASSIGN_MONO_GREEN, LOW);
-    } else {
-      mcp8.digitalWrite(ASSIGN_MONO_RED, LOW);
-      mcp8.digitalWrite(ASSIGN_MONO_GREEN, HIGH);
-    }
-  }
-  mcp8.digitalWrite(ASSIGN_POLY_RED, LOW);
-  mcp8.digitalWrite(ASSIGN_POLY_GREEN, LOW);
-  mcp8.digitalWrite(ASSIGN_UNI_RED, LOW);
-  mcp8.digitalWrite(ASSIGN_UNI_GREEN, LOW);
-  if (upperSW) {
-    upperAssign = assignMode;
-    if (keyMode == 0 || keyMode == 1 || keyMode == 2 || keyMode == 4 || keyMode == 5) {
-      lowerAssign = upperAssign;
-    }
-  } else {
-    lowerAssign = assignMode;
-    if (keyMode == 0 || keyMode == 1 || keyMode == 2 || keyMode == 4 || keyMode == 5) {
-      upperAssign = lowerAssign;
-    }
-  }
+FLASHMEM void sendAssignSysEx() {
+  uint8_t addr = upperSW ? 0x1F : 0x28;
+  uint8_t val  = upperSW ? (uint8_t)upperAssign : (uint8_t)lowerAssign;
+  sendCustomSysEx((midiOutCh - 1), addr, val);
 }
 
-FLASHMEM void updateunison_button(bool announce) {
-  if (announce && !suppressParamAnnounce) {
-    displayMode = 1;
-    if (!unison_button) {
-      //showCurrentParameterPage("ASSIGN MODE", "UNISON 1");
-    } else {
-      //showCurrentParameterPage("ASSIGN MODE", "UNISON 2");
-    }
-    //startParameterDisplay();
-  }
-  if (upperSW) {
-    if (upperAssign == 4) {
-      mcp8.digitalWrite(ASSIGN_UNI_RED, HIGH);
-      mcp8.digitalWrite(ASSIGN_UNI_GREEN, LOW);
-    } else {
-      mcp8.digitalWrite(ASSIGN_UNI_RED, LOW);
-      mcp8.digitalWrite(ASSIGN_UNI_GREEN, HIGH);
-    }
+FLASHMEM void announceAssign() {
+  if (suppressParamAnnounce) return;
+  int active = upperSW ? upperAssign : lowerAssign;
+  displayMode = DM_PATCH_FLASH;      // or 1 if enum not added
+  showCurrentParameterPage("ASSIGN MODE", assignLabels[active]);
+  startParameterDisplay();
+}
+
+FLASHMEM void pressAssign(int requestedCat) {
+  int &active = upperSW ? upperAssign : lowerAssign;
+
+  if (assignCat(active) == requestedCat) {
+    // Same category pressed — toggle variant 1 ↔ 2
+    active = assignMake(requestedCat, assignVariant(active) ^ 1);
   } else {
-    if (lowerAssign == 4) {
-      mcp8.digitalWrite(ASSIGN_UNI_RED, HIGH);
-      mcp8.digitalWrite(ASSIGN_UNI_GREEN, LOW);
-    } else {
-      mcp8.digitalWrite(ASSIGN_UNI_RED, LOW);
-      mcp8.digitalWrite(ASSIGN_UNI_GREEN, HIGH);
-    }
+    // Different category — reset to variant 1
+    active = assignMake(requestedCat, 0);
   }
-  mcp8.digitalWrite(ASSIGN_POLY_RED, LOW);
-  mcp8.digitalWrite(ASSIGN_POLY_GREEN, LOW);
-  mcp8.digitalWrite(ASSIGN_MONO_RED, LOW);
-  mcp8.digitalWrite(ASSIGN_MONO_GREEN, LOW);
-  if (upperSW) {
-    upperAssign = assignMode;
-    if (keyMode == 0 || keyMode == 1 || keyMode == 2 || keyMode == 4 || keyMode == 5) {
-      lowerAssign = upperAssign;
-    }
-  } else {
-    lowerAssign = assignMode;
-    if (keyMode == 0 || keyMode == 1 || keyMode == 2 || keyMode == 4 || keyMode == 5) {
-      upperAssign = lowerAssign;
-    }
-  }
+
+  updateAssignLeds();
+  sendAssignSysEx();
+  announceAssign();
 }
 
 FLASHMEM void updatebend_enable_button(bool announce) {
@@ -3738,10 +3606,12 @@ FLASHMEM void updatelfo1_sync(bool announce) {
     flashToneStep("95 LFO1 SYNC", P_lfo1_sync, toneSyncValues, 0x20, 2);
     startParameterDisplay();
   }
-
+   
   // --- SYX send ---
-  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
-  sendToneSysEx(prefix, (midiOutCh - 1), 0x3F, stored);
+  if (!switchLEDS) {
+    uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+    sendToneSysEx(prefix, (midiOutCh - 1), 0x3F, stored);
+  }
 
   // --- LED update ---
   bool red   = (stored == 0x20);   // ON  -> red
@@ -3762,8 +3632,10 @@ FLASHMEM void updatelfo2_sync(bool announce) {
   }
 
   // --- SYX send ---
-  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
-  sendToneSysEx(prefix, (midiOutCh - 1), 0x44, stored);
+  if (!switchLEDS) {
+    uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+    sendToneSysEx(prefix, (midiOutCh - 1), 0x44, stored);
+  }
 
   // --- LED update ---
   bool red   = (stored == 0x20);   // ON  -> red
@@ -3784,8 +3656,10 @@ FLASHMEM void updatedco1_PWM_dyn(bool announce) {
   }
 
   // --- SYX send ---
-  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
-  sendToneSysEx(prefix, (midiOutCh - 1), 0x23, stored);
+  if (!switchLEDS) {
+    uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+    sendToneSysEx(prefix, (midiOutCh - 1), 0x23, stored);
+  }
 
   // --- LED update (binary-coded dual LED) ---
   int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
@@ -3805,8 +3679,10 @@ FLASHMEM void updatedco2_PWM_dyn(bool announce) {
   }
 
   // --- SYX send ---
-  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
-  sendToneSysEx(prefix, (midiOutCh - 1), 0x29, stored);
+  if (!switchLEDS) {
+    uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+    sendToneSysEx(prefix, (midiOutCh - 1), 0x29, stored);
+  }
 
   // --- LED update (binary-coded dual LED) ---
   int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
@@ -3826,8 +3702,10 @@ FLASHMEM void updatedco1_PWM_env_source(bool announce) {
   }
 
   // --- SYX send ---
-  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
-  sendToneSysEx(prefix, (midiOutCh - 1), 0x24, stored);
+  if (!switchLEDS) {
+    uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+    sendToneSysEx(prefix, (midiOutCh - 1), 0x24, stored);
+  }
 
   // --- LED update ---
   int state = unpackStep(stored, 0x10, 7);        // 0..7
@@ -3855,8 +3733,10 @@ FLASHMEM void updatedco2_PWM_env_source(bool announce) {
   }
 
   // --- SYX send ---
-  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
-  sendToneSysEx(prefix, (midiOutCh - 1), 0x2A, stored);
+  if (!switchLEDS) {
+    uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+    sendToneSysEx(prefix, (midiOutCh - 1), 0x2A, stored);
+  }
 
   // --- LED update ---
   int state = unpackStep(stored, 0x10, 7);        // 0..7
@@ -3884,8 +3764,10 @@ FLASHMEM void updatedco1_PWM_lfo_source(bool announce) {
   }
 
   // --- SYX send ---
-  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
-  sendToneSysEx(prefix, (midiOutCh - 1), 0x22, stored);
+  if (!switchLEDS) {
+    uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+    sendToneSysEx(prefix, (midiOutCh - 1), 0x22, stored);
+  }
 
   // --- LED update (binary-coded dual LED) ---
   int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
@@ -3905,8 +3787,10 @@ FLASHMEM void updatedco2_PWM_lfo_source(bool announce) {
   }
 
   // --- SYX send ---
-  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
-  sendToneSysEx(prefix, (midiOutCh - 1), 0x28, stored);
+  if (!switchLEDS) {
+    uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+    sendToneSysEx(prefix, (midiOutCh - 1), 0x28, stored);
+  }
 
   // --- LED update (binary-coded dual LED) ---
   int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
@@ -3926,8 +3810,10 @@ FLASHMEM void updatedco1_pitch_dyn(bool announce) {
   }
 
   // --- SYX send ---
-  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
-  sendToneSysEx(prefix, (midiOutCh - 1), 0x11, stored);
+  if (!switchLEDS) {
+    uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+    sendToneSysEx(prefix, (midiOutCh - 1), 0x11, stored);
+  }
 
   // --- LED update (binary-coded dual LED) ---
   int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
@@ -3947,8 +3833,10 @@ FLASHMEM void updatedco2_pitch_dyn(bool announce) {
   }
 
   // --- SYX send ---
-  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
-  sendToneSysEx(prefix, (midiOutCh - 1), 0x19, stored);
+  if (!switchLEDS) {
+    uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+    sendToneSysEx(prefix, (midiOutCh - 1), 0x19, stored);
+  }
 
   // --- LED update (binary-coded dual LED) ---
   int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
@@ -3968,8 +3856,10 @@ FLASHMEM void updatedco1_pitch_lfo_source(bool announce) {
   }
 
   // --- SYX send ---
-  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
-  sendToneSysEx(prefix, (midiOutCh - 1), 0x0F, stored);
+  if (!switchLEDS) {
+    uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+    sendToneSysEx(prefix, (midiOutCh - 1), 0x0F, stored);
+  }
 
   // --- LED update (binary-coded dual LED) ---
   int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
@@ -3989,8 +3879,10 @@ FLASHMEM void updatedco2_pitch_lfo_source(bool announce) {
   }
 
   // --- SYX send ---
-  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
-  sendToneSysEx(prefix, (midiOutCh - 1), 0x17, stored);
+  if (!switchLEDS) {
+    uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+    sendToneSysEx(prefix, (midiOutCh - 1), 0x17, stored);
+  }
 
   // --- LED update (binary-coded dual LED) ---
   int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
@@ -4010,8 +3902,10 @@ FLASHMEM void updatedco1_pitch_env_source(bool announce) {
   }
 
   // --- SYX send ---
-  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
-  sendToneSysEx(prefix, (midiOutCh - 1), 0x12, stored);
+  if (!switchLEDS) {
+    uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+    sendToneSysEx(prefix, (midiOutCh - 1), 0x12, stored);
+  }
 
   // --- LED update ---
   int state = unpackStep(stored, 0x10, 7);        // 0..7
@@ -4039,8 +3933,10 @@ FLASHMEM void updatedco2_pitch_env_source(bool announce) {
   }
 
   // --- SYX send ---
-  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
-  sendToneSysEx(prefix, (midiOutCh - 1), 0x1A, stored);
+  if (!switchLEDS) {
+    uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+    sendToneSysEx(prefix, (midiOutCh - 1), 0x1A, stored);
+  }
 
   // --- LED update ---
   int state = unpackStep(stored, 0x10, 7);        // 0..7
@@ -4102,6 +3998,10 @@ FLASHMEM void updateeditMode(bool announce) {
     startParameterDisplay();  // reset timeout so user can see the change
   }
 
+  updateAssignLeds();   // Repaint for the newly-active tone
+  switchLEDS = true;
+  updateButtons();
+  switchLEDS = false;
 }
 
 FLASHMEM void updatedco_mix_env_source(bool announce) {
@@ -4116,8 +4016,10 @@ FLASHMEM void updatedco_mix_env_source(bool announce) {
   }
 
   // --- SYX send ---
-  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
-  sendToneSysEx(prefix, (midiOutCh - 1), 0x2F, stored);
+  if (!switchLEDS) {
+    uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+    sendToneSysEx(prefix, (midiOutCh - 1), 0x2F, stored);
+  }
 
   // --- LED update ---
   int state = unpackStep(stored, 0x10, 7);        // 0..7
@@ -4145,8 +4047,10 @@ FLASHMEM void updatedco_mix_dyn(bool announce) {
   }
 
   // --- SYX send ---
-  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
-  sendToneSysEx(prefix, (midiOutCh - 1), 0x2E, stored);
+  if (!switchLEDS) {
+    uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+    sendToneSysEx(prefix, (midiOutCh - 1), 0x2E, stored);
+  }
 
   // --- LED update (binary-coded dual LED) ---
   int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
@@ -4166,8 +4070,10 @@ FLASHMEM void updatevcf_env_source(bool announce) {
   }
 
   // --- SYX send ---
-  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
-  sendToneSysEx(prefix, (midiOutCh - 1), 0x37, stored);
+  if (!switchLEDS) {
+    uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+    sendToneSysEx(prefix, (midiOutCh - 1), 0x37, stored);
+  }
 
   // --- LED update ---
   int state = unpackStep(stored, 0x10, 7);        // 0..7
@@ -4195,8 +4101,10 @@ FLASHMEM void updatevcf_dyn(bool announce) {
   }
 
   // --- SYX send ---
-  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
-  sendToneSysEx(prefix, (midiOutCh - 1), 0x36, stored);
+  if (!switchLEDS) {
+    uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+    sendToneSysEx(prefix, (midiOutCh - 1), 0x36, stored);
+  }
 
   // --- LED update (binary-coded dual LED) ---
   int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
@@ -4216,8 +4124,10 @@ FLASHMEM void updatevca_env_source(bool announce) {
   }
 
   // --- SYX send ---
-  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
-  sendToneSysEx(prefix, (midiOutCh - 1), 0x39, stored);
+  if (!switchLEDS) {
+    uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+    sendToneSysEx(prefix, (midiOutCh - 1), 0x39, stored);
+  }
 
   // --- LED update (binary-coded dual LED) ---
   int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
@@ -4237,8 +4147,10 @@ FLASHMEM void updatevca_dyn(bool announce) {
   }
 
   // --- SYX send ---
-  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
-  sendToneSysEx(prefix, (midiOutCh - 1), 0x3A, stored);
+  if (!switchLEDS) {
+    uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+    sendToneSysEx(prefix, (midiOutCh - 1), 0x3A, stored);
+  }
 
   // --- LED update (binary-coded dual LED) ---
   int state = unpackStep(stored, 0x20, 3);          // 0/1/2/3
@@ -4258,8 +4170,10 @@ FLASHMEM void updatechorus(bool announce) {
   }
 
   // --- SYX send ---
-  uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
-  sendToneSysEx(prefix, (midiOutCh - 1), 0x1E, stored);
+  if (!switchLEDS) {
+    uint8_t prefix = upperSW ? kBoardUpperPrefix : kBoardLowerPrefix;
+    sendToneSysEx(prefix, (midiOutCh - 1), 0x1E, stored);
+  }
 
   // --- LED update ---
   bool red   = (stored == 0x20);   // ON  -> red
@@ -5751,6 +5665,7 @@ void recallPatch(int bank, int group, int slot) {
   currentGroup = group;
   currentSlot = slot;
   showPatchPage(getPatchLabel(group, slot), patchName);
+  updateAssignLeds();
 }
 
 // Recall using current position
@@ -6159,7 +6074,6 @@ void setCurrentPatchData(String data[]) {
 
   //Patchname
   updatePatchname();
-  updateButtons();
 
   updateUpperToneData();
   if (keyMode == 0 || keyMode == 3 || keyMode == 4 || keyMode == 5) {
@@ -6172,9 +6086,31 @@ void setCurrentPatchData(String data[]) {
 }
 
 void updateButtons() {
-  updateeditMode(0);
+
+  updatelfo1_sync(0);
+  updatelfo2_sync(0);
+  updatedco1_PWM_lfo_source(0);
+  updatedco1_PWM_env_source(0);
+  updatedco1_PWM_dyn(0);
+  updatedco2_PWM_lfo_source(0);
+  updatedco2_PWM_env_source(0);
+  updatedco2_PWM_dyn(0);
+  updatedco1_pitch_lfo_source(0);
+  updatedco1_pitch_dyn(0);
+  updatedco1_pitch_env_source(0);
+  updatedco2_pitch_lfo_source(0);
+  updatedco2_pitch_dyn(0);
+  updatedco2_pitch_env_source(0);
+  updatechorus(0);
+  updatedco_mix_env_source(0);
+  updatedco_mix_dyn(0);
+  updatevcf_dyn(0);         // 9C
+  updatevcf_env_source(0);  // 9D
+  updatevca_env_source(0);  // AE
+  updatevca_dyn(0);         // 9F
   updateenv5stage(0);
   updateadsr(0);
+
   LAST_PARAM = 0x00;
 }
 
@@ -7580,26 +7516,17 @@ void mainButtonChanged(Button *btn, bool released) {
 
       // Asssigner Buttons
 
-    case ASSIGN_POLY_BUTTON:
-      if (!released) {
-        poly_button = !poly_button;
-        myControlChange(midiChannel, CCpoly_button, poly_button);
-      }
-      break;
+    case ASSIGN_POLY_BUTTON: 
+      if (!released) pressAssign(CAT_POLY); 
+    break;
 
-    case ASSIGN_UNI_BUTTON:
-      if (!released) {
-        unison_button = !unison_button;
-        myControlChange(midiChannel, CCunison_button, unison_button);
-      }
-      break;
+    case ASSIGN_UNI_BUTTON:  
+      if (!released) pressAssign(CAT_UNI);  
+    break;
 
-    case ASSIGN_MONO_BUTTON:
-      if (!released) {
-        mono_button = !mono_button;
-        myControlChange(midiChannel, CCmono_button, mono_button);
-      }
-      break;
+    case ASSIGN_MONO_BUTTON: 
+      if (!released) pressAssign(CAT_MONO); 
+    break;
 
     case LFO1_SYNC_BUTTON:
       if (!released) {

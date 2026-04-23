@@ -2,6 +2,17 @@
 byte midiChannel = 1;  //(EEPROM)
 byte midiOutCh = 1; 
 
+enum AssignCat { CAT_POLY = 0, CAT_UNI = 1, CAT_MONO = 2 };
+
+static inline int assignCat(int v)     { return v & 3; }
+static inline int assignVariant(int v) { return (v >> 2) & 1; }
+static inline int assignMake(int cat, int variant) { return (variant << 2) | cat; }
+
+static const char *assignLabels[7] = {
+  "POLY 1", "UNI 1", "MONO 1", "",    // 0, 1, 2, 3-unused
+  "POLY 2", "UNI 2", "MONO 2"         // 4, 5, 6
+};
+
 struct VoiceAndNote {
   int note;
   int velocity;
@@ -101,7 +112,7 @@ int old_value = 0;
 int old_param_offset = 0;
 int displayMode = 0;
 int editMode = 0;
-int assignMode = 0;
+bool switchLEDS = false;;
 
 bool manualSyncInProgress = false;
 bool suppressParamAnnounce = true;
@@ -409,9 +420,6 @@ boolean dual_button;
 boolean split_button;
 boolean single_button;
 boolean special_button;
-boolean poly_button;
-boolean mono_button;
-boolean unison_button;
 
 
 byte oldsplitPoint = 0;

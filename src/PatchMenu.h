@@ -11,6 +11,24 @@
 // comment where you should invoke the existing sender function(s) you
 // already use elsewhere when these variables change.
 // ============================================================================
+void sendCustomSysEx(byte outChannel, byte parameter, byte value);
+
+
+// Menu index 0..5  ↔  storage value 0,1,2,4,5,6 (bit 2 skips 3)
+static inline int packAssign(int menuIdx) {
+  // 0→0, 1→1, 2→2, 3→4, 4→5, 5→6
+  return (menuIdx < 3) ? menuIdx : (menuIdx + 1);
+}
+static inline int unpackAssign(int stored) {
+  // 0→0, 1→1, 2→2, 4→3, 5→4, 6→5
+  return (stored < 3) ? stored : (stored - 1);
+}
+
+static void sendOneAssign(bool upper) {
+  uint8_t addr = upper ? 0x1F : 0x28;
+  uint8_t val  = upper ? (uint8_t)upperAssign : (uint8_t)lowerAssign;
+  sendCustomSysEx((midiOutCh - 1), addr, val);
+}
 
 static inline int packScaleP(int idx, int N) {
   if (idx < 0)       idx = 0;
@@ -170,7 +188,7 @@ static const char *patchKeyModeValues[] = {
 // Menu index 0..5  ↔  stored value via tables below.
 // ─────────────────────────────────────────────
 static const char *patchKeyAssignValues[] = {
-  "POLY 1", "UNISON 1", "MONO 1", "POLY 2", "UNISON 2", "MONO 2", "\0"
+  "POLY 1", "UNI 1", "MONO 1", "POLY 2", "UNI 2", "MONO 2", "\0"
 };
 static const uint8_t patchKeyAssignRaw[] = { 0x00, 0x01, 0x02, 0x04, 0x05, 0x06 };
 
@@ -296,6 +314,7 @@ void updatechaseLevel(bool announce);
 void updatechaseMode(bool announce);
 void updatechaseTime(bool announce);
 void updatechasePlay(bool announce);
+void updateAssignLeds();
 
 // ============================================================================
 // Handlers — each writes to the live global, then yields so main.ino
@@ -430,10 +449,12 @@ int idxUpperShift() {
 
 // -------- 1FH Upper Key Assign --------
 void patchUpperAssign(int index, const char *value) {
-  upperAssign = patchKeyAssignRaw[index];
-  updateassignMode(0);
+  upperAssign = packAssign(index);
+  // Send SYX + refresh LEDs
+  sendOneAssign(true);
+  updateAssignLeds();
 }
-int idxUpperAssign() { return assignRawToIndex((uint8_t)upperAssign); }
+int idxUpperAssign() { return unpackAssign(upperAssign); }
 
 // -------- 20H Upper Unison Detune --------
 void patchUpperUnisonDet(int index, const char *value) {
@@ -490,10 +511,11 @@ void patchLowerShift(int index, const char *value) {
 int idxLowerShift() { return 24; }  // placeholder
 
 void patchLowerAssign(int index, const char *value) {
-  lowerAssign = patchKeyAssignRaw[index];
-  updateassignMode(0);
+  lowerAssign = packAssign(index);
+  sendOneAssign(false);
+  updateAssignLeds();
 }
-int idxLowerAssign() { return assignRawToIndex((uint8_t)lowerAssign); }
+int idxLowerAssign() { return unpackAssign(lowerAssign); }
 
 void patchLowerUnisonDet(int index, const char *value) {
   lowerUnisonDetune = packSplitDetune(index);

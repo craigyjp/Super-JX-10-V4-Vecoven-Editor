@@ -13,6 +13,23 @@ static const char *assignLabels[7] = {
   "POLY 2", "UNI 2", "MONO 2"         // 4, 5, 6
 };
 
+bool patchNameEditMode = false;
+int  patchNameCursor   = 0;
+char patchNameBuffer[19];   // 18 chars + null
+
+static const char patchSpecialChars[8] = {
+  '-', '*', '/', '\x03', '<', '>', ',', ' '
+};
+
+enum {
+  NAMING_DIGIT = 0,
+  NAMING_SPECIAL,
+  NAMING_CURSOR_LEFT,
+  NAMING_CURSOR_RIGHT,
+  NAMING_ENCODER_UP,
+  NAMING_ENCODER_DOWN,
+};
+
 struct VoiceAndNote {
   int note;
   int velocity;
@@ -471,6 +488,17 @@ byte triDownSolid[] = {
   0b01110,
   0b00100,
   0b00000
+};
+
+byte backslashGlyph[] = {
+  B00000,
+  B10000,
+  B01000,
+  B00100,
+  B00010,
+  B00001,
+  B00000,
+  B00000
 };
 
 

@@ -360,17 +360,21 @@ void renderMIDIEditPage() {
   lcd.print(buf);
 }
 
-void renderPatchNamingPage() {
-  // tft.fillScreen(ST7735_BLACK);
-  // tft.setFont(&FreeSans12pt7b);
-  // tft.setTextColor(ST7735_YELLOW);
-  // tft.setTextSize(1);
-  // tft.setCursor(0, 34);
-  // tft.println("Rename Patch");
-  // tft.drawFastHLine(10, 66, tft.width() - 20, ST7735_RED);
-  // tft.setTextColor(ST7735_WHITE);
-  // tft.setCursor(5, 84);
-  // tft.println(newPatchName);
+void renderPatchNaming() {
+  lcd.clear();
+  drawBankSlotHeader();
+  lcd.setCursor(5, 0);
+  lcd.print("PATCH NAME");
+
+  // Print the 18-char buffer starting at column 0 of line 1
+  lcd.setCursor(20, 0);
+  for (int i = 0; i < 18; i++) {
+    lcd.print(patchNameBuffer[i]);
+  }
+
+  // Place hardware cursor at current edit position
+  lcd.setCursor(20 + patchNameCursor, 0);
+  lcd.blink();
 }
 
 void showRenamingPage(String newName) {
@@ -503,7 +507,7 @@ void updateScreen() {
       renderSavePage();
       break;
     case PATCHNAMING:
-      renderPatchNamingPage();
+      renderPatchNaming();
       break;
     case PATCH:
       renderCurrentPatchPage();
@@ -538,5 +542,6 @@ void setupDisplay() {
   lcd.createChar(0, midBar2);
   lcd.createChar(1, triUpSolid);
   lcd.createChar(2, triDownSolid);
+  lcd.createChar(3, backslashGlyph);   // use slot 1 (slot 0 is your existing arrow)
   renderBootUpPage();
 }

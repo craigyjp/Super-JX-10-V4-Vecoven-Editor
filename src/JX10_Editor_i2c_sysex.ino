@@ -6502,15 +6502,6 @@ void checkSwitches() {
         updateScreen();
         break;
 
-      case PATCHNAMING:
-        // Confirm rename then save
-        if (renamedPatch.length() > 0) patchName = renamedPatch;
-        saveCurrentPatch();
-        renamedPatch = "";
-        state = PARAMETER;
-        updateScreen();
-        break;
-
       case BANK_SELECT_SAVE:
         // Waiting for A-H + 1-8 selection — SAVE alone is a no-op here
         break;
@@ -6554,13 +6545,6 @@ void checkSwitches() {
       case BANK_SELECT_SAVE:
         bankSelectMode = false;
         saveToBankMode = false;
-        state = PARAMETER;
-        updateScreen();
-        break;
-
-      case PATCHNAMING:
-        charIndex = 0;
-        renamedPatch = "";
         state = PARAMETER;
         updateScreen();
         break;
@@ -6635,17 +6619,6 @@ void checkSwitches() {
         lcd.print((char)(0 + currentBank));
         state = PARAMETER;
         updateScreen();
-
-      case PATCHNAMING:
-        // Encoder button confirms current character
-        if (renamedPatch.length() < 19) {
-          renamedPatch.concat(String(currentCharacter));
-          charIndex = 0;
-          currentCharacter = CHARACTERS[charIndex];
-          showRenamingPage(renamedPatch);
-        }
-        updateScreen();
-        break;
 
       case SETTINGS:
         state = SETTINGSVALUE;
@@ -6750,23 +6723,6 @@ void handlePatchButton(int group, int slot) {
       }
       break;
 
-    // --- Patch naming: 1-8 and A-H scroll through characters ---
-    case PATCHNAMING:
-      if (slot >= 1) {
-        // 1-8: step forward through characters
-        if (charIndex >= TOTALCHARS) charIndex = 0;
-        currentCharacter = CHARACTERS[charIndex++];
-        showRenamingPage(renamedPatch + currentCharacter);
-        updateScreen();
-      } else if (group >= 0) {
-        // A-H: step backward through characters
-        if (charIndex <= 0) charIndex = TOTALCHARS - 1;
-        currentCharacter = CHARACTERS[charIndex--];
-        showRenamingPage(renamedPatch + currentCharacter);
-        updateScreen();
-      }
-      break;
-
     default:
       break;
   }
@@ -6791,12 +6747,17 @@ void checkEncoder() {
 
   if ((encCW && encRead > encPrevious + 3) || (!encCW && encRead < encPrevious - 3)) {
     switch (state) {
+
       case PATCHNAMING:
-        if (charIndex == TOTALCHARS) charIndex = 0;
-        currentCharacter = CHARACTERS[charIndex++];
-        showRenamingPage(renamedPatch + currentCharacter);
-        updateScreen();
-        break;
+        {
+          char c = patchNameBuffer[patchNameCursor];
+          if (c < 'A' || c > 'Z') c = 'A';
+          else c = (c == 'Z') ? 'A' : c + 1;
+          patchNameBuffer[patchNameCursor] = c;
+          renderPatchNaming();
+          updateScreen();
+          break;
+        }
 
       case SETTINGS:
         settings::increment_setting();
@@ -6879,12 +6840,17 @@ void checkEncoder() {
 
   } else if ((encCW && encRead < encPrevious - 3) || (!encCW && encRead > encPrevious + 3)) {
     switch (state) {
+
       case PATCHNAMING:
-        if (charIndex == -1) charIndex = TOTALCHARS - 1;
-        currentCharacter = CHARACTERS[charIndex--];
-        showRenamingPage(renamedPatch + currentCharacter);
-        updateScreen();
-        break;
+        {
+          char c = patchNameBuffer[patchNameCursor];
+          if (c < 'A' || c > 'Z') c = 'Z';
+          else c = (c == 'A') ? 'Z' : c - 1;
+          patchNameBuffer[patchNameCursor] = c;
+          renderPatchNaming();
+          updateScreen();
+          break;
+        }
 
       case SETTINGS:
         settings::decrement_setting();
@@ -7043,13 +7009,15 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case NAME_BUTTON:
       if (!released) {
+        if (state == PATCHNAMING) exitPatchNameEdit(false);  // cancel
+        else enterPatchNameEdit();                           // enter
       }
       break;
 
     case PEDAL_BUTTON:
       if (!released) {
       }
-      break; 
+      break;
 
     case C1_BUTTON:
       if (!released) {
@@ -7059,7 +7027,7 @@ void mainButtonChanged(Button *btn, bool released) {
     case C2_BUTTON:
       if (!released) {
       }
-      break; 
+      break;
 
 
     case PATCH_BUTTON:
@@ -7260,6 +7228,12 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case PATCH_1_BUTTON:
       if (!released) {
+        if (state == PATCHNAMING) {
+          patchNameBuffer[patchNameCursor] = patchSpecialChars[0];  // '-'
+          renderPatchNaming();
+          updateScreen();
+          break;
+        }
         if (arpFunctionMode) {
           arpParamIndex = ARP_P_BPM;
           state = ARP_EDITVALUE;
@@ -7274,6 +7248,12 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case PATCH_2_BUTTON:
       if (!released) {
+        if (state == PATCHNAMING) {
+          patchNameBuffer[patchNameCursor] = patchSpecialChars[1];  // '-'
+          renderPatchNaming();
+          updateScreen();
+          break;
+        }
         if (arpFunctionMode) {
           arpParamIndex = ARP_P_MODE;
           state = ARP_EDITVALUE;
@@ -7288,6 +7268,12 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case PATCH_3_BUTTON:
       if (!released) {
+        if (state == PATCHNAMING) {
+          patchNameBuffer[patchNameCursor] = patchSpecialChars[2];  // '-'
+          renderPatchNaming();
+          updateScreen();
+          break;
+        }
         if (arpFunctionMode) {
           arpParamIndex = ARP_P_OCTAVE;
           state = ARP_EDITVALUE;
@@ -7302,6 +7288,12 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case PATCH_4_BUTTON:
       if (!released) {
+        if (state == PATCHNAMING) {
+          patchNameBuffer[patchNameCursor] = patchSpecialChars[3];  // '-'
+          renderPatchNaming();
+          updateScreen();
+          break;
+        }
         if (arpFunctionMode) {
           arpParamIndex = ARP_P_INSERT;
           state = ARP_EDITVALUE;
@@ -7316,6 +7308,12 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case PATCH_5_BUTTON:
       if (!released) {
+        if (state == PATCHNAMING) {
+          patchNameBuffer[patchNameCursor] = patchSpecialChars[4];  // '-'
+          renderPatchNaming();
+          updateScreen();
+          break;
+        }
         if (arpFunctionMode) {
           arpParamIndex = ARP_P_RATE;
           state = ARP_EDITVALUE;
@@ -7330,6 +7328,12 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case PATCH_6_BUTTON:
       if (!released) {
+        if (state == PATCHNAMING) {
+          patchNameBuffer[patchNameCursor] = patchSpecialChars[5];  // '-'
+          renderPatchNaming();
+          updateScreen();
+          break;
+        }
         if (arpFunctionMode) {
           arpParamIndex = ARP_P_DURATION;
           state = ARP_EDITVALUE;
@@ -7344,6 +7348,12 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case PATCH_7_BUTTON:
       if (!released) {
+        if (state == PATCHNAMING) {
+          patchNameBuffer[patchNameCursor] = patchSpecialChars[6];  // '-'
+          renderPatchNaming();
+          updateScreen();
+          break;
+        }
         if (arpFunctionMode) {
           arpParamIndex = ARP_P_VELOCITY;
           state = ARP_EDITVALUE;
@@ -7358,6 +7368,12 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case PATCH_8_BUTTON:
       if (!released) {
+        if (state == PATCHNAMING) {
+          patchNameBuffer[patchNameCursor] = patchSpecialChars[7];  // '-'
+          renderPatchNaming();
+          updateScreen();
+          break;
+        }
         if (arpFunctionMode) {
           arpParamIndex = ARP_P_MIDI;
           state = ARP_EDITVALUE;
@@ -7475,49 +7491,130 @@ void mainButtonChanged(Button *btn, bool released) {
       break;
 
     case TONE_0_BUTTON:
-      if (!released) handleToneDigit(0);
+      if (!released) {
+        if (state == PATCHNAMING) {
+          patchNameBuffer[patchNameCursor] = '0';
+          renderPatchNaming();
+          updateScreen();
+          break;
+        }
+        handleToneDigit(0);
+      }
       break;
 
     case TONE_1_BUTTON:
-      if (!released) handleToneDigit(1);
+      if (!released) {
+        if (state == PATCHNAMING) {
+          patchNameBuffer[patchNameCursor] = '1';
+          renderPatchNaming();
+          updateScreen();
+          break;
+        }
+        handleToneDigit(1);
+      }
       break;
 
     case TONE_2_BUTTON:
-      if (!released) handleToneDigit(2);
+      if (!released) {
+        if (state == PATCHNAMING) {
+          patchNameBuffer[patchNameCursor] = '2';
+          renderPatchNaming();
+          updateScreen();
+          break;
+        }
+        handleToneDigit(2);
+      }
       break;
 
     case TONE_3_BUTTON:
-      if (!released) handleToneDigit(3);
+      if (!released) {
+        if (state == PATCHNAMING) {
+          patchNameBuffer[patchNameCursor] = '3';
+          renderPatchNaming();
+          updateScreen();
+          break;
+        }
+        handleToneDigit(3);
+      }
       break;
 
     case TONE_4_BUTTON:
-      if (!released) handleToneDigit(4);
+      if (!released) {
+        if (state == PATCHNAMING) {
+          patchNameBuffer[patchNameCursor] = '4';
+          renderPatchNaming();
+          updateScreen();
+          break;
+        }
+        handleToneDigit(4);
+      }
       break;
 
     case TONE_5_BUTTON:
-      if (!released) handleToneDigit(5);
+      if (!released) {
+        if (state == PATCHNAMING) {
+          patchNameBuffer[patchNameCursor] = '5';
+          renderPatchNaming();
+          updateScreen();
+          break;
+        }
+        handleToneDigit(5);
+      }
       break;
 
     case TONE_6_BUTTON:
-      if (!released) handleToneDigit(6);
+      if (!released) {
+        if (state == PATCHNAMING) {
+          patchNameBuffer[patchNameCursor] = '6';
+          renderPatchNaming();
+          updateScreen();
+          break;
+        }
+        handleToneDigit(6);
+      }
       break;
 
     case TONE_7_BUTTON:
-      if (!released) handleToneDigit(7);
+      if (!released) {
+        if (state == PATCHNAMING) {
+          patchNameBuffer[patchNameCursor] = '7';
+          renderPatchNaming();
+          updateScreen();
+          break;
+        }
+        handleToneDigit(7);
+      }
       break;
 
     case TONE_8_BUTTON:
-      if (!released) handleToneDigit(8);
+      if (!released) {
+        if (state == PATCHNAMING) {
+          patchNameBuffer[patchNameCursor] = '8';
+          renderPatchNaming();
+          updateScreen();
+          break;
+        }
+        handleToneDigit(8);
+      }
       break;
 
     case TONE_9_BUTTON:
-      if (!released) handleToneDigit(9);
+      if (!released) {
+        if (state == PATCHNAMING) {
+          patchNameBuffer[patchNameCursor] = '9';
+          renderPatchNaming();
+          updateScreen();
+          break;
+        }
+        handleToneDigit(9);
+      }
       break;
 
     case TONE_ENTER_BUTTON:
       if (!released) {
-        if (arpFunctionMode) {
-          // existing arp save code
+        if (state == PATCHNAMING) {
+          exitPatchNameEdit(true);  // commit
+        } else if (arpFunctionMode) {
           arpMemories[arpMemoryIndex] = arp;
           arpSaveMemory(arpMemoryIndex);
           showCurrentParameterPage("ARP MEMORY", "SAVED");
@@ -7830,6 +7927,12 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case LOWER_BUTTON:
       if (!released) {
+        if (state == PATCHNAMING) {
+          if (patchNameCursor > 0) patchNameCursor--;
+          renderPatchNaming();
+          updateScreen();
+          break;
+        }
         editMode = 0;
         upperSW = false;
         myControlChange(midiChannel, CCeditMode, editMode);
@@ -7838,6 +7941,12 @@ void mainButtonChanged(Button *btn, bool released) {
 
     case UPPER_BUTTON:
       if (!released) {
+        if (state == PATCHNAMING) {
+          if (patchNameCursor < 17) patchNameCursor++;
+          renderPatchNaming();
+          updateScreen();
+          break;
+        }
         editMode = 1;
         upperSW = true;
         myControlChange(midiChannel, CCeditMode, editMode);
@@ -7970,6 +8079,33 @@ void mainButtonChanged(Button *btn, bool released) {
       break;
   }
 }
+
+FLASHMEM void enterPatchNameEdit() {
+  // Copy live patchName into buffer, padded to 18 chars.
+  // Live patchName stays unchanged — it's our implicit backup for NAME cancel.
+  String src = patchName;
+  while (src.length() < 18) src += ' ';
+  if (src.length() > 18) src = src.substring(0, 18);
+
+  for (int i = 0; i < 18; i++) patchNameBuffer[i] = src.charAt(i);
+  patchNameBuffer[18] = '\0';
+
+  patchNameCursor = 0;
+  state = PATCHNAMING;
+  renderPatchNaming();
+  updateScreen();
+}
+
+FLASHMEM void exitPatchNameEdit(bool commit) {
+  if (commit) {
+    patchName = String(patchNameBuffer);
+  }
+  state = PARAMETER;  // back to main screen
+  renderCurrentParameterPage();
+  updateScreen();
+}
+
+
 
 bool anyMuxNeedsReread() {
   for (int i = 0; i < MUXCHANNELS; i++) {

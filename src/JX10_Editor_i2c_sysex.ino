@@ -182,6 +182,8 @@ void setup() {
   MIDI.turnThruOn(midi::Thru::Mode::Off);
   Serial.println("MIDI In DIN Listening");
 
+  loadMidiSettings();
+
   //Read Encoder Direction from EEPROM
   encCW = getEncoderDir();
 
@@ -253,6 +255,33 @@ void ensureAllBanksInitialized() {
     ensureJX10BankInitialized(bank);
     ensureToneFiles(bank);
   }
+}
+
+void loadMidiSettings() {
+  upperLocal       = getUpperLocal();
+  lowerLocal       = getLowerLocal();
+  upperChannel     = getUpperChannel();
+  lowerChannel     = getLowerChannel();
+  controlChannel   = getControlChannel();
+  patchProgChange  = getPatchProgChange();
+  sysexExclusive   = getSysexExclusive();
+  sysexApr         = getSysexApr();
+  realTime         = getRealTime();
+  upperProgChange  = getUpperProgChange();
+  upperAfterTouch  = getUpperAfterTouch();
+  upperBender      = getUpperBender();
+  upperModulation  = getUpperModulation();
+  upperPortamento  = getUpperPortamento();
+  upperHold        = getUpperHold();
+  upperVolume      = getUpperVolume();
+  lowerProgChange  = getLowerProgChange();
+  lowerAfterTouch  = getLowerAfterTouch();
+  lowerBender      = getLowerBender();
+  lowerModulation  = getLowerModulation();
+  lowerPortamento  = getLowerPortamento();
+  lowerHold        = getLowerHold();
+  lowerVolume      = getLowerVolume();
+  c1c2ToneEdit     = getC1C2ToneEdit();
 }
 
 inline uint8_t clampTune(int16_t val) {
@@ -6487,23 +6516,30 @@ void checkSwitches() {
   if (saveButton.held()) {
     // Held: enter patch rename mode
     if (state == PARAMETER) {
-      showRenamingPage(patchName);
-      renamedPatch = "";
-      charIndex = 0;
-      currentCharacter = CHARACTERS[charIndex];
-      state = PATCHNAMING;
+      enterPatchNameEdit();  // or the old PATCHNAMING flow if not migrated yet
       updateScreen();
     }
   } else if (saveButton.numClicks() == 1) {
     switch (state) {
       case PARAMETER:
-        // Single press: save to current position immediately
-        saveCurrentPatch();
+        // 1st SAVE press — arm. Default target = currently loaded slot.
+        saveTargetBank = currentBank;
+        saveTargetGroup = currentGroup;
+        saveTargetSlot = currentSlot;
+        saveBankPicking = false;
+        state = BANK_SELECT_SAVE;
+        showSaveTargetPage();
         updateScreen();
         break;
 
       case BANK_SELECT_SAVE:
-        // Waiting for A-H + 1-8 selection — SAVE alone is a no-op here
+        // 2nd SAVE press — commit.
+        if (renamedPatch.length() > 0) patchName = renamedPatch;
+        savePatchTo(saveTargetBank, saveTargetGroup, saveTargetSlot);
+        renamedPatch = "";
+        saveBankPicking = false;
+        state = PARAMETER;
+        updateScreen();
         break;
     }
   }
@@ -6544,7 +6580,7 @@ void checkSwitches() {
       case BANK_SELECT:
       case BANK_SELECT_SAVE:
         bankSelectMode = false;
-        saveToBankMode = false;
+        saveBankPicking = false;
         state = PARAMETER;
         updateScreen();
         break;
@@ -6619,6 +6655,13 @@ void checkSwitches() {
         lcd.print((char)(0 + currentBank));
         state = PARAMETER;
         updateScreen();
+
+      case BANK_SELECT_SAVE:
+        // Press RECALL while armed → enter bank-picking sub-flow
+        saveBankPicking = true;
+        showBankPickingPage();
+        updateScreen();
+        break;
 
       case SETTINGS:
         state = SETTINGSVALUE;
@@ -6701,32 +6744,37 @@ void handlePatchButton(int group, int slot) {
       }
       break;
 
-    // --- Save-destination picking: Recall + SAVE entered this state ---
+      // --- Save-destination picking: Recall + SAVE entered this state ---
     case BANK_SELECT_SAVE:
-      if (group >= 0) {
-        // A-H press picks destination bank, now wait for slot
-        saveTargetBank = group;
-        saveTargetGroup = currentGroup;  // will be overridden by slot press
-        // Stay in BANK_SELECT_SAVE waiting for a 1-8 press
-        showPatchPage("SAVE TO", String((char)(0 + group)) + "?");
-        updateScreen();
-      } else if (slot >= 1) {
-        // 1-8 press picks destination slot — save now
-        saveTargetSlot = slot;
-        if (renamedPatch.length() > 0) patchName = renamedPatch;
-        savePatchTo(saveTargetBank, currentGroup, saveTargetSlot);
-        renamedPatch = "";
-        bankSelectMode = false;
-        saveToBankMode = false;
-        state = PARAMETER;
-        updateScreen();
+      if (saveBankPicking) {
+        // "Change bank" sub-flow triggered by RECALL
+        if (group >= 0) {
+          saveTargetBank = group;  // A-H → banks 1-8 (internal 0-7)
+          saveBankPicking = false;
+          showSaveTargetPage();
+          updateScreen();
+        } else if (slot >= 1) {
+          saveTargetBank = slot + 7;  // 1-8 → banks 9-16 (internal 8-15)
+          saveBankPicking = false;
+          showSaveTargetPage();
+          updateScreen();
+        }
+      } else {
+        // Normal picking — A-H picks group within target bank, 1-8 picks slot
+        if (group >= 0) {
+          saveTargetGroup = group;
+          showSaveTargetPage();
+          updateScreen();
+        } else if (slot >= 1) {
+          saveTargetSlot = slot;
+          showSaveTargetPage();
+          updateScreen();
+        }
       }
-      break;
-
-    default:
       break;
   }
 }
+
 
 void reinitialiseToPanel() {
   // //This sets the current patch to be the same as the current hardware panel state - all the pots

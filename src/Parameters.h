@@ -153,7 +153,10 @@ bool bankSelectMode    = false;   // true while waiting for A-H bank choice
 bool saveToBankMode    = false;   // true when bank-select is for save destination
 int  saveTargetBank    = 0;
 int  saveTargetGroup   = 0;
-int  saveTargetSlot    = 0;
+int  saveTargetSlot    = 1;
+
+
+bool saveBankPicking  = false;  // true = in "choose different bank" sub-flow
 
 unsigned long bankBlinkTimer = 0;
 bool bankBlinkState = false;
@@ -324,6 +327,32 @@ int at_bri_sw = 0;
 int at_vol_sw = 0;
 int midiSplitPoint;
 
+// MIDI menu globals — loaded from EEPROM at boot via loadMidiSettings()
+byte upperLocal       = 1;
+byte lowerLocal       = 1;
+byte upperChannel     = 1;
+byte lowerChannel     = 1;
+byte controlChannel   = 1;
+byte patchProgChange  = 3;
+byte sysexExclusive   = 3;
+byte sysexApr         = 3;
+byte realTime         = 1;
+byte upperProgChange  = 3;
+byte upperAfterTouch  = 3;
+byte upperBender      = 3;
+byte upperModulation  = 3;
+byte upperPortamento  = 3;
+byte upperMIDIHold    = 3;
+byte upperVolume      = 3;
+byte lowerProgChange  = 3;
+byte lowerAfterTouch  = 3;
+byte lowerBender      = 3;
+byte lowerModulation  = 3;
+byte lowerPortamento  = 3;
+byte lowerMIDIHold    = 3;
+byte lowerVolume      = 3;
+byte c1c2ToneEdit     = 0;
+
 int unisondetune_str;
 int mod_lfo_str;
 int at_vib_str;
@@ -468,26 +497,71 @@ byte midBar2[] = {
   0b00110
 };
 
-byte triUpSolid[] = {
-  0b00100,
-  0b01110,
-  0b11111,
-  0b11111,
-  0b11111,
-  0b00000,
-  0b00000,
-  0b00000
+// TM — dotted top line
+byte frameTopMid[8] = {
+  B00000,
+  B00000,
+  B10101,
+  B00000,
+  B00000,
+  B00000,
+  B00000,
+  B00000
 };
 
-byte triDownSolid[] = {
-  0b00000,
-  0b00000,
-  0b00000,
-  0b11111,
-  0b11111,
-  0b01110,
-  0b00100,
-  0b00000
+byte frameBotMid[8] = {
+  B00000,
+  B00000,
+  B00000,
+  B00000,
+  B10101,
+  B00000,
+  B00000,
+  B00000
+};
+
+byte frameTopLeft[8] = {
+  B00000,     // top row dotted
+  B00000,     // left column dotted
+  B10101,
+  B00000,
+  B10000,
+  B00000,
+  B10000,
+  B00000
+};
+
+byte frameTopRight[8] = {
+  B00000,
+  B00000,
+  B10101,
+  B00000,
+  B00001,
+  B00000,
+  B00001,
+  B00000
+};
+
+byte frameBotLeft[8] = {
+  B10000,
+  B00000,
+  B10000,
+  B00000,
+  B10101,
+  B00000,
+  B00000,
+  B00000      // bottom row dotted
+};
+
+byte frameBotRight[8] = {
+  B00001,
+  B00000,
+  B00001,
+  B00000,
+  B10101,
+  B00000,
+  B00000,
+  B00000
 };
 
 byte backslashGlyph[] = {

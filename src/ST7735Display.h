@@ -9,10 +9,10 @@
 #define AMP_ENV 4
 
 enum DisplayMode {
-  DM_TONE_FLASH    = 0,  // LOWER/UPPER param flash with arrow markers
-  DM_PATCH_FLASH   = 1,  // patch-param flash
-  DM_EDIT_FLASH    = 2,  // generic "editing parameter" flash
-  DM_SYSEX_BANNER  = 5   // sysex dump banner
+  DM_TONE_FLASH = 0,   // LOWER/UPPER param flash with arrow markers
+  DM_PATCH_FLASH = 1,  // patch-param flash
+  DM_EDIT_FLASH = 2,   // generic "editing parameter" flash
+  DM_SYSEX_BANNER = 5  // sysex dump banner
 };
 
 LiquidCrystal_PCF8574 lcd(0x27);  // set the LCD address to 0x27 for a 16 chars and 2 line display
@@ -28,8 +28,8 @@ const char *currentSettingsValue = "";
 int currentSettingsPart = SETTINGS;
 
 String currentToneParameter = "";
-String currentToneUpper     = "";
-String currentToneLower     = "";
+String currentToneUpper = "";
+String currentToneLower = "";
 
 const char *currentPatchOption = "";
 const char *currentPatchValue = "";
@@ -50,11 +50,12 @@ int Patchnumber = 0;
 unsigned long timeout = 0;
 
 char buf[7];  // 8 chars + null terminator
+char bankStr[12];
 
-static void renderToneFlashPage();              // displayMode 0
-static void renderPatchFlashPage();             // displayMode 1  
-static void renderEditFlashPage();              // displayMode 2
-static void renderSysexBannerPage();            // displayMode 5
+static void renderToneFlashPage();    // displayMode 0
+static void renderPatchFlashPage();   // displayMode 1
+static void renderEditFlashPage();    // displayMode 2
+static void renderSysexBannerPage();  // displayMode 5
 
 void startTimer() {
   if (state == PARAMETER) {
@@ -63,32 +64,52 @@ void startTimer() {
 }
 
 static void drawBankSlotHeader() {
-  lcd.setCursor(0, 0); lcd.print("I:");
-  lcd.setCursor(2, 0); lcd.print(currentBank + 1);
-  lcd.setCursor(0, 1); lcd.print((char)('A' + currentGroup)); lcd.print(currentSlot);
+  lcd.setCursor(0, 0);
+  lcd.print("I:");
+  lcd.setCursor(2, 0);
+  lcd.print(currentBank + 1);
+  lcd.setCursor(0, 1);
+  lcd.print((char)('A' + currentGroup));
+  lcd.print(currentSlot);
 }
 
 static void clearTheToneMarkers() {
-    // arrows (clear 8, paint 4)
-  lcd.setCursor(26, 0); lcd.print(" ");
-  lcd.setCursor(32, 0); lcd.print(" ");
-  lcd.setCursor(33, 0); lcd.print(" ");
-  lcd.setCursor(39, 0); lcd.print(" ");
-  lcd.setCursor(26, 1); lcd.print(" ");
-  lcd.setCursor(32, 1); lcd.print(" ");
-  lcd.setCursor(33, 1); lcd.print(" ");
-  lcd.setCursor(39, 1); lcd.print(" ");
+  // arrows (clear 8, paint 4)
+  lcd.setCursor(26, 0);
+  lcd.print(" ");
+  lcd.setCursor(32, 0);
+  lcd.print(" ");
+  lcd.setCursor(33, 0);
+  lcd.print(" ");
+  lcd.setCursor(39, 0);
+  lcd.print(" ");
+  lcd.setCursor(26, 1);
+  lcd.print(" ");
+  lcd.setCursor(32, 1);
+  lcd.print(" ");
+  lcd.setCursor(33, 1);
+  lcd.print(" ");
+  lcd.setCursor(39, 1);
+  lcd.print(" ");
 
   if (upperSW) {
-    lcd.setCursor(33, 0); lcd.write(byte(0));
-    lcd.setCursor(39, 0); lcd.write(byte(0));
-    lcd.setCursor(33, 1); lcd.write(byte(0));
-    lcd.setCursor(39, 1); lcd.write(byte(0));
+    lcd.setCursor(33, 0);
+    lcd.write(byte(0));
+    lcd.setCursor(39, 0);
+    lcd.write(byte(0));
+    lcd.setCursor(33, 1);
+    lcd.write(byte(0));
+    lcd.setCursor(39, 1);
+    lcd.write(byte(0));
   } else {
-    lcd.setCursor(26, 0); lcd.write(byte(0));
-    lcd.setCursor(32, 0); lcd.write(byte(0));
-    lcd.setCursor(26, 1); lcd.write(byte(0));
-    lcd.setCursor(32, 1); lcd.write(byte(0));
+    lcd.setCursor(26, 0);
+    lcd.write(byte(0));
+    lcd.setCursor(32, 0);
+    lcd.write(byte(0));
+    lcd.setCursor(26, 1);
+    lcd.write(byte(0));
+    lcd.setCursor(32, 1);
+    lcd.write(byte(0));
   }
 }
 
@@ -162,11 +183,13 @@ void renderCurrentParameterPage() {
   if (state != PARAMETER) return;
 
   switch (displayMode) {
-    case DM_TONE_FLASH:    renderToneFlashPage();    break;
-    case DM_PATCH_FLASH:   renderPatchFlashPage();   break;
-    case DM_EDIT_FLASH:    renderEditFlashPage();    break;
-    case DM_SYSEX_BANNER:  renderSysexBannerPage();  break;
-    // no default — unknown mode = no-op, same as original silently did
+    case DM_TONE_FLASH: renderToneFlashPage(); break;
+    case DM_PATCH_FLASH: renderPatchFlashPage(); break;
+    case DM_EDIT_FLASH: renderEditFlashPage(); break;
+    case DM_SYSEX_BANNER:
+      renderSysexBannerPage();
+      break;
+      // no default — unknown mode = no-op, same as original silently did
   }
 }
 
@@ -176,8 +199,10 @@ static void renderToneFlashPage() {
 
   lcd.setCursor(5, 0);
   lcd.print(upperSW ? "UPPER  PARAMETER" : "LOWER  PARAMETER");
-  lcd.setCursor(27, 0); lcd.print("LOWER");
-  lcd.setCursor(34, 0); lcd.print("UPPER");
+  lcd.setCursor(27, 0);
+  lcd.print("LOWER");
+  lcd.setCursor(34, 0);
+  lcd.print("UPPER");
 
   lcd.setCursor(5, 1);
   lcd.print("  ");
@@ -186,13 +211,18 @@ static void renderToneFlashPage() {
 
   clearTheToneMarkers();
 
-  lcd.setCursor(12, 1); lcd.print(currentToneParameter);
+  lcd.setCursor(12, 1);
+  lcd.print(currentToneParameter);
 
   // Clear value columns then paint both
-  lcd.setCursor(27, 1); lcd.print("     ");
-  lcd.setCursor(34, 1); lcd.print("     ");
-  lcd.setCursor(27, 1); lcd.print(currentToneLower);
-  lcd.setCursor(34, 1); lcd.print(currentToneUpper);
+  lcd.setCursor(27, 1);
+  lcd.print("     ");
+  lcd.setCursor(34, 1);
+  lcd.print("     ");
+  lcd.setCursor(27, 1);
+  lcd.print(currentToneLower);
+  lcd.setCursor(34, 1);
+  lcd.print(currentToneUpper);
 }
 
 static void renderPatchFlashPage() {
@@ -200,8 +230,10 @@ static void renderPatchFlashPage() {
 
   drawBankSlotHeader();
 
-  lcd.setCursor(5, 0);  lcd.print("PATCH  PARAMETER");
-  lcd.setCursor(12, 1); lcd.print(currentParameter);
+  lcd.setCursor(5, 0);
+  lcd.print("PATCH  PARAMETER");
+  lcd.setCursor(12, 1);
+  lcd.print(currentParameter);
 
   lcd.setCursor(34, 1);
   String valueStr = String(currentValue);
@@ -216,37 +248,60 @@ static void renderEditFlashPage() {
 
   drawBankSlotHeader();
 
-  lcd.setCursor(6, 0);  lcd.print("EDITING PARAMETER");
-  lcd.setCursor(15, 1); lcd.print(currentParameter);
-  lcd.setCursor(28, 1); lcd.print(currentValue);
+  lcd.setCursor(6, 0);
+  lcd.print("EDITING PARAMETER");
+  lcd.setCursor(15, 1);
+  lcd.print(currentParameter);
+  lcd.setCursor(28, 1);
+  lcd.print(currentValue);
 }
 
 static void renderSysexBannerPage() {
   lcd.clear();
-  lcd.setCursor(0, 0);  lcd.print("**********");
-  lcd.setCursor(12, 0); lcd.print(currentParameter);
-  lcd.setCursor(18, 0); lcd.print(currentValue);
-  lcd.setCursor(30, 0); lcd.print("**********");
+  lcd.setCursor(0, 0);
+  lcd.print("**********");
+  lcd.setCursor(12, 0);
+  lcd.print(currentParameter);
+  lcd.setCursor(18, 0);
+  lcd.print(currentValue);
+  lcd.setCursor(30, 0);
+  lcd.print("**********");
 }
 
-void renderSavePage() {
-  lcd.clear();
-
-  // Line 0: save destination - bank and patch label
-  lcd.setCursor(0, 0);
-  lcd.print("Save to: Bank ");
-  lcd.print(currentBank + 1);
-  lcd.print(" ");
-  lcd.print((char)('A' + currentGroup));
-  lcd.print(currentSlot);
-
-  // Line 1: current patch name
-  lcd.setCursor(0, 1);
-  String name = patchName;
-  if (name.length() > 40) {
-    name = name.substring(0, 37) + "...";
+FLASHMEM void showSaveTargetPage() {
+  lcd.noBlink();
+  lcd.setCursor(0, 0);  lcd.write(byte(1));
+  for (int i = 1; i < 39; i++) {
+    lcd.setCursor(i, 0); lcd.write(byte(2));
   }
-  lcd.print(name);
+  lcd.setCursor(39, 0); lcd.write(byte(4));
+
+  // Frame — bottom row
+  lcd.setCursor(0, 1);  lcd.write(byte(5));
+  for (int i = 1; i < 39; i++) {
+    lcd.setCursor(i, 1); lcd.write(byte(6));
+  }
+  lcd.setCursor(39, 1); lcd.write(byte(7));
+
+  snprintf(bankStr, sizeof(bankStr), "%02d", saveTargetBank + 1);
+
+  // Message — overlays dots in the frame
+  lcd.setCursor(6, 0); lcd.print("WRITE PATCH   ");
+
+  String msg = "TO  ";
+  msg += "I";
+  msg += bankStr; 
+  msg += ":";
+  msg += (char)('A' + saveTargetGroup);
+  msg += saveTargetSlot;
+  msg += "   ?";
+  lcd.setCursor(20, 0); lcd.print(msg);
+}
+
+FLASHMEM void showBankPickingPage() {
+  lcd.setCursor(25, 0);
+  lcd.blink();
+
 }
 
 void renderPatchEditPage() {
@@ -275,7 +330,6 @@ void renderPatchEditPage() {
 
   snprintf(buf, sizeof(buf), "%6s", valueStr.c_str());
   lcd.print(buf);
-
 }
 
 void renderToneEditPage() {
@@ -456,9 +510,9 @@ void showMIDIEditPage(const char *option, const char *value, int part) {
 void showCurrentTonePage(const char *param, String upperVal, String lowerVal) {
   if (state == SETTINGS || state == SETTINGSVALUE) state = PARAMETER;
   currentToneParameter = param;
-  currentToneUpper     = upperVal;
-  currentToneLower     = lowerVal;
-  displayMode          = DM_TONE_FLASH;
+  currentToneUpper = upperVal;
+  currentToneLower = lowerVal;
+  displayMode = DM_TONE_FLASH;
   startTimer();
 }
 
@@ -503,9 +557,9 @@ void updateScreen() {
         renderCurrentParameterPage();
       }
       break;
-    case SAVE:
-      renderSavePage();
-      break;
+    // case SAVE:
+    //   renderSavePage();
+    //   break;
     case PATCHNAMING:
       renderPatchNaming();
       break;
@@ -540,8 +594,12 @@ void setupDisplay() {
 
   lcd.begin(40, 2, Wire2);  // initialize the lcd
   lcd.createChar(0, midBar2);
-  lcd.createChar(1, triUpSolid);
-  lcd.createChar(2, triDownSolid);
-  lcd.createChar(3, backslashGlyph);   // use slot 1 (slot 0 is your existing arrow)
+  lcd.createChar(1, frameTopLeft);
+  lcd.createChar(2, frameTopMid);
+  lcd.createChar(3, backslashGlyph);  // use slot 1 (slot 0 is your existing arrow)
+  lcd.createChar(4, frameTopRight);
+  lcd.createChar(5, frameBotLeft);
+  lcd.createChar(6, frameBotMid);
+  lcd.createChar(7, frameBotRight);
   renderBootUpPage();
 }

@@ -443,8 +443,7 @@ void patchUpperShift(int index, const char *value) {
   updateupperchromaticshift();
 }
 int idxUpperShift() {
-  // Read from your upper-shift variable. Placeholder = 0 (= -24 shifted to 24).
-  return 24;
+  return shiftRawToIndex(upperChromatic);
 }
 
 // -------- 1FH Upper Key Assign --------
@@ -508,7 +507,9 @@ void patchLowerShift(int index, const char *value) {
   lowerChromatic = shiftIndexToRaw(index);
   updatelowerchromaticshift();
 }
-int idxLowerShift() { return 24; }  // placeholder
+int idxLowerShift() { 
+  return shiftRawToIndex(lowerChromatic); 
+}  
 
 void patchLowerAssign(int index, const char *value) {
   lowerAssign = packAssign(index);
